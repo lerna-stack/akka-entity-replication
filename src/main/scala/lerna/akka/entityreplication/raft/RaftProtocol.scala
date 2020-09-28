@@ -1,0 +1,34 @@
+package lerna.akka.entityreplication.raft
+
+import akka.actor.ActorRef
+import lerna.akka.entityreplication.model.NormalizedEntityId
+import lerna.akka.entityreplication.raft.model.{ LogEntry, LogEntryIndex }
+import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshot
+
+object RaftProtocol {
+
+  final case class RequestRecovery(entityId: NormalizedEntityId)
+  final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot])
+
+  case class Command(command: Any)
+  case class ForwardedCommand(command: Command)
+  case class Replica(logEntry: LogEntry)
+
+  object Replicate {
+    def apply(event: Any, replyTo: ActorRef, entityId: NormalizedEntityId): Replicate = {
+      Replicate(event, replyTo, Option(entityId))
+    }
+
+    def internal(event: Any, replyTo: ActorRef): Replicate = {
+      Replicate(event, replyTo, None)
+    }
+  }
+
+  case class Replicate(event: Any, replyTo: ActorRef, entityId: Option[NormalizedEntityId])
+
+  sealed trait ReplicationResponse
+
+  case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex) extends ReplicationResponse
+
+  case class ReplicationFailed(cause: Throwable) extends ReplicationResponse
+}

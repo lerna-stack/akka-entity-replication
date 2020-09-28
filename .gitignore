@@ -1,0 +1,7 @@
+*.class
+.idea/*
+!.idea/codeStyles
+target/
+*.pyc
+.env
+sbt-cache/

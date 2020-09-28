@@ -1,0 +1,542 @@
+package lerna.akka.entityreplication
+
+import java.util.concurrent.atomic.AtomicInteger
+
+import akka.actor.{ ActorRef, ActorSelection, Props, RootActorPath, Terminated }
+import akka.cluster.Cluster
+import akka.cluster.ClusterEvent.{ CurrentClusterState, InitialStateAsEvents, MemberRemoved, MemberUp }
+import akka.remote.testconductor.RoleName
+import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
+import akka.testkit.TestProbe
+import akka.util.Timeout
+import com.typesafe.config.{ ConfigFactory, ConfigValueFactory }
+import lerna.akka.entityreplication.ReplicationRegion.Routed
+import lerna.akka.entityreplication.ReplicationRegionSpec.DummyReplicationActor.CheckRouting
+import lerna.akka.entityreplication.model.NormalizedShardId
+import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand }
+import lerna.akka.entityreplication.raft.routing.MemberIndex
+
+import scala.collection.JavaConverters._
+import scala.collection.Set
+import scala.concurrent.duration._
+
+object ReplicationRegionSpec {
+
+  case class ReceivedMessages(messages: Seq[CheckRouting], node: RoleName, memberIndex: MemberIndex)
+
+  object DummyReplicationActor {
+
+    def props(probe: TestProbe) = Props(new DummyReplicationActor(probe))
+
+    sealed trait Command {
+      def id: String
+    }
+
+    case class Cmd(id: String)          extends Command
+    case class CheckRouting(id: String) extends Command
+
+    case class GetStatus(id: String)                        extends Command
+    case class GetStatusWithEnsuringConsistency(id: String) extends Command
+    case class Status(count: Int)
+
+    val extractEntityId: ReplicationRegion.ExtractEntityId = {
+      case c: Command => (c.id, c)
+    }
+
+    val extractShardId: ReplicationRegion.ExtractShardId = {
+      case c: Command => (Math.abs(c.id.hashCode) % 256).toString
+    }
+  }
+
+  class DummyReplicationActor(probe: TestProbe) extends ReplicationActor[Int] {
+
+    import DummyReplicationActor._
+
+    var count: Int = 0
+
+    override def preStart(): Unit = {
+      println(s"=== ${context.self.path} started ===")
+    }
+
+    override def receiveReplica: Receive = {
+      case "received" => updateState()
+    }
+
+    override def receiveCommand: Receive = {
+      case _: Cmd =>
+        replicate("received") { _ =>
+          updateState()
+        }
+      case msg: CheckRouting =>
+        probe.ref forward msg
+      case GetStatus(_) =>
+        // DummyReplicationActor の状態を直接確認する用
+        sender() ! Status(count)
+      case GetStatusWithEnsuringConsistency(_) =>
+        log.info("receive: GetStatusWithEnsuringConsistency: {}", count)
+        // ReplicationRegion 経由で状態を確認する用
+        ensureConsistency {
+          sender() ! Status(count)
+        }
+    }
+
+    def updateState(): Unit = {
+      log.info("updateState")
+      count += 1
+    }
+
+    override def currentState: Int = count
+  }
+}
+
+object ReplicationRegionSpecConfig extends MultiNodeConfig {
+  val node1: RoleName = role("node1")
+  val node2: RoleName = role("node2")
+  val node3: RoleName = role("node3")
+  val node4: RoleName = role("node4")
+
+  val memberIndexes: Map[RoleName, MemberIndex] = Map(
+    node1 -> MemberIndex("member-1"),
+    node2 -> MemberIndex("member-2"),
+    node3 -> MemberIndex("member-3"),
+    node4 -> MemberIndex("member-1"),
+  )
+
+  commonConfig(
+    debugConfig(false)
+      .withFallback(ConfigFactory.parseString(s"""
+      akka.actor.provider = cluster
+      akka.test.single-expect-default = 15s
+      """))
+      .withValue(
+        "lerna.akka.entityreplication.raft.multi-raft-roles",
+        ConfigValueFactory.fromIterable(memberIndexes.values.map(_.role).toSet.asJava),
+      )
+      .withFallback(ConfigFactory.parseResources("multi-jvm-testing.conf")),
+  )
+  nodeConfig(node1)(ConfigFactory.parseString(s"""
+    akka.cluster.roles = ["${memberIndexes(node1).role}"]
+  """))
+  nodeConfig(node2)(ConfigFactory.parseString(s"""
+    akka.cluster.roles = ["${memberIndexes(node2).role}"]
+  """))
+  nodeConfig(node3)(ConfigFactory.parseString(s"""
+    akka.cluster.roles = ["${memberIndexes(node3).role}"]
+  """))
+  nodeConfig(node4)(ConfigFactory.parseString(s"""
+    akka.cluster.roles = ["${memberIndexes(node4).role}"]
+  """))
+}
+
+class ReplicationRegionSpecMultiJvmNode1 extends ReplicationRegionSpec
+class ReplicationRegionSpecMultiJvmNode2 extends ReplicationRegionSpec
+class ReplicationRegionSpecMultiJvmNode3 extends ReplicationRegionSpec
+class ReplicationRegionSpecMultiJvmNode4 extends ReplicationRegionSpec
+
+class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) with STMultiNodeSpec {
+
+  import ReplicationRegionSpec._
+  import DummyReplicationActor._
+  import ReplicationRegionSpecConfig._
+
+  override def initialParticipants: Int = roles.size
+
+  private[this] val cluster = Cluster(system)
+
+  private[this] val selfMemberIndex: MemberIndex = memberIndexes(myself)
+
+  cluster.subscribe(testActor, InitialStateAsEvents, classOf[MemberUp], classOf[MemberRemoved])
+
+  private[this] val node1TestActor: ActorSelection =
+    system.actorSelection(RootActorPath(node(node1).address) / testActor.path.elements)
+
+  private[this] var clusterMembers = roles.filterNot(_ == node4)
+
+  "ReplicationRegion" should {
+
+    var clusterReplication: ActorRef = null
+
+    val entityProbe = TestProbe("entity")
+
+    val raftActorProbe = TestProbe("RaftActor")
+
+    def createReplication(): ActorRef =
+      planAutoKill {
+        ClusterReplication(system).start(
+          typeName = "sample",
+          entityProps = DummyReplicationActor.props(entityProbe),
+          settings = ClusterReplicationSettings(system),
+          extractEntityId = DummyReplicationActor.extractEntityId,
+          extractShardId = DummyReplicationActor.extractShardId,
+        )
+      }
+
+    def createReplicationWith(raftActorProbe: TestProbe): ActorRef =
+      planAutoKill {
+        system.actorOf(
+          Props(
+            new ReplicationRegion(
+              typeName = "sample",
+              DummyReplicationActor.props(entityProbe),
+              ClusterReplicationSettings(system),
+              DummyReplicationActor.extractEntityId,
+              DummyReplicationActor.extractShardId,
+              maybeCommitLogStore = None,
+            ) {
+              override def createRaftActor(shardId: NormalizedShardId): ActorRef = raftActorProbe.ref
+            },
+          ),
+        )
+      }
+
+    "wait for all nodes to enter a barrier" in {
+
+      runOn(clusterMembers: _*) {
+        Cluster(system).subscribe(testActor, classOf[MemberUp])
+        expectMsgType[CurrentClusterState]
+
+        Cluster(system).join(node(node1).address)
+
+        receiveN(3).map {
+          case MemberUp(member) => member.address
+        }.toSet should be(Set(node(node1).address, node(node2).address, node(node3).address))
+
+        Cluster(system).unsubscribe(testActor)
+      }
+
+      enterBarrier("started up a cluster")
+    }
+
+    "コマンドを受け取ったときに子の Entity が存在しない場合、対象の Entity を作成" in {
+
+      runOn(node1, node2, node3) {
+        clusterReplication = createReplication()
+      }
+      enterBarrier("ReplicationRegion created")
+
+      runOn(node3) {
+        val entityId = "test"
+        clusterReplication ! Cmd(entityId)
+      }
+      enterBarrier("Some command sent")
+
+      runOn(node1, node2, node3) {
+        // Entity が各ノードで生成されていることを確認
+        implicit val timeout: Timeout = Timeout(1.second)
+        awaitAssert(system.actorSelection("/user/replicationRegion-sample/*/test").resolveOne().await, max = 10.seconds)
+      }
+    }
+
+    "子の Entity にコマンドを転送する" in {
+
+      val entityId = createSeqReplicationId()
+      runOn(node1, node2, node3) {
+        clusterReplication = createReplication()
+      }
+      enterBarrier("ReplicationRegion created")
+      runOn(node3) {
+        clusterReplication ! Cmd(entityId)
+        clusterReplication ! GetStatusWithEnsuringConsistency(entityId)
+        // コマンドにより更新された状態が取得できていることから
+        // 正しくコマンドが転送できているとみなす
+        expectMsgType[Status].count should be(1)
+      }
+    }
+
+    "ForwardedCommand はそのまま RaftActor に転送する" in {
+
+      runOn(clusterMembers: _*) {
+        clusterReplication = createReplicationWith(raftActorProbe)
+      }
+      enterBarrier("ReplicationRegion created")
+
+      val entityId = createSeqReplicationId()
+
+      val message = ForwardedCommand(Command(CheckRouting(entityId)))
+
+      runOn(node1) {
+        clusterReplication ! Routed(message) // send message as already routed one
+      }
+      enterBarrier("message sent")
+
+      runOn(clusterMembers: _*) {
+        // collect the message
+        raftActorProbe.receiveWhile(max = 1.second, messages = 1) {
+          case cmd => node1TestActor ! cmd
+        }
+      }
+      runOn(node1) {
+        expectMsg(message)
+      }
+    }
+
+    "各 ReplicationActor の状態が同期する" in {
+      val entityId = createSeqReplicationId()
+      runOn(node1, node2, node3) {
+        clusterReplication = createReplication()
+      }
+      enterBarrier("ReplicationRegion created")
+      runOn(node3) {
+        clusterReplication ! Cmd(entityId)
+        clusterReplication ! Cmd(entityId)
+        clusterReplication ! Cmd(entityId)
+        clusterReplication ! GetStatusWithEnsuringConsistency(entityId)
+        expectMsg(Status(3))
+      }
+      enterBarrier("sent command")
+      runOn(node1, node2, node3) {
+        // 各ノードの ReplicationActor の状態が更新されている
+        awaitAssert {
+          system.actorSelection(s"/user/replicationRegion-sample/*/$entityId") ! GetStatus(entityId)
+          expectMsg(Status(3))
+        }
+      }
+    }
+
+    "一度 Region を停止しても各 ReplicationActor の状態が復元する" in {
+      val entityId = createSeqReplicationId()
+      runOn(node1, node2, node3) {
+        clusterReplication = createReplication()
+      }
+      enterBarrier("ReplicationRegion created")
+      runOn(node3) {
+        clusterReplication ! Cmd(entityId)
+        clusterReplication ! Cmd(entityId)
+        clusterReplication ! Cmd(entityId)
+        clusterReplication ! GetStatusWithEnsuringConsistency(entityId)
+        expectMsg(Status(3))
+      }
+      enterBarrier("status replicated")
+      runOn(node1, node2, node3) {
+        val supervisor       = clusterReplication
+        val replicationActor = system.actorSelection(s"/user/replicationRegion-sample/*/$entityId").resolveOne().await
+        watch(supervisor)
+        watch(replicationActor)
+        system.stop(supervisor)
+        receiveWhile[Terminated](messages = 2) {
+          case t @ Terminated(`supervisor`)       => t
+          case t @ Terminated(`replicationActor`) => t
+        }
+      }
+      enterBarrier("terminated all members")
+      runOn(node1, node2, node3) {
+        clusterReplication = createReplication()
+        clusterReplication ! GetStatusWithEnsuringConsistency(entityId)
+        expectMsg(Status(3))
+      }
+    }
+
+    "Broadcast" when {
+
+      "全 MemberIndex に配信される" in {
+
+        runOn(clusterMembers: _*) {
+          clusterReplication = createReplicationWith(raftActorProbe)
+        }
+        enterBarrier("ReplicationRegion created")
+
+        val entityId = createSeqReplicationId()
+
+        val message = Command(CheckRouting(entityId))
+
+        runOn(node1) {
+          clusterReplication ! ReplicationRegion.Broadcast(message)
+        }
+        enterBarrier("message sent")
+
+        runOn(clusterMembers: _*) {
+          raftActorProbe.expectMsg(message)
+        }
+      }
+    }
+
+    "BroadcastWithoutSelf" when {
+
+      "自分を除く全 MemberIndex に配信される" in {
+
+        runOn(clusterMembers: _*) {
+          clusterReplication = createReplicationWith(raftActorProbe)
+        }
+        enterBarrier("ReplicationRegion created")
+
+        val entityId = createSeqReplicationId()
+
+        val message = Command(CheckRouting(entityId))
+
+        runOn(node1) {
+          clusterReplication ! ReplicationRegion.BroadcastWithoutSelf(message)
+        }
+        enterBarrier("message sent")
+
+        runOn(node1) {
+          expectNoMessage(max = 1.second)
+        }
+        runOn(clusterMembers.filterNot(_ == node1): _*) {
+          raftActorProbe.expectMsg(message)
+        }
+      }
+    }
+
+    "DeliverTo" when {
+
+      "特定の MemberIndex に配信される" in {
+
+        runOn(clusterMembers: _*) {
+          clusterReplication = createReplicationWith(raftActorProbe)
+        }
+        enterBarrier("ReplicationRegion created")
+
+        val entityId = createSeqReplicationId()
+
+        val message = Command(CheckRouting(entityId))
+
+        runOn(node1) {
+          clusterReplication ! ReplicationRegion.DeliverTo(memberIndexes(node3), message)
+        }
+        enterBarrier("message sent")
+
+        runOn(node3) {
+          raftActorProbe.expectMsg(message)
+        }
+        runOn(clusterMembers.filterNot(_ == node3): _*) {
+          expectNoMessage(max = 1.second)
+        }
+      }
+    }
+
+    "DeliverSomewhere" when {
+
+      "いずれかの MemberIndex に配信される" in {
+        val entityId = createSeqReplicationId()
+
+        val message = CheckRouting(entityId)
+
+        runOn(clusterMembers: _*) {
+          clusterReplication = createReplicationWith(raftActorProbe)
+        }
+        enterBarrier("ReplicationRegion created")
+
+        runOn(node1) {
+          clusterReplication ! ReplicationRegion.DeliverSomewhere(Command(message))
+        }
+        enterBarrier("message sent")
+
+        runOn(clusterMembers: _*) {
+          val msgs = raftActorProbe.receiveWhile(max = 1.seconds, messages = 1) {
+            case Command(msg: CheckRouting) => msg
+          }
+          node1TestActor ! ReceivedMessages(msgs, myself, selfMemberIndex)
+        }
+
+        runOn(node1) {
+          val results: Map[MemberIndex, Seq[CheckRouting]] = receiveWhile(messages = clusterMembers.size) {
+            case msg: ReceivedMessages => msg
+          }.groupBy(_.memberIndex).map { case (role, m) => role -> m.flatMap(_.messages) }
+
+          // 値を含んでいるのはいずれかの MemberIndex だけ
+          val nonEmpty = results.filter { case (_, messages) => messages.nonEmpty }
+          nonEmpty should have size 1
+          nonEmpty.values.head shouldBe Seq(message)
+        }
+      }
+
+      "ShardId が同じ場合は、ある role の同じノードに転送される" in {
+        // entityId が同じなら ShardId も同じになる
+        val entityId = createSeqReplicationId()
+
+        val message = CheckRouting(entityId)
+
+        runOn(clusterMembers: _*) {
+          clusterReplication = createReplicationWith(raftActorProbe)
+        }
+        runOn(node1) {
+          (1 to 3).foreach { _ =>
+            clusterReplication ! message
+          }
+        }
+        runOn(clusterMembers: _*) {
+          val msgs = raftActorProbe.receiveWhile(max = 1.seconds, messages = 3) {
+            case Command(msg: CheckRouting) => msg
+          }
+          node1TestActor ! ReceivedMessages(msgs, myself, selfMemberIndex)
+        }
+        runOn(node1) {
+          val results: Map[RoleName, Seq[CheckRouting]] = receiveWhile(messages = clusterMembers.size) {
+            case msg: ReceivedMessages => msg
+          }.groupBy(_.node)
+            .filter { case (_, messages) => messages.nonEmpty }
+            .map { case (node, m) => node -> m.flatMap(_.messages) }
+
+          // 3ノードあり、その中で 3 通受け取っているのは 1 ノードだけ
+          results.values should have size 3
+          results.values.filter(v => v.size == 3) should have size 1
+        }
+      }
+
+      "新しいノードを増やしても、新しいノードに Shard が移動するか、元のノードに留まるかのどちらか" in {
+        // entityId が同じなら ShardId も同じになる
+        val entityId = createSeqReplicationId()
+
+        val message = CheckRouting(entityId)
+
+        runOn(clusterMembers: _*) {
+          clusterReplication = createReplicationWith(raftActorProbe)
+        }
+        runOn(node1) {
+          (1 to 6).foreach { _ =>
+            clusterReplication ! message
+          }
+        }
+        var nrOfMessagesBeforeNode4Joined: Option[Int] = None
+        runOn(clusterMembers: _*) {
+          val msgs = raftActorProbe.receiveWhile(max = 1.seconds, messages = 2) {
+            case Command(msg: CheckRouting) => msg
+          }
+          nrOfMessagesBeforeNode4Joined = Some(msgs.size)
+        }
+        enterBarrier("message received")
+
+        runOn(node4) {
+          cluster.join(node(node1).address)
+        }
+        clusterMembers :+= node4
+        runOn(clusterMembers: _*) {
+          receiveWhile(messages = 1) {
+            case MemberUp(member) if member.address == node(node4).address => member
+          }
+        }
+        runOn(node4) {
+          receiveN(clusterMembers.size - 1) // ignore remain MemberUp Events
+        }
+        enterBarrier("new node joined")
+        runOn(node1) {
+          (1 to 6).foreach { _ =>
+            clusterReplication ! message
+          }
+        }
+        runOn(clusterMembers: _*) {
+          val msgs = raftActorProbe.receiveWhile(max = 1.seconds, messages = 2) {
+            case Command(msg: CheckRouting) => msg
+          }
+          nrOfMessagesBeforeNode4Joined match {
+            case Some(0) =>
+              // 既存の、もともと Shard が割り当てられていないノードには割当されない
+              msgs should have size 0
+            case Some(2) =>
+              // 0 なら新しいノードに Shard が移動した、そうでないなら Shard が留まった
+              msgs should ((have size 0) or (have size 2))
+            case Some(_) =>
+              throw new IllegalStateException("unexpected pattern")
+            case None =>
+              // 0 なら新しいノード（node7）に Shard が移動しなかった、そうでないなら Shard が移動した
+              msgs should ((have size 0) or (have size 2))
+          }
+        }
+      }
+    }
+  }
+
+  private[this] val idGenerator                      = new AtomicInteger(0)
+  private[this] def createSeqReplicationId(): String = s"replication-${idGenerator.incrementAndGet()}"
+
+}
