@@ -47,6 +47,9 @@ For more information on how to implement an application using this libray, pleas
 
 akka-entity-replication is released under the terms of the [Apache License Version 2.0](./LICENSE).
 
-The names of the companies and products described in this site are trademarks or registered trademarks of the respective companies.
+\
+\
+\* The names of the companies and products described in this site are trademarks or registered trademarks of the respective companies.  
+\* Akka is a trademark of Lightbend, Inc.
 
 © 2020 TIS Inc.
