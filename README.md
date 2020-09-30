@@ -47,7 +47,7 @@ For more information on how to implement an application using this libray, pleas
 
 akka-entity-replication is released under the terms of the [Apache License Version 2.0](./LICENSE).
 
-<!-- 空行を設定と「*」を利用するためエスケープ -->
+<!-- Escape to set blank lines and use "*" -->
 \
 \
 \* The names of the companies and products described in this site are trademarks or registered trademarks of the respective companies.  
