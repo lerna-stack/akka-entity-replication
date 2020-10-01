@@ -41,6 +41,7 @@ lazy val lerna = (project in file("."))
         // TODO 2.6.x 系に対応できる方法に変更する。
         "com.github.dnvriend" %% "akka-persistence-inmemory" % "2.5.15.2" % Test,
       ),
+    jvmOptions in MultiJvm := Seq("-Dakka.test.timefactor=3"),
     // multi-jvm ディレクトリをフォーマットするために必要
     inConfig(MultiJvm)(scalafmtConfigSettings),
   )
