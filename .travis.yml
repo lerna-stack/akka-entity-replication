@@ -1,0 +1,49 @@
+language: scala
+
+jdk: openjdk8
+
+env:
+  global:
+    - JAVA_TOOL_OPTIONS=-Dfile.encoding=UTF-8
+    - SBT_OPTS=-Xmx512M -Dlerna.enable.discipline
+    # encrypted TRAVIS_ACCESS_TOKEN
+    - secure: "cPvAep68ccZINFN39lhgN36hg0kz3owJJo8iXs8ek3c5JBtpBLu+johyqcXwK/TT0zZMIMmhrLKnRmlG4/NilFu9Z2IqIPLN43ZsZ5co0Awcz+q6qjuCuu6uJJt1i0n1wZlqY/muOifub2139tx6q6Kk7lm+WRG5AMX9NSc0KUweXxucsAjuBdQzSDI3vBiVFeQ21gzSM1QfBiQoDxZDqah/IifxrVSeB0ibSYVVbwmEc35MEt+oEXxC4j6TayUGGRNItqGidkZ45uVqDGltV/DCM498OlIBEzR4yHw1/NuCJNO0sLJ4GPJXfF7epJfAYwiHw2jHf1eXeQD80jHW3dped2kVYCUb3oBfGl9mGskpAPFwuiyQjZzQlXXMdWa5BIt8vTqYHcmzmdn36jshCJ8zIO/XUI9LCUUtblimJ4EkP26FD0E4nGAZTaE8+zhBvchORcSErZuI2p3qZ8HYntXIHXbeFbxsbOOSxnKdywPVFvGoNpGj/Ct2yhej2v/njNzqBVwVb7ABg98wLpTGYp6zi6hje7zKXLPKAxMNa/0fYB2d9ViKcFgLWsN7dBkNURfLUU9sPxZsllgE60xwqmcOHY2AwWe4san7VM3r1HMqr0Nc4qTtZ5S6BtEKXDvoWn1WMURe2rrWYFUlMioar1PQoGmFachnBobtbPnnOOU="
+
+stages:
+  - style_check
+  - test
+  - integration_test
+
+jobs:
+  include:
+    - stage: style_check
+      script:
+        - sbt scalafmtCheckAll
+    - stage: test
+      script:
+        - sbt clean test
+    - stage: integration_test
+      script:
+        - sbt clean
+        - sh ./scripts/run-multijvm-test.sh 5
+
+before_cache:
+  - rm -fv $HOME/.ivy2/.sbt.ivy.lock
+  - find $HOME/.ivy2/cache -name "ivydata-*.properties" -print -delete
+  - find $HOME/.sbt        -name "*.lock"               -print -delete
+
+cache:
+  directories:
+    - $HOME/.cache/coursier
+    - $HOME/.ivy2/cache
+    - $HOME/.sbt
+
+after_script:
+  - >-
+    echo '========================================';
+    echo ' ERROR SUMMARY';
+    echo '========================================';
+    curl -H "Travis-API-Version: 3" -H "Accept: text/plain" -H "Authorization: token ${TRAVIS_ACCESS_TOKEN}" https://api.travis-ci.com/job/${TRAVIS_JOB_ID}/log
+    | cat --number
+    | grep -F $'\e[31m' --color=never
+    | awk 'p_index != null && (p_index + 1) != $1 { print "──────────"; print $0 } { p_index = $1; print $0 } END { if (!p_index) print "No ERROR" }'
