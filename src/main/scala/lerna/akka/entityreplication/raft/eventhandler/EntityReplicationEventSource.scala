@@ -10,7 +10,7 @@ object EntityReplicationEventSource {
   private[eventhandler] def tag: String = "raft-committed"
 
   // TODO: 複数 Raft(typeName) に対応するために typeName ごとに cassandra-query-journal を分ける
-  private val readJournalPluginId = "lerna.akka.entityreplication.raft.eventhandler.cassandra-plugin.query"
+  private val readJournalPluginId = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.query"
 
   def sourceProvider[E](implicit system: ActorSystem[_]): SourceProvider[Offset, EventEnvelope[E]] =
     EventSourcedProvider
