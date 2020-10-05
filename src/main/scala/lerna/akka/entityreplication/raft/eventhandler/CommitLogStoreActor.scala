@@ -39,7 +39,9 @@ object CommitLogStoreActor {
 
 class CommitLogStoreActor(typeName: String) extends PersistentActor {
   // TODO: 複数 Raft(typeName) に対応するために typeName ごとに cassandra-journal.keyspace を分ける
-  override def journalPluginId: String = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.journal"
+  override def journalPluginId: String =
+    context.system.settings.config
+      .getString("lerna.akka.entityreplication.raft.eventhandler.persistence.journal.plugin")
 
   // TODO: Use snapshot for efficient recovery after reboot
   override def snapshotPluginId: String = "akka.persistence.no-snapshot-store"
