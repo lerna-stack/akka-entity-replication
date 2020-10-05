@@ -62,9 +62,9 @@ class CommitLogStoreActor(typeName: String) extends PersistentActor {
         // ignore
         sender() ! Done
       } else if (currentIndex.next() == save.index) {
-        val event: CommittedEvent = save.committedEvent match {
+        val event = save.committedEvent match {
           case NoOp        => InternalEvent
-          case domainEvent => DomainEvent(domainEvent)
+          case domainEvent => domainEvent
         }
         persist(event) { _ =>
           updateState()

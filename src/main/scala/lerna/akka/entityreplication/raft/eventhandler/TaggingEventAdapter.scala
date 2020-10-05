@@ -8,11 +8,10 @@ class TaggingEventAdapter(system: ExtendedActorSystem) extends WriteEventAdapter
 
   override def toJournal(event: Any): Any = {
     event match {
-      case _: DomainEvent =>
-        val tags: Set[String] = Set(EventHandler.tag)
+      case InternalEvent => event
+      case _ =>
+        val tags: Set[String] = Set(EntityReplicationEventSource.tag)
         Tagged(event, tags)
-
-      case _ => event
     }
   }
 }
