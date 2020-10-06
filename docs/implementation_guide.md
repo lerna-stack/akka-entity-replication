@@ -137,14 +137,6 @@ On the command side, there are the following settings.
 
 ```
 lerna.akka.entityreplication {
-    util {
-        // Settings for a component to guarantee completion of a process to prevent timeouts during rolling update.
-        at-least-once-complete {
-            // Interval to retry until the process (Future) is completed
-            retry-interval = 1 second
-        }
-    }
-
     // Time to interrupt replication for events that are taking too long
     replication-timeout = 3000 ms
 
