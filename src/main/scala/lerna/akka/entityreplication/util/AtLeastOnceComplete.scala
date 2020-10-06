@@ -11,6 +11,7 @@ object AtLeastOnceComplete {
   def askTo(
       destination: ActorRef,
       message: Any,
+      retryInterval: FiniteDuration,
   )(implicit system: ActorSystem, timeout: Timeout): Future[Any] = {
 
     import system.dispatcher
@@ -20,11 +21,6 @@ object AtLeastOnceComplete {
       val future = destination ? message
       promise.tryCompleteWith(future)
     }
-
-    val config = system.settings.config.getConfig("lerna.akka.entityreplication.util.at-least-once-complete")
-
-    import JavaDurationConverters._
-    val retryInterval: FiniteDuration = config.getDuration("retry-interval").asScala
 
     send()
 

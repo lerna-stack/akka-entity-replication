@@ -6,18 +6,11 @@ import com.typesafe.config.{ Config, ConfigFactory }
 import org.scalatest.Inside
 import org.scalatest.concurrent.ScalaFutures
 
-import scala.concurrent.duration._
-
 object AtLeastOnceCompleteSpec {
-  private val retryInterval = 100.milliseconds
-
   private val config: Config = ConfigFactory
     .parseString(s"""
                     | akka.actor {
                     |   provider = local
-                    | }
-                    | lerna.akka.entityreplication.util.at-least-once-complete {
-                    |   retry-interval = ${retryInterval.toMillis} ms
                     | }
        """.stripMargin)
     .withFallback(ConfigFactory.load())
