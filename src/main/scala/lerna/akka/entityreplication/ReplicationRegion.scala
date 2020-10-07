@@ -101,12 +101,12 @@ class ReplicationRegion(
       decide
   }
 
-  private[this] val allMemberIndexes: Set[MemberIndex] = settings.raftSettings.multiRaftRoles.map(MemberIndex)
+  private[this] val allMemberIndexes: Set[MemberIndex] = settings.raftSettings.multiRaftRoles.map(MemberIndex.apply)
 
   // protected[this]: for test purpose
   protected[this] val selfMemberIndex: MemberIndex =
     Cluster(context.system).settings.Roles
-      .filter(allMemberIndexes.map(_.role)).map(MemberIndex).toSeq match {
+      .filter(allMemberIndexes.map(_.role)).map(MemberIndex.apply).toSeq match {
       case Seq(memberIndex) => memberIndex
       case Seq() =>
         throw new IllegalStateException(
