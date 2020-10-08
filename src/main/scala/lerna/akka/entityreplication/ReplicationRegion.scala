@@ -3,7 +3,7 @@ package lerna.akka.entityreplication
 import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, OneForOneStrategy, Props, Stash, SupervisorStrategy }
 import akka.cluster.ClusterEvent._
 import akka.cluster.{ Cluster, Member, MemberStatus }
-import akka.routing.{ ActorRefRoutee, ConsistentHashingRoutingLogic, Router }
+import akka.routing.{ ActorRefRoutee, ConsistentHashingRouter, ConsistentHashingRoutingLogic, Router }
 import lerna.akka.entityreplication.ReplicationRegion.{ ExtractEntityId, ExtractShardId }
 import lerna.akka.entityreplication.model._
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand }
@@ -137,7 +137,9 @@ class ReplicationRegion(
     * 米 ConsistentHashing を使うと、無効になった MemberIndex に割り当てられていた経路のみが他の MemberIndex へ退避する形になる。
     */
   private[this] var stickyRoutingRouter: Router = {
-    val hashMapping = PartialFunction(extractNormalizedShardIdInternalRouting)
+    val hashMapping: ConsistentHashingRouter.ConsistentHashMapping = {
+      case message => extractNormalizedShardIdInternalRouting(message)
+    }
     Router(
       ConsistentHashingRoutingLogic(context.system, virtualNodesFactor = 256, hashMapping),
       shardingRouters.values.map(ActorRefRoutee).toVector,
