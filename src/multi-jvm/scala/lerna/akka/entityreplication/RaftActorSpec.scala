@@ -140,10 +140,12 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       enterBarrier("Leader elected")
       val expectedLeaderMemberIndex = MemberIndex("member-3")
       runOn(node1, node2) {
-        val state = getState(followerMember)
-        state.stateName should be(Follower)
-        state.stateData.currentTerm should be > Term.initial()
-        state.stateData.votedFor should contain(expectedLeaderMemberIndex)
+        awaitAssert {
+          val state = getState(followerMember)
+          state.stateName should be(Follower)
+          state.stateData.currentTerm should be > Term.initial()
+          state.stateData.votedFor should contain(expectedLeaderMemberIndex)
+        }
       }
       runOn(node3) {
         val state = getState(leaderMember)
@@ -556,21 +558,21 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
     })
     val extractEntityId: ReplicationRegion.ExtractEntityId = { case msg => ("test-entity", msg) }
     val extractShardId: ReplicationRegion.ExtractShardId = { _ => shardId.underlying }
+    val typeName = s"sample-${shardId.underlying}"
     val regionProps = {
       Props(
         new ReplicationRegion(
-          typeName = "sample",
+          typeName = typeName,
           replicationActorProps,
           ClusterReplicationSettings(system),
           extractEntityId,
           extractShardId,
           maybeCommitLogStore = None,
         ) {
-          override def createRaftActorProps(shardId: NormalizedShardId): Props = {
+          override def createRaftActorProps(): Props = {
             Props(
               new RaftActor(
                 typeName = "test",
-                shardId,
                 extractNormalizedEntityId,
                 replicationActorProps,
                 self,
@@ -588,10 +590,16 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
     val regionRef = planAutoKill(system.actorOf(regionProps, s"ReplicationRegion-for-${shardId.underlying}"))
     regionRef ! "create RaftActor"
 
-    // RaftActor
-    def resolveRaftActor(): ActorRef = system.actorSelection(regionRef.path / shardId.underlying).resolveOne().await
+    def resolveRaftActor(): ActorRef = {
+      val role         = "*" // Specify a wildcard because the role differs depending on the node
+      val clusterShard = "*" // Since cluster shard is calculated from hash and difficult to predict, specify a wildcard
+      system
+        .actorSelection(
+          s"/system/sharding/raft-shard-$typeName-$role/$clusterShard/${shardId.underlying}",
+        ).resolveOne(100.millis).await
+    }
+
     awaitAssert(resolveRaftActor())
-    resolveRaftActor()
   }
 
   private[this] def createCandidateData(

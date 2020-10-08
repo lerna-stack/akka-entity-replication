@@ -2,6 +2,8 @@ package lerna.akka.entityreplication
 
 import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, OneForOneStrategy, Props, Stash, SupervisorStrategy }
 import akka.cluster.ClusterEvent._
+import akka.cluster.sharding.ShardRegion.{ GracefulShutdown, HashCodeMessageExtractor }
+import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings, ShardRegion }
 import akka.cluster.{ Cluster, Member, MemberStatus }
 import akka.routing.{ ActorRefRoutee, ConsistentHashingRouter, ConsistentHashingRoutingLogic, Router }
 import lerna.akka.entityreplication.ReplicationRegion.{ ExtractEntityId, ExtractShardId }
@@ -9,7 +11,7 @@ import lerna.akka.entityreplication.model._
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand }
 import lerna.akka.entityreplication.raft.eventhandler.CommitLogStore
 import lerna.akka.entityreplication.raft.protocol.ShardRequest
-import lerna.akka.entityreplication.raft.routing.{ MemberIndex, ShardingRouter }
+import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.ShardSnapshotStore
 import lerna.akka.entityreplication.raft.{ RaftActor, RaftSettings }
 
@@ -124,11 +126,19 @@ class ReplicationRegion(
   private[this] val regions: Map[MemberIndex, mutable.Set[Member]] =
     allMemberIndexes.map(i => i -> mutable.Set.empty[Member]).toMap
 
+  // TODO 変数名を実態にあったものに変更
   private[this] val shardingRouters: Map[MemberIndex, ActorRef] = allMemberIndexes.map { memberIndex =>
-    memberIndex -> context.actorOf(
-      ShardingRouter.props(extractNormalizedShardIdInternalRouting, memberIndex, self),
-      ShardingRouter.name(memberIndex),
-    )
+    memberIndex -> {
+      ClusterSharding(context.system).start(
+        typeName = s"raft-shard-$typeName-${memberIndex.role}",
+        entityProps = createRaftActorProps(),
+        settings = ClusterShardingSettings(context.system)
+          .withRole(memberIndex.role),
+        messageExtractor = new HashCodeMessageExtractor(maxNumberOfShards = 50) {
+          override def entityId(message: Any): String = extractNormalizedShardIdInternal(message).raw
+        },
+      )
+    }
   }.toMap
 
   /** *
@@ -138,7 +148,7 @@ class ReplicationRegion(
     */
   private[this] var stickyRoutingRouter: Router = {
     val hashMapping: ConsistentHashingRouter.ConsistentHashMapping = {
-      case message => extractNormalizedShardIdInternalRouting(message)
+      case message => extractNormalizedShardIdInternal(message)
     }
     Router(
       ConsistentHashingRoutingLogic(context.system, virtualNodesFactor = 256, hashMapping),
@@ -159,6 +169,12 @@ class ReplicationRegion(
     }
   }
 
+  override def postStop(): Unit = {
+    super.postStop()
+    // shutdown only non-proxy ShardRegion
+    shardingRouters(selfMemberIndex) ! GracefulShutdown
+  }
+
   override def receive: Receive = initializing
 
   def initializing: Receive = {
@@ -168,14 +184,10 @@ class ReplicationRegion(
   }
 
   def open: Receive = {
-    case snapshot: CurrentClusterState     => handleClusterState(snapshot)
-    case event: ClusterDomainEvent         => handleClusterDomainEvent(event)
-    case routingCommand: RoutingCommand    => handleRoutingCommand(routingCommand)
-    case Routed(CreateShard(shardId))      => createShardIfNotExists(shardId)
-    case Routed(raftRequest: ShardRequest) => deliverToShard(raftRequest)
-    case Routed(command: Command)          => deliverToShard(command)
-    case Routed(command: ForwardedCommand) => deliverToShard(command)
-    case message                           => deliverMessage(message)
+    case snapshot: CurrentClusterState  => handleClusterState(snapshot)
+    case event: ClusterDomainEvent      => handleClusterDomainEvent(event)
+    case routingCommand: RoutingCommand => handleRoutingCommand(routingCommand)
+    case message                        => deliverMessage(message)
   }
 
   /**
@@ -215,22 +227,20 @@ class ReplicationRegion(
       case Broadcast(message)              => allMemberIndexes.foreach(forwardMessageTo(_, Routed(message)))
       case BroadcastWithoutSelf(message)   => otherMemberIndexes.foreach(forwardMessageTo(_, Routed(message)))
       case DeliverTo(memberIndex, message) => forwardMessageTo(memberIndex, Routed(message))
-      case DeliverSomewhere(message)       => stickyRoutingRouter.route(Routed(message), sender())
+      case DeliverSomewhere(message)       => stickyRoutingRouter.route(message, sender())
     }
 
   private[this] def forwardMessageTo(memberIndex: MemberIndex, message: Routed): Unit = {
-    shardingRouters(memberIndex) forward message
+    shardingRouters(memberIndex) forward message.message
   }
 
   def deliverMessage(message: Any): Unit = {
-    val shardId = extractNormalizedShardId(message)
-    handleRoutingCommand(Broadcast(CreateShard(shardId)))
+    val shardId = extractShardId(message)
+    shardingRouters.values.foreach(
+      // Don't forward StartEntity to prevent leaking StartEntityAck
+      _.tell(ShardRegion.StartEntity(shardId), context.system.deadLetters),
+    )
     handleRoutingCommand(DeliverSomewhere(Command(message)))
-  }
-
-  def deliverToShard(message: Any): Unit = {
-    val shardId = extractNormalizedShardIdInternal(message)
-    context.child(shardId.underlying).getOrElse(createRaftActor(shardId)) forward message
   }
 
   private[this] def updateState(): Unit = {
@@ -247,19 +257,10 @@ class ReplicationRegion(
     }
   }
 
-  private[this] def createShardIfNotExists(shardId: NormalizedShardId): Unit = {
-    if (context.child(shardId.underlying).isEmpty) createRaftActor(shardId)
-  }
-
-  private[this] def createRaftActor(shardId: NormalizedShardId): ActorRef = {
-    context.actorOf(createRaftActorProps(shardId), shardId.underlying)
-  }
-
   // protected[this]: for test purpose
-  protected[this] def createRaftActorProps(shardId: NormalizedShardId): Props = {
+  protected[this] def createRaftActorProps(): Props = {
     RaftActor.props(
       typeName,
-      shardId = shardId,
       extractNormalizedEntityId,
       entityProps,
       region = self,
@@ -286,10 +287,6 @@ class ReplicationRegion(
     case Command(cmd)                   => extractNormalizedShardId(cmd)
     case ForwardedCommand(Command(cmd)) => extractNormalizedShardId(cmd)
     case cmd                            => extractNormalizedShardId(cmd)
-  }
-
-  private[this] def extractNormalizedShardIdInternalRouting: ReplicationRegion.ExtractNormalizedShardId = {
-    case Routed(msg) => extractNormalizedShardIdInternal(msg)
   }
 
   private[this] def memberIndexOf(member: Member): Option[MemberIndex] = {

@@ -11,14 +11,21 @@ import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
-import scala.concurrent.duration._
+import lerna.akka.entityreplication.raft.routing.MemberIndex
 
+import scala.concurrent.duration._
 import scala.collection.Set
 
 object ReplicationActorSpecConfig extends MultiNodeConfig {
   val node1: RoleName = role("node1")
   val node2: RoleName = role("node2")
   val node3: RoleName = role("node3")
+
+  val memberIndexes: Map[RoleName, MemberIndex] = Map(
+    node1 -> MemberIndex("member-1"),
+    node2 -> MemberIndex("member-2"),
+    node3 -> MemberIndex("member-3"),
+  )
 
   commonConfig(
     debugConfig(false)
@@ -33,14 +40,14 @@ object ReplicationActorSpecConfig extends MultiNodeConfig {
       """))
       .withFallback(ConfigFactory.parseResources("multi-jvm-testing.conf")),
   )
-  nodeConfig(node1)(ConfigFactory.parseString("""
-    akka.cluster.roles = ["member-1"]
+  nodeConfig(node1)(ConfigFactory.parseString(s"""
+    akka.cluster.roles = ["${memberIndexes(node1)}"]
   """))
-  nodeConfig(node2)(ConfigFactory.parseString("""
-    akka.cluster.roles = ["member-2"]
+  nodeConfig(node2)(ConfigFactory.parseString(s"""
+    akka.cluster.roles = ["${memberIndexes(node2)}"]
   """))
-  nodeConfig(node3)(ConfigFactory.parseString("""
-    akka.cluster.roles = ["member-3"]
+  nodeConfig(node3)(ConfigFactory.parseString(s"""
+    akka.cluster.roles = ["${memberIndexes(node3)}"]
   """))
 }
 
@@ -315,8 +322,9 @@ class ReplicationActorSpec extends MultiNodeSpec(ReplicationActorSpecConfig) wit
         awaitAssert {
           // なるべく早くリトライ
           implicit val timeout: Timeout = Timeout(0.25.seconds)
-          raftMember =
-            watch(system.actorSelection(s"/user/replicationRegion-passivate-sample/*/$entityId").resolveOne().await)
+          raftMember = watch(
+            system.actorSelection(s"/system/sharding/raft-shard-passivate-sample-*/*/*/$entityId").resolveOne().await,
+          )
         }
       }
       enterBarrier("raft members created")
@@ -365,8 +373,12 @@ class ReplicationActorSpec extends MultiNodeSpec(ReplicationActorSpecConfig) wit
       awaitAssert {
         // なるべく早くリトライ
         implicit val timeout: Timeout = Timeout(0.25.seconds)
-        raftMember =
-          watch(system.actorSelection(s"/user/replicationRegion-recovery-sample/*/$entityId").resolveOne().await)
+        raftMember = watch(
+          system
+            .actorSelection(
+              s"/system/sharding/raft-shard-recovery-sample-${memberIndexes(myself)}/*/*/$entityId",
+            ).resolveOne().await,
+        )
       }
     }
     enterBarrier("raft members found")

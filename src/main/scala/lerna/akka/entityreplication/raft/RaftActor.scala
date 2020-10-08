@@ -16,7 +16,6 @@ object RaftActor {
 
   def props(
       typeName: String,
-      shardId: NormalizedShardId,
       extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
       replicationActorProps: Props,
       region: ActorRef,
@@ -29,7 +28,6 @@ object RaftActor {
     Props(
       new RaftActor(
         typeName,
-        shardId,
         extractEntityId,
         replicationActorProps,
         region,
@@ -82,7 +80,6 @@ object RaftActor {
 
 class RaftActor(
     typeName: String,
-    _shardId: NormalizedShardId,
     val extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
     replicationActorProps: Props,
     _region: ActorRef,
@@ -99,7 +96,7 @@ class RaftActor(
   import RaftActor._
   import context.dispatcher
 
-  protected[this] def shardId: NormalizedShardId = _shardId
+  protected[this] def shardId: NormalizedShardId = NormalizedShardId.from(self.path)
 
   protected[this] def region: ActorRef = _region
 

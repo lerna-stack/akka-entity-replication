@@ -10,10 +10,8 @@ import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import akka.testkit.TestProbe
 import akka.util.Timeout
 import com.typesafe.config.{ ConfigFactory, ConfigValueFactory }
-import lerna.akka.entityreplication.ReplicationRegion.Routed
 import lerna.akka.entityreplication.ReplicationRegionSpec.DummyReplicationActor.CheckRouting
-import lerna.akka.entityreplication.model.NormalizedShardId
-import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand }
+import lerna.akka.entityreplication.raft.RaftProtocol.Command
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
 import scala.collection.JavaConverters._
@@ -160,10 +158,10 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
 
     val raftActorProbe = TestProbe("RaftActor")
 
-    def createReplication(): ActorRef =
+    def createReplication(typeName: String): ActorRef =
       planAutoKill {
         ClusterReplication(system).start(
-          typeName = "sample",
+          typeName = typeName,
           entityProps = DummyReplicationActor.props(entityProbe),
           settings = ClusterReplicationSettings(system),
           extractEntityId = DummyReplicationActor.extractEntityId,
@@ -171,19 +169,19 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
         )
       }
 
-    def createReplicationWith(raftActorProbe: TestProbe): ActorRef =
+    def createReplicationWith(typeName: String, raftActorProbe: TestProbe): ActorRef =
       planAutoKill {
         system.actorOf(
           Props(
             new ReplicationRegion(
-              typeName = "sample",
+              typeName = typeName,
               DummyReplicationActor.props(entityProbe),
               ClusterReplicationSettings(system),
               DummyReplicationActor.extractEntityId,
               DummyReplicationActor.extractShardId,
               maybeCommitLogStore = None,
             ) {
-              override def createRaftActorProps(shardId: NormalizedShardId): Props =
+              override def createRaftActorProps(): Props =
                 Props(new Actor {
                   override def receive: Receive = {
                     case msg => raftActorProbe.ref forward msg
@@ -213,14 +211,15 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
     }
 
     "コマンドを受け取ったときに子の Entity が存在しない場合、対象の Entity を作成" in {
+      val typeName = createSeqTypeName()
 
       runOn(node1, node2, node3) {
-        clusterReplication = createReplication()
+        clusterReplication = createReplication(typeName)
       }
       enterBarrier("ReplicationRegion created")
 
+      val entityId = "test"
       runOn(node3) {
-        val entityId = "test"
         clusterReplication ! Cmd(entityId)
       }
       enterBarrier("Some command sent")
@@ -228,15 +227,21 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
       runOn(node1, node2, node3) {
         // Entity が各ノードで生成されていることを確認
         implicit val timeout: Timeout = Timeout(1.second)
-        awaitAssert(system.actorSelection("/user/replicationRegion-sample/*/test").resolveOne().await, max = 10.seconds)
+
+        val role                 = selfMemberIndex.role
+        val clusterShard         = "*" // hash of raftShardId
+        val raftShardId          = "*" // hash of entityId
+        val replicationActorPath = s"/system/sharding/raft-shard-$typeName-$role/$clusterShard/$raftShardId/$entityId"
+        awaitAssert(system.actorSelection(replicationActorPath).resolveOne().await, max = 10.seconds)
       }
     }
 
     "子の Entity にコマンドを転送する" in {
+      val typeName = createSeqTypeName()
 
       val entityId = createSeqReplicationId()
       runOn(node1, node2, node3) {
-        clusterReplication = createReplication()
+        clusterReplication = createReplication(typeName)
       }
       enterBarrier("ReplicationRegion created")
       runOn(node3) {
@@ -248,37 +253,11 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
       }
     }
 
-    "ForwardedCommand はそのまま RaftActor に転送する" in {
-
-      runOn(clusterMembers: _*) {
-        clusterReplication = createReplicationWith(raftActorProbe)
-      }
-      enterBarrier("ReplicationRegion created")
-
-      val entityId = createSeqReplicationId()
-
-      val message = ForwardedCommand(Command(CheckRouting(entityId)))
-
-      runOn(node1) {
-        clusterReplication ! Routed(message) // send message as already routed one
-      }
-      enterBarrier("message sent")
-
-      runOn(clusterMembers: _*) {
-        // collect the message
-        raftActorProbe.receiveWhile(max = 1.second, messages = 1) {
-          case cmd => node1TestActor ! cmd
-        }
-      }
-      runOn(node1) {
-        expectMsg(message)
-      }
-    }
-
     "各 ReplicationActor の状態が同期する" in {
+      val typeName = createSeqTypeName()
       val entityId = createSeqReplicationId()
       runOn(node1, node2, node3) {
-        clusterReplication = createReplication()
+        clusterReplication = createReplication(typeName)
       }
       enterBarrier("ReplicationRegion created")
       runOn(node3) {
@@ -291,17 +270,23 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
       enterBarrier("sent command")
       runOn(node1, node2, node3) {
         // 各ノードの ReplicationActor の状態が更新されている
+
+        val role                 = selfMemberIndex.role
+        val clusterShard         = "*" // hash of raftShardId
+        val raftShardId          = "*" // hash of entityId
+        val replicationActorPath = s"/system/sharding/raft-shard-$typeName-$role/$clusterShard/$raftShardId/$entityId"
         awaitAssert {
-          system.actorSelection(s"/user/replicationRegion-sample/*/$entityId") ! GetStatus(entityId)
+          system.actorSelection(replicationActorPath) ! GetStatus(entityId)
           expectMsg(Status(3))
         }
       }
     }
 
     "一度 Region を停止しても各 ReplicationActor の状態が復元する" in {
+      val typeName = createSeqTypeName()
       val entityId = createSeqReplicationId()
       runOn(node1, node2, node3) {
-        clusterReplication = createReplication()
+        clusterReplication = createReplication(typeName)
       }
       enterBarrier("ReplicationRegion created")
       runOn(node3) {
@@ -313,8 +298,12 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
       }
       enterBarrier("status replicated")
       runOn(node1, node2, node3) {
-        val supervisor       = clusterReplication
-        val replicationActor = system.actorSelection(s"/user/replicationRegion-sample/*/$entityId").resolveOne().await
+        val supervisor           = clusterReplication
+        val role                 = selfMemberIndex.role
+        val clusterShard         = "*" // hash of raftShardId
+        val raftShardId          = "*" // hash of entityId
+        val replicationActorPath = s"/system/sharding/raft-shard-$typeName-$role/$clusterShard/$raftShardId/$entityId"
+        val replicationActor     = system.actorSelection(replicationActorPath).resolveOne().await
         watch(supervisor)
         watch(replicationActor)
         system.stop(supervisor)
@@ -325,7 +314,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
       }
       enterBarrier("terminated all members")
       runOn(node1, node2, node3) {
-        clusterReplication = createReplication()
+        clusterReplication = createReplication(typeName)
         clusterReplication ! GetStatusWithEnsuringConsistency(entityId)
         expectMsg(Status(3))
       }
@@ -334,9 +323,10 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
     "Broadcast" when {
 
       "全 MemberIndex に配信される" in {
+        val typeName = createSeqTypeName()
 
         runOn(clusterMembers: _*) {
-          clusterReplication = createReplicationWith(raftActorProbe)
+          clusterReplication = createReplicationWith(typeName, raftActorProbe)
         }
         enterBarrier("ReplicationRegion created")
 
@@ -358,9 +348,10 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
     "BroadcastWithoutSelf" when {
 
       "自分を除く全 MemberIndex に配信される" in {
+        val typeName = createSeqTypeName()
 
         runOn(clusterMembers: _*) {
-          clusterReplication = createReplicationWith(raftActorProbe)
+          clusterReplication = createReplicationWith(typeName, raftActorProbe)
         }
         enterBarrier("ReplicationRegion created")
 
@@ -385,9 +376,10 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
     "DeliverTo" when {
 
       "特定の MemberIndex に配信される" in {
+        val typeName = createSeqTypeName()
 
         runOn(clusterMembers: _*) {
-          clusterReplication = createReplicationWith(raftActorProbe)
+          clusterReplication = createReplicationWith(typeName, raftActorProbe)
         }
         enterBarrier("ReplicationRegion created")
 
@@ -412,12 +404,13 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
     "DeliverSomewhere" when {
 
       "いずれかの MemberIndex に配信される" in {
+        val typeName = createSeqTypeName()
         val entityId = createSeqReplicationId()
 
         val message = CheckRouting(entityId)
 
         runOn(clusterMembers: _*) {
-          clusterReplication = createReplicationWith(raftActorProbe)
+          clusterReplication = createReplicationWith(typeName, raftActorProbe)
         }
         enterBarrier("ReplicationRegion created")
 
@@ -446,13 +439,14 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
       }
 
       "ShardId が同じ場合は、ある role の同じノードに転送される" in {
+        val typeName = createSeqTypeName()
         // entityId が同じなら ShardId も同じになる
         val entityId = createSeqReplicationId()
 
         val message = CheckRouting(entityId)
 
         runOn(clusterMembers: _*) {
-          clusterReplication = createReplicationWith(raftActorProbe)
+          clusterReplication = createReplicationWith(typeName, raftActorProbe)
         }
         runOn(node1) {
           (1 to 3).foreach { _ =>
@@ -478,26 +472,33 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
         }
       }
 
-      "新しいノードを増やしても、新しいノードに Shard が移動するか、元のノードに留まるかのどちらか" in {
+      "Adding a node has no effect on routing except for the MemberIndex with more nodes" in {
+        val typeName = createSeqTypeName()
         // entityId が同じなら ShardId も同じになる
         val entityId = createSeqReplicationId()
 
         val message = CheckRouting(entityId)
 
         runOn(clusterMembers: _*) {
-          clusterReplication = createReplicationWith(raftActorProbe)
+          clusterReplication = createReplicationWith(typeName, raftActorProbe)
         }
         runOn(node1) {
           (1 to 6).foreach { _ =>
             clusterReplication ! message
           }
         }
-        var nrOfMessagesBeforeNode4Joined: Option[Int] = None
         runOn(clusterMembers: _*) {
           val msgs = raftActorProbe.receiveWhile(max = 1.seconds, messages = 2) {
             case Command(msg: CheckRouting) => msg
           }
-          nrOfMessagesBeforeNode4Joined = Some(msgs.size)
+          node1TestActor ! ReceivedMessages(msgs, myself, memberIndexes(myself))
+        }
+        var messagesBeforeNode4Joined: Map[RoleName, ReceivedMessages] = Map()
+        runOn(node1) {
+          receiveWhile(messages = clusterMembers.size) {
+            case result: ReceivedMessages =>
+              messagesBeforeNode4Joined += result.node -> result
+          }
         }
         enterBarrier("message received")
 
@@ -523,18 +524,18 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
           val msgs = raftActorProbe.receiveWhile(max = 1.seconds, messages = 2) {
             case Command(msg: CheckRouting) => msg
           }
-          nrOfMessagesBeforeNode4Joined match {
-            case Some(0) =>
-              // 既存の、もともと Shard が割り当てられていないノードには割当されない
-              msgs should have size 0
-            case Some(2) =>
-              // 0 なら新しいノードに Shard が移動した、そうでないなら Shard が留まった
-              msgs should ((have size 0) or (have size 2))
-            case Some(_) =>
-              throw new IllegalStateException("unexpected pattern")
-            case None =>
-              // 0 なら新しいノード（node7）に Shard が移動しなかった、そうでないなら Shard が移動した
-              msgs should ((have size 0) or (have size 2))
+          node1TestActor ! ReceivedMessages(msgs, myself, memberIndexes(myself))
+        }
+        runOn(node1) {
+          var messagesAfterNode4Joined: Map[RoleName, ReceivedMessages] = Map()
+          receiveWhile(messages = clusterMembers.size) {
+            case result: ReceivedMessages =>
+              messagesAfterNode4Joined += result.node -> result
+          }
+          messagesBeforeNode4Joined.foreach {
+            case (`node2`, before) => before.messages should be(messagesAfterNode4Joined(node2).messages)
+            case (`node3`, before) => before.messages should be(messagesAfterNode4Joined(node3).messages)
+            case _                 => // node1 and node4 can receive other messages by rebalancing
           }
         }
       }
@@ -543,5 +544,6 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
 
   private[this] val idGenerator                      = new AtomicInteger(0)
   private[this] def createSeqReplicationId(): String = s"replication-${idGenerator.incrementAndGet()}"
+  private[this] def createSeqTypeName(): String      = s"typeName-${idGenerator.incrementAndGet()}"
 
 }

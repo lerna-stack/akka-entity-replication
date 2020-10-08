@@ -53,7 +53,6 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
       Props(
         new RaftActor(
           typeName = "dummy",
-          shardId,
           extractEntityId = extractEntityId,
           replicationActorProps,
           region,
