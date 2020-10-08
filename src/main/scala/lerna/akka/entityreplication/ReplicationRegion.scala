@@ -251,9 +251,13 @@ class ReplicationRegion(
     if (context.child(shardId.underlying).isEmpty) createRaftActor(shardId)
   }
 
+  private[this] def createRaftActor(shardId: NormalizedShardId): ActorRef = {
+    context.actorOf(createRaftActorProps(shardId), shardId.underlying)
+  }
+
   // protected[this]: for test purpose
-  protected[this] def createRaftActor(shardId: NormalizedShardId): ActorRef = {
-    val raftActorProps = RaftActor.props(
+  protected[this] def createRaftActorProps(shardId: NormalizedShardId): Props = {
+    RaftActor.props(
       typeName,
       shardId = shardId,
       extractNormalizedEntityId,
@@ -265,7 +269,6 @@ class ReplicationRegion(
       settings = RaftSettings(context.system.settings.config),
       maybeCommitLogStore = maybeCommitLogStore,
     )
-    context.actorOf(raftActorProps, shardId.underlying)
   }
 
   // protected[this]: for test purpose

@@ -566,23 +566,20 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
           extractShardId,
           maybeCommitLogStore = None,
         ) {
-          override def createRaftActor(shardId: NormalizedShardId): ActorRef = {
-            context.actorOf(
-              Props(
-                new RaftActor(
-                  typeName = "test",
-                  shardId,
-                  extractNormalizedEntityId,
-                  replicationActorProps,
-                  self,
-                  shardSnapshotStoreProps = Props.empty,
-                  selfMemberIndex,
-                  otherMemberIndexes,
-                  settings,
-                  maybeCommitLogStore = None,
-                ) with RaftTestProbeSupport,
-              ),
-              shardId.underlying,
+          override def createRaftActorProps(shardId: NormalizedShardId): Props = {
+            Props(
+              new RaftActor(
+                typeName = "test",
+                shardId,
+                extractNormalizedEntityId,
+                replicationActorProps,
+                self,
+                shardSnapshotStoreProps = Props.empty,
+                selfMemberIndex,
+                otherMemberIndexes,
+                settings,
+                maybeCommitLogStore = None,
+              ) with RaftTestProbeSupport,
             )
           }
         },

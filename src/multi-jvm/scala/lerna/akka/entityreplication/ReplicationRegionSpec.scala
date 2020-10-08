@@ -2,7 +2,7 @@ package lerna.akka.entityreplication
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import akka.actor.{ ActorRef, ActorSelection, Props, RootActorPath, Terminated }
+import akka.actor.{ Actor, ActorRef, ActorSelection, Props, RootActorPath, Terminated }
 import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.{ CurrentClusterState, InitialStateAsEvents, MemberRemoved, MemberUp }
 import akka.remote.testconductor.RoleName
@@ -183,7 +183,12 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
               DummyReplicationActor.extractShardId,
               maybeCommitLogStore = None,
             ) {
-              override def createRaftActor(shardId: NormalizedShardId): ActorRef = raftActorProbe.ref
+              override def createRaftActorProps(shardId: NormalizedShardId): Props =
+                Props(new Actor {
+                  override def receive: Receive = {
+                    case msg => raftActorProbe.ref forward msg
+                  }
+                })
             },
           ),
         )
