@@ -141,8 +141,8 @@ import lerna.akka.entityreplication.util.AtLeastOnceComplete
 
 import scala.concurrent.duration._
 
-implicit val timeout: Timeout    = ???
-implicit val system: ActorSystem = ???
+implicit val timeout: Timeout    = Timeout(3.seconds) // should be greater than or equal to retryInterval
+implicit val system: ActorSystem = ???                // pass one that is already created
 
 AtLeastOnceComplete.askTo(
   destination = bankAccountReplicationRegion,
