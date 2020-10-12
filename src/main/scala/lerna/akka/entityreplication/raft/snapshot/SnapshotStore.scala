@@ -3,14 +3,15 @@ package lerna.akka.entityreplication.raft.snapshot
 import akka.actor.{ ActorLogging, ActorRef, Props, ReceiveTimeout }
 import akka.persistence
 import akka.persistence.PersistentActor
-import lerna.akka.entityreplication.model.NormalizedEntityId
+import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.RaftSettings
 import lerna.akka.entityreplication.raft.routing.MemberIndex
+import lerna.akka.entityreplication.util.ActorIds
 
 object SnapshotStore {
 
   def props(
-      typeName: String,
+      typeName: TypeName,
       entityId: NormalizedEntityId,
       settings: RaftSettings,
       selfMemberIndex: MemberIndex,
@@ -19,7 +20,7 @@ object SnapshotStore {
 }
 
 class SnapshotStore(
-    typeName: String,
+    typeName: TypeName,
     entityId: NormalizedEntityId,
     settings: RaftSettings,
     selfMemberIndex: MemberIndex,
@@ -27,7 +28,8 @@ class SnapshotStore(
     with ActorLogging {
   import SnapshotProtocol._
 
-  override def persistenceId: String = s"SnapshotStore-${typeName}-${entityId.underlying}-${selfMemberIndex.role}"
+  override def persistenceId: String =
+    ActorIds.persistenceId("SnapshotStore", typeName.underlying, entityId.underlying, selfMemberIndex.role)
 
   override def journalPluginId: String = settings.journalPluginId
 

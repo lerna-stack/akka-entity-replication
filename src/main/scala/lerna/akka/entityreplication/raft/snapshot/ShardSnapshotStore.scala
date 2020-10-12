@@ -1,18 +1,18 @@
 package lerna.akka.entityreplication.raft.snapshot
 
 import akka.actor.{ Actor, ActorLogging, ActorRef, Props }
-import lerna.akka.entityreplication.model.NormalizedEntityId
+import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.RaftSettings
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
 object ShardSnapshotStore {
 
   def props(typeName: String, settings: RaftSettings, selfMemberIndex: MemberIndex): Props =
-    Props(new ShardSnapshotStore(typeName, settings, selfMemberIndex))
+    Props(new ShardSnapshotStore(TypeName.from(typeName), settings, selfMemberIndex))
 
 }
 
-class ShardSnapshotStore(typeName: String, settings: RaftSettings, selfMemberIndex: MemberIndex)
+class ShardSnapshotStore(typeName: TypeName, settings: RaftSettings, selfMemberIndex: MemberIndex)
     extends Actor
     with ActorLogging {
   import SnapshotProtocol._
@@ -28,6 +28,6 @@ class ShardSnapshotStore(typeName: String, settings: RaftSettings, selfMemberInd
       .child(name).getOrElse(context.actorOf(SnapshotStore.props(typeName, entityId, settings, selfMemberIndex), name))
   }
 
-  def snapshotStoreName(typeName: String, entityId: NormalizedEntityId): String =
-    s"SnapshotStore-${typeName}-${entityId.underlying}"
+  def snapshotStoreName(typeName: TypeName, entityId: NormalizedEntityId): String =
+    s"SnapshotStore-${typeName.underlying}-${entityId.underlying}"
 }
