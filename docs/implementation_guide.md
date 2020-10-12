@@ -155,7 +155,7 @@ AtLeastOnceComplete.askTo(
 
 On the command side, there are the following settings.
 
-```
+```hocon
 lerna.akka.entityreplication {
     // Time to interrupt replication for events that are taking too long
     replication-timeout = 3000 ms
