@@ -157,8 +157,16 @@ On the command side, there are the following settings.
 
 ```hocon
 lerna.akka.entityreplication {
+
+    // TODO: consider a better default value
     // Time to interrupt replication for events that are taking too long
+    // ** This default value may not be appropriate **
     replication-timeout = 3000 ms
+
+    // How long wait before giving up entity recovery.
+    // Entity recovery requires a snapshot, and failure fetching it will cause this timeout.
+    // If timed out, entity recovery will be retried.
+    recovery-entity-timeout = 10s
 
     raft {
         // The time it takes to start electing a new leader after the heartbeat is no longer received from the leader.
@@ -169,7 +177,7 @@ lerna.akka.entityreplication {
         
         // A role to identify the nodes to place replicas on
         // The number of roles is the number of replicas. It is recommended to set up at least three roles.
-        multi-raft-roles = ["replica-default"]
+        multi-raft-roles = ["replica-group-1", "replica-group-2", "replica-group-3"]
 
         // log compaction settings
         compaction {
