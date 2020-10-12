@@ -171,14 +171,18 @@ lerna.akka.entityreplication {
         // The number of roles is the number of replicas. It is recommended to set up at least three roles.
         multi-raft-roles = ["replica-default"]
 
-        // Time to keep a cache of snapshots in memory
-        snapshot-cache-time-to-live = 10s
-        
-        // Threshold for saving snapshots and compaction of the log
-        snapshot-log-size-threshold = 10000
-        
-        // Time interval to check the size of the log and check if a snapshotting is needed to be taken
-        snapshot-interval = 10s
+        // log compaction settings
+        compaction {
+
+          // Time interval to check the size of the log and check if a snapshotting is needed to be taken
+          log-size-check-interval = 10s
+
+          // Threshold for saving snapshots and compaction of the log
+          log-size-threshold = 10000
+
+          // Time to keep a cache of snapshots in memory
+          snapshot-cache-time-to-live = 10s
+        }
     }
 }
 ```
