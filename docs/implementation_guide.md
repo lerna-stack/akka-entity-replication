@@ -207,6 +207,11 @@ lerna.akka.entityreplication {
         persistence.cassandra = ${akka.persistence.cassandra}
         persistence.cassandra {
     
+          // Profile to use.
+          // See https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/ for overriding any settings
+          read-profile = "akka-entity-replication-profile"
+          write-profile = "akka-entity-replication-profile"
+
           journal {
     
             // replication strategy to use.
@@ -225,6 +230,11 @@ lerna.akka.entityreplication {
     
           snapshot {
     
+            // Profile to use.
+            // See https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/ for overriding any settings
+            read-profile = "akka-entity-replication-snapshot-profile"
+            write-profile = "akka-entity-replication-snapshot-profile"
+
             // replication strategy to use.
             replication-strategy = "NetworkTopologyStrategy"
     
@@ -328,6 +338,12 @@ lerna.akka.entityreplication.raft.eventhandler {
     // cassandra-journal & cassandra-query-journal to save committed events
     persistence.cassandra = ${akka.persistence.cassandra}
     persistence.cassandra = {
+
+      // Profile to use.
+      // See https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/ for overriding any settings
+      read-profile = "akka-entity-replication-profile"
+      write-profile = "akka-entity-replication-profile"
+
       journal {
 
         // replication strategy to use.
@@ -354,3 +370,43 @@ lerna.akka.entityreplication.raft.eventhandler {
     }
 }
 ```
+
+## Cassandra driver configuration
+
+akka-entity-replication has default profile settings for DataStax Java Driver.
+
+The default settings are bellow.
+
+```hocon
+// You can find reference configuration at
+// https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/reference/
+// see also: https://doc.akka.io/docs/akka-persistence-cassandra/1.0.3/configuration.html#cassandra-driver-configuration
+datastax-java-driver {
+  profiles {
+
+    // It is recommended to set this value.
+    // For more details see https://doc.akka.io/docs/akka-persistence-cassandra/1.0.3/configuration.html#cassandra-driver-configuration
+    // advanced.reconnect-on-init = true
+
+    akka-entity-replication-profile {
+      basic.request {
+        // Important: akka-entity-replication recommends quorum based consistency level to remain data consistency
+        consistency = LOCAL_QUORUM
+        // the journal does not use any counters or collections
+        default-idempotence = true
+      }
+    }
+
+    akka-entity-replication-snapshot-profile {
+      basic.request {
+        // Important: akka-entity-replication recommends quorum based consistency level to remain data consistency
+        consistency = LOCAL_QUORUM
+        // the snapshot store does not use any counters or collections
+        default-idempotence = true
+      }
+    }
+  }
+}
+```
+
+For more details see [Akka Persistence Cassandra official document](https://doc.akka.io/docs/akka-persistence-cassandra/1.0.3/configuration.html#cassandra-driver-configuration).
