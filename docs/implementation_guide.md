@@ -183,6 +183,54 @@ lerna.akka.entityreplication {
           // Time to keep a cache of snapshots in memory
           snapshot-cache-time-to-live = 10s
         }
+
+        // data persistent settings
+        persistence {
+          // Absolute path to the journal plugin configuration entry.
+          // The journal will be stored events which related to Raft.
+          journal.plugin = "lerna.akka.entityreplication.raft.persistence.cassandra.journal"
+    
+          // Absolute path to the snapshot store plugin configuration entry.
+          // The snapshot store will be stored state which related to Raft.
+          snapshot-store.plugin = "lerna.akka.entityreplication.raft.persistence.cassandra.snapshot"
+        }
+
+        // The settings for Cassandra persistence plugin
+        persistence.cassandra = ${akka.persistence.cassandra}
+        persistence.cassandra {
+    
+          journal {
+    
+            // replication strategy to use.
+            replication-strategy = "NetworkTopologyStrategy"
+    
+            // Replication factor list for data centers, e.g. ["dc0:3", "dc1:3"]. This setting is only used when replication-strategy is NetworkTopologyStrategy.
+            // Replication factors should be 3 or more to maintain data consisstency.
+            data-center-replication-factors = ["dc0:3"]
+    
+            // To limit the Cassandra hosts this plugin connects with to a specific datacenter.
+            local-datacenter = "dc0"
+    
+            // Name of the keyspace to be used by the journal
+            keyspace = "entity_replication"
+          }
+    
+          snapshot {
+    
+            // replication strategy to use.
+            replication-strategy = "NetworkTopologyStrategy"
+    
+            // Replication factor list for data centers, e.g. ["dc0:3", "dc1:3"]. This setting is only used when replication-strategy is NetworkTopologyStrategy.
+            // Replication factors should be 3 or more to maintain data consisstency.
+            data-center-replication-factors = ["dc0:3"]
+    
+            // To limit the Cassandra hosts this plugin connects with to a specific datacenter.
+            local-datacenter = "dc0"
+    
+            // Name of the keyspace to be used by the snapshot store
+            keyspace = "entity_replication_snapshot"
+          }
+        }
     }
 }
 ```
