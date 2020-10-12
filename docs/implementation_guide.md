@@ -311,6 +311,18 @@ lerna.akka.entityreplication.raft.eventhandler {
     persistence.cassandra = ${akka.persistence.cassandra}
     persistence.cassandra = {
       journal {
+
+        // replication strategy to use.
+        replication-strategy = "NetworkTopologyStrategy"
+
+        // Replication factor list for data centers, e.g. ["dc0:3", "dc1:3"]. This setting is only used when replication-strategy is NetworkTopologyStrategy.
+        // Replication factors should be 3 or more to maintain data consisstency.
+        data-center-replication-factors = ["dc0:3"]
+
+        // To limit the Cassandra hosts this plugin connects with to a specific datacenter.
+        local-datacenter = "dc0"
+
+        // Name of the keyspace to be used by the journal
         keyspace = "raft_commited_event"
 
         // Tagging to allow some RaftActor(Shard) to handle individually committed events together(No need to change)
