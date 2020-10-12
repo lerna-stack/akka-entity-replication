@@ -315,6 +315,16 @@ lerna.akka.entityreplication.raft.eventhandler {
       }
     }
 
+    persistence {
+      // Absolute path to the journal plugin configuration entry.
+      // The journal stores Raft-committed events.
+      journal.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.journal"
+
+      // Absolute path to the query plugin configuration entry.
+      // The query is used by Raft EventHandler.
+      query.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.query"
+    }
+
     // cassandra-journal & cassandra-query-journal to save committed events
     persistence.cassandra = ${akka.persistence.cassandra}
     persistence.cassandra = {
@@ -341,16 +351,6 @@ lerna.akka.entityreplication.raft.eventhandler {
           "java.lang.Object" = tagging
         }
       }
-    }
-
-    persistence {
-      // Absolute path to the journal plugin configuration entry.
-      // The journal stores Raft-committed events.
-      journal.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.journal"
-
-      // Absolute path to the query plugin configuration entry.
-      // The query is used by Raft EventHandler.
-      query.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.query"
     }
 }
 ```
