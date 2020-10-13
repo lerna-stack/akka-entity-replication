@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.raft.snapshot
 
 import akka.actor.ActorRef
+import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 
@@ -36,5 +37,5 @@ object SnapshotProtocol {
   final case class EntitySnapshot(
       metadata: EntitySnapshotMetadata,
       state: EntityState,
-  )
+  ) extends ClusterReplicationSerializable
 }

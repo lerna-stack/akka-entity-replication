@@ -5,13 +5,14 @@ import akka.actor.{ ActorRef, ActorSystem, Props }
 import akka.cluster.sharding.ShardRegion.HashCodeMessageExtractor
 import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings }
 import akka.persistence.{ PersistentActor, RecoveryCompleted }
+import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
 
 private[eventhandler] final case class Save(
     replicationId: CommitLogStore.ReplicationId,
     index: LogEntryIndex,
     committedEvent: Any,
-) extends Serializable
+) extends ClusterReplicationSerializable
 
 object CommitLogStoreActor {
 

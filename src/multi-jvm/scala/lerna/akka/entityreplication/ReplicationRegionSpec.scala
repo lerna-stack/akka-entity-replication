@@ -22,7 +22,7 @@ object ReplicationRegionSpec {
 
     def props(probe: TestProbe) = Props(new DummyReplicationActor(probe))
 
-    sealed trait Command {
+    sealed trait Command extends STMultiNodeSerializable {
       def id: String
     }
 
@@ -31,7 +31,7 @@ object ReplicationRegionSpec {
 
     case class GetStatus(id: String)                        extends Command
     case class GetStatusWithEnsuringConsistency(id: String) extends Command
-    case class Status(count: Int)
+    case class Status(count: Int)                           extends STMultiNodeSerializable
 
     val extractEntityId: ReplicationRegion.ExtractEntityId = {
       case c: Command => (c.id, c)

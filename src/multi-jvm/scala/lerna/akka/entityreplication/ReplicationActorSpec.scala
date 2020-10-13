@@ -56,12 +56,12 @@ object ReplicationActorSpec {
 
   object PingPongReplicationActor {
 
-    sealed trait Command {
+    sealed trait Command extends STMultiNodeSerializable {
       def id: String
     }
-    case class Ping(id: String) extends Command
-    case class Pong(id: String, count: Int)
-    case class Break(id: String) extends Command
+    case class Ping(id: String)             extends Command
+    case class Pong(id: String, count: Int) extends STMultiNodeSerializable
+    case class Break(id: String)            extends Command
 
     val extractEntityId: ReplicationRegion.ExtractEntityId = {
       case c: Command => (c.id, c)
@@ -164,7 +164,7 @@ object ReplicationActorSpec {
 
   object EphemeralReplicationActor {
 
-    sealed trait Command {
+    sealed trait Command extends STMultiNodeSerializable {
       def id: String
     }
 
@@ -173,7 +173,7 @@ object ReplicationActorSpec {
     case class IncrementCount(id: String) extends Command
     case class GetState(id: String)       extends Command
 
-    case class State(count: Int)
+    case class State(count: Int) extends STMultiNodeSerializable
 
     val extractEntityId: ReplicationRegion.ExtractEntityId = {
       case c: Command => (c.id, c)

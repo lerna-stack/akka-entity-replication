@@ -44,12 +44,12 @@ object ConsistencyTestBase {
 
   object ConsistencyTestReplicationActor {
 
-    trait Command {
+    trait Command extends STMultiNodeSerializable {
       def id: String
       def requestId: String
     }
-    trait Event
-    trait Response {
+    trait Event extends STMultiNodeSerializable
+    trait Response extends STMultiNodeSerializable {
       def requestId: String
     }
 
