@@ -27,7 +27,7 @@ Entity status synchronization is archived by Raft consensus algorithm. This algo
 
 The replicas of each entity are not started on every node in the Cluster, but are placed in such a way that the load is distributed by sharding based on Consistent Hash. As nodes are added or removed, they are automatically rebalanced.
 
-Akka ensures that the order of arrival of messages between source and destination is maintained. Note that if you send multiple messages, it is possible for entities to receive messages in a different order than they were sent, since the replicas of the entities in akka-entity-replicaiton may be replaced in the course of sending messages.
+Akka ensures that the order of arrival of messages between source and destination is maintained. Note that if you send multiple messages, it is possible for entities to receive messages in a different order than they were sent, since the replicas of the entities in akka-entity-replication may be replaced in the course of sending messages.
 
 ## Getting Started
 
