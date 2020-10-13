@@ -10,7 +10,7 @@ import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshotMetadata
-import lerna.akka.entityreplication.{ ReplicationActor, ReplicationRegion }
+import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ReplicationActor, ReplicationRegion }
 
 object RaftActor {
 
@@ -53,8 +53,8 @@ object RaftActor {
   sealed trait DomainEvent
 
   sealed trait PersistEvent                                  extends DomainEvent
-  final case class BegunNewTerm(term: Term)                  extends PersistEvent
-  final case class Voted(term: Term, candidate: MemberIndex) extends PersistEvent
+  final case class BegunNewTerm(term: Term)                  extends PersistEvent with ClusterReplicationSerializable
+  final case class Voted(term: Term, candidate: MemberIndex) extends PersistEvent with ClusterReplicationSerializable
   final case class DetectedNewTerm(term: Term)               extends PersistEvent
   final case class AppendedEntries(term: Term, logEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex)
       extends PersistEvent
