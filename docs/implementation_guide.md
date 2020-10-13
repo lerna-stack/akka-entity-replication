@@ -13,34 +13,35 @@ akka-entity-replication supports event sourcing and entity replication with the 
 ```scala
 import akka.actor.Props
 import lerna.akka.entityreplication._
+import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 
 object BankAccountActor {
 
-    def props: Props = Props(new BankAcountActor())
+    def props: Props = Props(new BankAccountActor())
 
     sealed trait Command {
         def accountNo: String
     }
-    final case class Deposit(accountNo: String, amount: Interger)  extends Commnad
-    final case class Withdraw(accountNo: String, amount: Interger) extends Commnad
-    final case class GetBalance(accountNo: String)                 extends Command
+    final case class Deposit(accountNo: String, amount: Int)  extends Command
+    final case class Withdraw(accountNo: String, amount: Int) extends Command
+    final case class GetBalance(accountNo: String)            extends Command
 
     final case object ShortBalance
-    final case class AccountBalance(balance: Integer)
+    final case class AccountBalance(balance: Int)
 
     sealed trait DomainEvent
-    final case class Deposited(amount: Interger)  extends DomainEvent
-    final case class Withdrawed(amount: Interger) extends DomainEvent
+    final case class Deposited(amount: Int)   extends DomainEvent
+    final case class Withdrawed(amount: Int)  extends DomainEvent
 
-    final case class Account(balance: Integer) {
-        def deposit(amount: Integer)  = copy(balance = balance + amount)
-        def withdraw(amount: Integer) = copy(balance = balance - amount)
+    final case class Account(balance: Int) {
+        def deposit(amount: Int)  = copy(balance = balance + amount)
+        def withdraw(amount: Int) = copy(balance = balance - amount)
     }
 }
 
 import BankAccountActor._
 
-class BankAccountActor extends ReplicatonActor[Account] {
+class BankAccountActor extends ReplicationActor[Account] {
 
     private[this] var account: Account = Account(balance = 0)
     
@@ -52,11 +53,11 @@ class BankAccountActor extends ReplicatonActor[Account] {
             replicate(Deposited(amount)) { event =>
                 updateState(event)
             }
-        case Withdrawe(_, amount) if amount > account.balance =>
+        case Withdraw(_, amount) if amount > account.balance =>
             ensureConsistency {
                 sender() ! ShortBalance
             }
-        case Withdrawe(_, amount) =>         
+        case Withdraw(_, amount) =>         
             replicate(Withdrawed(amount)) { event =>
                 updateState(event)
             }
@@ -69,7 +70,7 @@ class BankAccountActor extends ReplicatonActor[Account] {
     override def receiveReplica: Receive = {
         case event: DomainEvent =>
             updateState(event)
-        case SnapshotOffer(_, snapshot: Account) =>
+        case SnapshotOffer(snapshot: Account) =>
             account = snapshot
     }
     
@@ -114,7 +115,7 @@ val extractShardId: ReplicationRegion.ExtractShardId = {
 
 val bankAccountReplicationRegion: ActorRef = ClusterReplication(system).start(
     typeName = "BankAccount",
-    entityProps = BankAcountActor.props,
+    entityProps = BankAccountActor.props,
     settings = ClusterReplicationSettings(system),
     extractEntityId = extractEntityId,
     extractShardId = extractShardId,
@@ -128,7 +129,7 @@ For the `ReplicationRegion` to work properly, the `extractEntityId` and `extract
 When sending commands to an entity, they are sent via the `ReplicationRegion`.
 
 ```scala
-bankAccountReplicationRegion ! BankAcountActor.Deposit(accountNo = "0001", 1000)
+bankAccountReplicationRegion ! BankAccountActor.Deposit(accountNo = "0001", 1000)
 ```
 
 To reduce errors, it is recommended to perform retry processing so that processing continues even if a single Node fails.
@@ -146,7 +147,7 @@ implicit val system: ActorSystem = ???                // pass one that is alread
 
 AtLeastOnceComplete.askTo(
   destination = bankAccountReplicationRegion,
-  message = BankAcountActor.Deposit(accountNo = "0001", 1000),
+  message = BankAccountActor.Deposit(accountNo = "0001", 1000),
   retryInterval = 500.milliseconds,
 )
 ```
@@ -155,10 +156,18 @@ AtLeastOnceComplete.askTo(
 
 On the command side, there are the following settings.
 
-```
+```hocon
 lerna.akka.entityreplication {
+
+    // TODO: consider a better default value
     // Time to interrupt replication for events that are taking too long
+    // ** This default value may not be appropriate **
     replication-timeout = 3000 ms
+
+    // How long wait before giving up entity recovery.
+    // Entity recovery requires a snapshot, and failure fetching it will cause this timeout.
+    // If timed out, entity recovery will be retried.
+    recovery-entity-timeout = 10s
 
     raft {
         // The time it takes to start electing a new leader after the heartbeat is no longer received from the leader.
@@ -169,16 +178,78 @@ lerna.akka.entityreplication {
         
         // A role to identify the nodes to place replicas on
         // The number of roles is the number of replicas. It is recommended to set up at least three roles.
-        multi-raft-roles = ["replica-default"]
+        multi-raft-roles = ["replica-group-1", "replica-group-2", "replica-group-3"]
 
-        // Time to keep a cache of snapshots in memory
-        snapshot-cache-time-to-live = 10s
-        
-        // Threshold for saving snapshots and compaction of the log
-        snapshot-log-size-threshold = 10000
-        
-        // Time interval to check the size of the log and check if a snapshotting is needed to be taken
-        snapshot-interval = 10s
+        // log compaction settings
+        compaction {
+
+          // Time interval to check the size of the log and check if a snapshotting is needed to be taken
+          log-size-check-interval = 10s
+
+          // Threshold for saving snapshots and compaction of the log
+          log-size-threshold = 10000
+
+          // Time to keep a cache of snapshots in memory
+          snapshot-cache-time-to-live = 10s
+        }
+
+        // data persistent settings
+        persistence {
+          // Absolute path to the journal plugin configuration entry.
+          // The journal will be stored events which related to Raft.
+          journal.plugin = "lerna.akka.entityreplication.raft.persistence.cassandra.journal"
+    
+          // Absolute path to the snapshot store plugin configuration entry.
+          // The snapshot store will be stored state which related to Raft.
+          snapshot-store.plugin = "lerna.akka.entityreplication.raft.persistence.cassandra.snapshot"
+        }
+
+        // The settings for Cassandra persistence plugin
+        persistence.cassandra = ${akka.persistence.cassandra}
+        persistence.cassandra {
+    
+          // Profile to use.
+          // See https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/ for overriding any settings
+          read-profile = "akka-entity-replication-profile"
+          write-profile = "akka-entity-replication-profile"
+
+          journal {
+    
+            // replication strategy to use.
+            replication-strategy = "NetworkTopologyStrategy"
+    
+            // Replication factor list for data centers, e.g. ["dc0:3", "dc1:3"]. This setting is only used when replication-strategy is NetworkTopologyStrategy.
+            // Replication factors should be 3 or more to maintain data consisstency.
+            data-center-replication-factors = ["dc0:3"]
+    
+            // To limit the Cassandra hosts this plugin connects with to a specific datacenter.
+            local-datacenter = "dc0"
+    
+            // Name of the keyspace to be used by the journal
+            keyspace = "entity_replication"
+          }
+    
+          snapshot {
+    
+            // Profile to use.
+            // See https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/ for overriding any settings
+            read-profile = "akka-entity-replication-snapshot-profile"
+            write-profile = "akka-entity-replication-snapshot-profile"
+
+            // replication strategy to use.
+            replication-strategy = "NetworkTopologyStrategy"
+    
+            // Replication factor list for data centers, e.g. ["dc0:3", "dc1:3"]. This setting is only used when replication-strategy is NetworkTopologyStrategy.
+            // Replication factors should be 3 or more to maintain data consisstency.
+            data-center-replication-factors = ["dc0:3"]
+    
+            // To limit the Cassandra hosts this plugin connects with to a specific datacenter.
+            local-datacenter = "dc0"
+    
+            // Name of the keyspace to be used by the snapshot store
+            keyspace = "entity_replication_snapshot"
+          }
+        }
     }
 }
 ```
@@ -255,10 +326,38 @@ lerna.akka.entityreplication.raft.eventhandler {
       }
     }
 
+    persistence {
+      // Absolute path to the journal plugin configuration entry.
+      // The journal stores Raft-committed events.
+      journal.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.journal"
+
+      // Absolute path to the query plugin configuration entry.
+      // The query is used by Raft EventHandler.
+      query.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.query"
+    }
+
     // cassandra-journal & cassandra-query-journal to save committed events
     persistence.cassandra = ${akka.persistence.cassandra}
     persistence.cassandra = {
+
+      // Profile to use.
+      // See https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/ for overriding any settings
+      read-profile = "akka-entity-replication-profile"
+      write-profile = "akka-entity-replication-profile"
+
       journal {
+
+        // replication strategy to use.
+        replication-strategy = "NetworkTopologyStrategy"
+
+        // Replication factor list for data centers, e.g. ["dc0:3", "dc1:3"]. This setting is only used when replication-strategy is NetworkTopologyStrategy.
+        // Replication factors should be 3 or more to maintain data consisstency.
+        data-center-replication-factors = ["dc0:3"]
+
+        // To limit the Cassandra hosts this plugin connects with to a specific datacenter.
+        local-datacenter = "dc0"
+
+        // Name of the keyspace to be used by the journal
         keyspace = "raft_commited_event"
 
         // Tagging to allow some RaftActor(Shard) to handle individually committed events together(No need to change)
@@ -270,15 +369,45 @@ lerna.akka.entityreplication.raft.eventhandler {
         }
       }
     }
-
-    persistence {
-      // Absolute path to the journal plugin configuration entry.
-      // The journal stores Raft-committed events.
-      journal.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.journal"
-
-      // Absolute path to the query plugin configuration entry.
-      // The query is used by Raft EventHandler.
-      query.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.query"
-    }
 }
 ```
+
+## Cassandra driver configuration
+
+akka-entity-replication has default profile settings for DataStax Java Driver.
+
+The default settings are bellow.
+
+```hocon
+// You can find reference configuration at
+// https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/reference/
+// see also: https://doc.akka.io/docs/akka-persistence-cassandra/1.0.3/configuration.html#cassandra-driver-configuration
+datastax-java-driver {
+  profiles {
+
+    // It is recommended to set this value.
+    // For more details see https://doc.akka.io/docs/akka-persistence-cassandra/1.0.3/configuration.html#cassandra-driver-configuration
+    // advanced.reconnect-on-init = true
+
+    akka-entity-replication-profile {
+      basic.request {
+        // Important: akka-entity-replication recommends quorum based consistency level to remain data consistency
+        consistency = LOCAL_QUORUM
+        // the journal does not use any counters or collections
+        default-idempotence = true
+      }
+    }
+
+    akka-entity-replication-snapshot-profile {
+      basic.request {
+        // Important: akka-entity-replication recommends quorum based consistency level to remain data consistency
+        consistency = LOCAL_QUORUM
+        // the snapshot store does not use any counters or collections
+        default-idempotence = true
+      }
+    }
+  }
+}
+```
+
+For more details see [Akka Persistence Cassandra official document](https://doc.akka.io/docs/akka-persistence-cassandra/1.0.3/configuration.html#cassandra-driver-configuration).
