@@ -1,5 +1,6 @@
 package lerna.akka.entityreplication.raft
 
+import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -8,6 +9,7 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapsho
 object PersistentStateData {
 
   final case class PersistentState(currentTerm: Term, votedFor: Option[MemberIndex], replicatedLog: ReplicatedLog)
+      extends ClusterReplicationSerializable
 }
 
 trait PersistentStateData[T <: PersistentStateData[T]] {

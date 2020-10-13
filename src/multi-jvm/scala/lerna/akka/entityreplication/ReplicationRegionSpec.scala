@@ -17,6 +17,7 @@ import scala.concurrent.duration._
 object ReplicationRegionSpec {
 
   case class ReceivedMessages(messages: Seq[CheckRouting], node: RoleName, memberIndex: MemberIndex)
+      extends STMultiNodeSerializable
 
   object DummyReplicationActor {
 
