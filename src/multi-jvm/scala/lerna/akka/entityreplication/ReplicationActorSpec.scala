@@ -107,14 +107,14 @@ object ReplicationActorSpec {
 
   object LockReplicationActor {
 
-    sealed trait Command {
+    sealed trait Command extends STMultiNodeSerializable {
       def id: String
     }
     case class Lock(id: String)   extends Command
     case class UnLock(id: String) extends Command
 
-    case class GetStatus(id: String) extends Command
-    case class Status(id: String, locking: Boolean)
+    case class GetStatus(id: String)                extends Command
+    case class Status(id: String, locking: Boolean) extends STMultiNodeSerializable
 
     val extractEntityId: ReplicationRegion.ExtractEntityId = {
       case c: Command => ((c.id, c))
