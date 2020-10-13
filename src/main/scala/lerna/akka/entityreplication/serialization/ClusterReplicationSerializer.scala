@@ -10,4 +10,6 @@ class ClusterReplicationSerializer(system: ExtendedActorSystem)
   // Serializer identifier [123454323] of [lerna.akka.entityreplication.serialization.ClusterReplicationSerializer] is not unique.
   // It is also used by [io.altoo.akka.serialization.kryo.KryoSerializer]
   override def identifier: Int = 1602579212
+
+  override def configKey: String = "lerna.akka.entityreplication.kryo-serialization"
 }
