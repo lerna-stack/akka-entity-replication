@@ -45,6 +45,7 @@ object RaftCommands {
 
   case class AppendEntriesSucceeded(term: Term, lastLogIndex: LogEntryIndex, sender: MemberIndex)
       extends AppendEntriesResponse
+      with ClusterReplicationSerializable
 
   case class AppendEntriesFailed(term: Term, sender: MemberIndex) extends AppendEntriesResponse
 }
