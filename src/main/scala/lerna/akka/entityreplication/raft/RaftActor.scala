@@ -58,6 +58,7 @@ object RaftActor {
   final case class DetectedNewTerm(term: Term)               extends PersistEvent
   final case class AppendedEntries(term: Term, logEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex)
       extends PersistEvent
+      with ClusterReplicationSerializable
   final case class AppendedEvent(event: EntityEvent) extends PersistEvent with ClusterReplicationSerializable
 
   sealed trait NonPersistEvent                                                                  extends DomainEvent
