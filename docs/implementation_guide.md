@@ -13,6 +13,7 @@ akka-entity-replication supports event sourcing and entity replication with the 
 ```scala
 import akka.actor.Props
 import lerna.akka.entityreplication._
+import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 
 object BankAccountActor {
 
@@ -69,7 +70,7 @@ class BankAccountActor extends ReplicationActor[Account] {
     override def receiveReplica: Receive = {
         case event: DomainEvent =>
             updateState(event)
-        case SnapshotOffer(_, snapshot: Account) =>
+        case SnapshotOffer(snapshot: Account) =>
             account = snapshot
     }
     
