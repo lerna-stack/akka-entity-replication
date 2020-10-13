@@ -2,7 +2,8 @@ package lerna.akka.entityreplication
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, Cancellable, Stash }
+import akka.actor.{ Actor, ActorPath, ActorRef, Cancellable, Stash }
+import akka.event.Logging
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
@@ -23,7 +24,7 @@ object ReplicationActor {
   final case class EntityRecoveryTimeoutException(entityPath: ActorPath) extends RuntimeException
 }
 
-trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash with akka.lerna.StashFactory {
+trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.StashFactory {
   import ReplicationActor._
   import context.dispatcher
 
@@ -32,6 +33,8 @@ trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash wit
   private val instanceId = ReplicationActor.generateInstanceId()
 
   private[this] val settings = ClusterReplicationSettings(context.system)
+
+  private[this] val log = Logging(context.system, this)
 
   override def receive: Receive = receiveCommand
 
