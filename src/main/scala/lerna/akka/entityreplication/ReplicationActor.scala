@@ -1,6 +1,6 @@
 package lerna.akka.entityreplication
 
-import akka.actor.{ ActorLogging, ActorPath, ActorRef, Cancellable, Stash, Status }
+import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, Cancellable, Stash, Status }
 import akka.pattern.extended.ask
 import akka.pattern.{ pipe, AskTimeoutException }
 import akka.util.Timeout
@@ -21,7 +21,7 @@ object ReplicationActor {
   final case class ReplicationFailure()
 }
 
-trait ReplicationActor[StateData] extends akka.lerna.Actor with ActorLogging with Stash with akka.lerna.StashFactory {
+trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash with akka.lerna.StashFactory {
   import ReplicationActor._
   import context.dispatcher
 
