@@ -16,7 +16,13 @@ trait Candidate { this: RaftActor =>
       val newTerm = currentData.currentTerm.next()
       cancelElectionTimeoutTimer()
       broadcast(
-        RequestVote(shardId, newTerm, selfMemberIndex, currentData.replicatedLog.lastLogIndex),
+        RequestVote(
+          shardId,
+          newTerm,
+          selfMemberIndex,
+          currentData.replicatedLog.lastLogIndex,
+          currentData.replicatedLog.lastLogTerm,
+        ),
       ) // TODO: 永続化前に broadcast して問題ないか調べる
       applyDomainEvent(BegunNewTerm(newTerm)) { _ =>
         become(Candidate)
@@ -39,14 +45,16 @@ trait Candidate { this: RaftActor =>
   private[this] def receiveRequestVote(request: RequestVote): Unit =
     request match {
 
-      case RequestVote(_, term, candidate, _) if term == currentData.currentTerm && candidate == selfMemberIndex =>
+      case RequestVote(_, term, candidate, _, _) if term == currentData.currentTerm && candidate == selfMemberIndex =>
         log.debug(s"=== [Candidate] accept self RequestVote ===")
         applyDomainEvent(Voted(term, selfMemberIndex)) { _ =>
           sender() ! RequestVoteAccepted(term, selfMemberIndex)
         }
 
-      case RequestVote(_, term, otherCandidate, lastLogIndex)
-          if term.isNewerThan(currentData.currentTerm) && lastLogIndex >= currentData.replicatedLog.lastLogIndex =>
+      case RequestVote(_, term, otherCandidate, lastLogIndex, lastLogTerm)
+          if term.isNewerThan(
+            currentData.currentTerm,
+          ) && lastLogTerm >= currentData.replicatedLog.lastLogTerm && lastLogIndex >= currentData.replicatedLog.lastLogIndex =>
         log.debug(s"=== [Candidate] accept RequestVote($term, $otherCandidate) ===")
         cancelElectionTimeoutTimer()
         applyDomainEvent(Voted(term, otherCandidate)) { domainEvent =>

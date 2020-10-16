@@ -38,8 +38,10 @@ trait Leader { this: RaftActor =>
   private[this] def receiveRequestVote(res: RequestVote): Unit =
     res match {
 
-      case RequestVote(_, term, candidate, lastLogIndex)
-          if term.isNewerThan(currentData.currentTerm) && lastLogIndex >= currentData.replicatedLog.lastLogIndex =>
+      case RequestVote(_, term, candidate, lastLogIndex, lastLogTerm)
+          if term.isNewerThan(
+            currentData.currentTerm,
+          ) && lastLogTerm >= currentData.replicatedLog.lastLogTerm && lastLogIndex >= currentData.replicatedLog.lastLogIndex =>
         log.debug(s"=== [Leader] accept RequestVote($term, $candidate) ===")
         cancelHeartbeatTimeoutTimer()
         applyDomainEvent(Voted(term, candidate)) { domainEvent =>
