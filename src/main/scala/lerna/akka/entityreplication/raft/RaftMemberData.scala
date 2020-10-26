@@ -58,9 +58,10 @@ trait FollowerData { self: RaftMemberData =>
 
   def vote(candidate: MemberIndex, term: Term): RaftMemberData = {
     require(
-      term > currentTerm || (term == currentTerm && votedFor.contains(candidate)),
-      s"should be term:$term > currentTerm:$currentTerm or (candidate:$candidate == votedFor:$votedFor on same term)",
+      !(term < currentTerm),
+      s"term:$term should be greater than or equal to currentTerm:$currentTerm",
     )
+
     updatePersistentState(currentTerm = term, votedFor = Some(candidate))
   }
 
