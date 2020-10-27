@@ -138,11 +138,18 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
         awaitCond(getState(leaderMember).stateName == Leader)
       }
       enterBarrier("Leader elected")
+      val expectedLeaderMemberIndex = MemberIndex("member-3")
       runOn(node1, node2) {
-        getState(followerMember).stateName should be(Follower)
+        val state = getState(followerMember)
+        state.stateName should be(Follower)
+        state.stateData.currentTerm should be > Term.initial()
+        state.stateData.votedFor should contain(expectedLeaderMemberIndex)
       }
       runOn(node3) {
-        getState(leaderMember).stateName should be(Leader)
+        val state = getState(leaderMember)
+        state.stateName should be(Leader)
+        state.stateData.currentTerm should be > Term.initial()
+        state.stateData.votedFor should contain(expectedLeaderMemberIndex)
       }
     }
 

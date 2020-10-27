@@ -41,7 +41,9 @@ trait Candidate { this: RaftActor =>
 
       case RequestVote(_, term, candidate, _) if term == currentData.currentTerm && candidate == selfMemberIndex =>
         log.debug(s"=== [Candidate] accept self RequestVote ===")
-        sender() ! RequestVoteAccepted(term, selfMemberIndex)
+        applyDomainEvent(Voted(term, selfMemberIndex)) { _ =>
+          sender() ! RequestVoteAccepted(term, selfMemberIndex)
+        }
 
       case RequestVote(_, term, otherCandidate, lastLogIndex)
           if term.isNewerThan(currentData.currentTerm) && lastLogIndex >= currentData.replicatedLog.lastLogIndex =>
