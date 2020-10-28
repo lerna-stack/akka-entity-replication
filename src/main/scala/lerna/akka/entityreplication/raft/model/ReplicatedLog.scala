@@ -58,9 +58,15 @@ case class ReplicatedLog private[model] (
     copy(newEntries)
   }
 
-  def deleteOldEntries(to: LogEntryIndex): ReplicatedLog = {
-    val newEntries = entries.dropWhile(_.index <= to)
-    copy(entries = newEntries, ancestorLastIndex = lastLogIndex, ancestorLastTerm = lastLogTerm)
+  def deleteOldEntries(to: LogEntryIndex, preserveLogSize: Int): ReplicatedLog = {
+    val toLogIndex        = toSeqIndex(to.next())
+    val preservedLogIndex = if (entries.size > preserveLogSize) entries.size - preserveLogSize else 0
+    val from              = Math.min(toLogIndex, preservedLogIndex)
+    val newEntries        = entries.slice(from, entries.size)
+    val headEntryOption   = newEntries.headOption
+    val headLogIndex      = headEntryOption.map(_.index.prev()).getOrElse(ancestorLastIndex)
+    val headLogTerm       = headEntryOption.map(_.term.prev()).getOrElse(ancestorLastTerm)
+    copy(entries = newEntries, ancestorLastIndex = headLogIndex, ancestorLastTerm = headLogTerm)
   }
 
   private[this] def toSeqIndex(index: LogEntryIndex): Int = {
