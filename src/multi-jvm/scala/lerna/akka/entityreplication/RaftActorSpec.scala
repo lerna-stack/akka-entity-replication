@@ -369,35 +369,35 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       }
     }
 
-    "コミットしたイベントが書き換わらない" in {
-      // シナリオ
-      // *: リーダー  -: リーダーがネットワーク分断により孤立
+    "will eventually be the only leader if it has the most recent log entry even if multiple leader was elected" in {
+      // Scenario
+      // *: is a leader  -: belongs with isolated network
       // (1)
-      // *node1 Term:1 Log:[(Term(1), NoOp), (Term(1), event1)]
-      //  node2 Term:1 Log:[(Term(1), NoOp)]
-      //  node3 Term:1 Log:[(Term(1), NoOp)]
+      //  * node1 Term:1 Log:[(Term(1), NoOp), (Term(1), event1)]
+      //    node2 Term:1 Log:[(Term(1), NoOp)]
+      //    node3 Term:1 Log:[(Term(1), NoOp)]
       // (2)
-      // -node1 Term:1 Log:[(Term(1), NoOp), (Term(1), event1)]
-      //  node2 Term:2 Log:[(Term(1), NoOp)]
-      // *node3 Term:2 Log:[(Term(1), NoOp), (Term(2), NoOp), (Term(2), event2)]
+      // -* node1 Term:1 Log:[(Term(1), NoOp), (Term(1), event1)]
+      //    node2 Term:2 Log:[(Term(1), NoOp), (Term(2), NoOp)]
+      // -* node3 Term:2 Log:[(Term(1), NoOp), (Term(2), NoOp), (Term(2), event2)]
       // (3)
-      // *node1 Term:3 Log:[(Term(1), NoOp), (Term(1), event1), (Term(3), NoOp)]
-      //  node2 Term:3 Log:[(Term(1), NoOp), (Term(1), event1), (Term(3), NoOp)] <- 過半数に複製（コミット）
-      // -node3 Term:2 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)]
+      //  * node1 Term:3 Log:[(Term(1), NoOp), (Term(1), event1)]
+      //    node2 Term:3 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)] <- replicated in the majority (committed)
+      //  * node3 Term:2 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)]
       // (4)
-      // *node1 Term:3 Log:[(Term(1), NoOp), (Term(1), event1), (Term(3), NoOp)]
-      //  node2 Term:3 Log:[(Term(1), NoOp), (Term(1), event1), (Term(3), NoOp)]
-      //  node3 Term:3 Log:[(Term(1), NoOp), (Term(1), event1), (Term(3), NoOp)] <- 過半数に複製されていない新しい Term のログが負ける
+      //    node1 Term:3 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)] <- becomes a follower (uncommitted entries will be overwritten)
+      //    node2 Term:3 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)]
+      //  * node3 Term:3 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)]
 
       val replicationId = createSeqShardId()
 
       var nodeMember: RaftTestFSMRef = null
-      // node1 をリーダーにする
+      // make node1 be a leader
       runOn(node1) {
         nodeMember = createRaftActor(
           replicationId,
           new {
-            // リーダーになりやすくするため
+            // to make it be a leader
             override val electionTimeout   = 1.seconds
             override val heartbeatInterval = 0.5.seconds
           } with RaftSettings(config),
@@ -412,7 +412,7 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
         nodeMember = createRaftActor(
           replicationId,
           new {
-            // リーダーになりやすくするため
+            // to make it be a leader
             override val electionTimeout   = 6.seconds
             override val heartbeatInterval = 0.5.seconds
           } with RaftSettings(config),
@@ -428,8 +428,8 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       }
       enterBarrier("a leader is elected")
 
-      // シナリオ (1)
-      // イベントが複製されるのを防ぐ
+      // Scenario (1)
+      // to prevent events are replicated
       isolate(node1)
       runOn(node1) {
         nodeMember ! Replicate("event1", testActor, entityId)
@@ -437,14 +437,21 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       }
       enterBarrier("complete scenario (1)")
 
-      // シナリオ (2)
+      // Scenario (2)
       runOn(node3) {
         // node 1 が孤立するため
         awaitCond(getState(nodeMember).stateName == Leader)
       }
-      enterBarrier("scenario (2): node3 が leader になった")
+      runOn(node2) {
+        awaitCond {
+          getState(nodeMember).stateData.replicatedLog.lastOption.exists { e =>
+            e.term > Term(1) && e.event.event == NoOp
+          }
+        }
+      }
+      enterBarrier("scenario (2): node3 becomes a leader")
 
-      // node 3 にだけ event2 を複製
+      // replicates event2 to only node3
       isolate(node3)
       runOn(node3) {
         nodeMember ! Replicate("event2", testActor, entityId)
@@ -452,37 +459,34 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       }
       enterBarrier("complete scenario (2)")
 
-      // シナリオ (3)
-      // 再び node1 をリーダーに
+      // Scenario (3)
+      // resolves the network isolation in the situation as node1 and node3 are leader together
       releaseIsolation(node1)
-      runOn(node1) {
-        // 強制的に Follower に遷移させて新たな Term を開始する
-        setState(nodeMember, Follower, getState(nodeMember).stateData.initializeFollowerData())
-        awaitCond(getState(nodeMember).stateName == Leader)
-      }
+      releaseIsolation(node3)
 
-      // 過半数に複製（コミット）されるのを待つ
-      runOn(node1) {
+      // waits until the event is replicated to majority
+      runOn(node3) {
         inside(expectMsgType[ReplicationSucceeded]) {
-          case ReplicationSucceeded(event, _) => event should be("event1")
+          case ReplicationSucceeded(event, _) => event should be("event2")
         }
       }
-      runOn(node1, node2) {
+      runOn(node2) {
         awaitCond {
+          // event2 was committed
           val commitIndex = getState(nodeMember).stateData.commitIndex
           getState(nodeMember).stateData.replicatedLog
-            .sliceEntries(LogEntryIndex.initial(), commitIndex).exists(_.event.event == "event1")
+            .sliceEntries(LogEntryIndex.initial(), commitIndex).exists(_.event.event == "event2")
         }
       }
       enterBarrier("complete scenario (3)")
 
-      // シナリオ (4)
-      runOn(node3) {
-        getState(nodeMember).stateData.replicatedLog.entries.map(_.event.event) should contain("event2")
-      }
-      releaseIsolation(node3)
-      runOn(node3) {
-        awaitAssert(getState(nodeMember).stateData.replicatedLog.entries.map(_.event.event) should not contain "event2")
+      // Scenario (4)
+      runOn(node1) {
+        awaitAssert {
+          val replicatedLog = getState(nodeMember).stateData.replicatedLog
+          replicatedLog.entries.map(_.event.event) should contain("event2")
+          replicatedLog.entries.map(_.event.event) should not contain "event1"
+        }
       }
       enterBarrier("complete scenario (4)")
     }

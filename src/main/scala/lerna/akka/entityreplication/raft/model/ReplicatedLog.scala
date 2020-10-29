@@ -10,6 +10,7 @@ object ReplicatedLog {
 case class ReplicatedLog private[model] (
     entries: Seq[LogEntry],
     ancestorLastIndex: LogEntryIndex = LogEntryIndex.initial(),
+    ancestorLastTerm: Term = Term.initial(),
 ) {
   def get(index: LogEntryIndex): Option[LogEntry] = {
     val logCollectionIndex = toSeqIndex(index)
@@ -50,6 +51,8 @@ case class ReplicatedLog private[model] (
 
   def lastLogIndex: LogEntryIndex = lastOption.map(_.index).getOrElse(ancestorLastIndex)
 
+  def lastLogTerm: Term = lastOption.map(_.term).getOrElse(ancestorLastTerm)
+
   def merge(thatEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): ReplicatedLog = {
     val newEntries = this.entries.takeWhile(_.index <= prevLogIndex) ++ thatEntries
     copy(newEntries)
@@ -57,7 +60,7 @@ case class ReplicatedLog private[model] (
 
   def deleteOldEntries(to: LogEntryIndex): ReplicatedLog = {
     val newEntries = entries.dropWhile(_.index <= to)
-    copy(entries = newEntries, ancestorLastIndex = lastLogIndex)
+    copy(entries = newEntries, ancestorLastIndex = lastLogIndex, ancestorLastTerm = lastLogTerm)
   }
 
   private[this] def toSeqIndex(index: LogEntryIndex): Int = {

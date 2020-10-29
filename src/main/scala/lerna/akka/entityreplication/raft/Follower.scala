@@ -39,7 +39,8 @@ trait Follower { this: RaftActor =>
         log.debug(s"=== [Follower] deny $request ===")
         sender() ! RequestVoteDenied(currentData.currentTerm)
 
-      case request: RequestVote if request.lastLogIndex < currentData.replicatedLog.lastLogIndex =>
+      case request: RequestVote
+          if request.lastLogTerm < currentData.replicatedLog.lastLogTerm || request.lastLogIndex < currentData.replicatedLog.lastLogIndex =>
         log.debug(s"=== [Follower] deny $request ===")
         sender() ! RequestVoteDenied(currentData.currentTerm)
 
@@ -117,7 +118,7 @@ trait Follower { this: RaftActor =>
     val newTerm = data.currentTerm.next()
     cancelElectionTimeoutTimer()
     broadcast(
-      RequestVote(shardId, newTerm, selfMemberIndex, data.replicatedLog.lastLogIndex),
+      RequestVote(shardId, newTerm, selfMemberIndex, data.replicatedLog.lastLogIndex, data.replicatedLog.lastLogTerm),
     ) // TODO: 永続化前に broadcast して問題ないか調べる
     applyDomainEvent(BegunNewTerm(newTerm)) { _ =>
       become(Candidate)
