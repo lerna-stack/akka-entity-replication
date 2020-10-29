@@ -28,6 +28,7 @@ object ReplicationActorSpecConfig extends MultiNodeConfig {
       lerna.akka.entityreplication.raft.multi-raft-roles = ["member-1", "member-2", "member-3"]
       // 1 イベントごとに snapshot が取得されるようにする
       lerna.akka.entityreplication.raft.compaction.log-size-threshold = 1
+      lerna.akka.entityreplication.raft.compaction.preserve-log-size = 1
       lerna.akka.entityreplication.raft.compaction.log-size-check-interval = 0.1s
       """))
       .withFallback(ConfigFactory.parseResources("multi-jvm-testing.conf")),
