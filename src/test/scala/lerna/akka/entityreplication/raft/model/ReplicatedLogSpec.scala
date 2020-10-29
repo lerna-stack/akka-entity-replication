@@ -191,8 +191,12 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
       val log = new ReplicatedLog(logEntries)
 
-      log.deleteOldEntries(to = LogEntryIndex(5), preserveLogSize = 0).entries.map(_.index.underlying) should be(Seq())
-      log.deleteOldEntries(to = LogEntryIndex(4), preserveLogSize = 0).entries.map(_.index.underlying) should be(Seq(5))
+      log.deleteOldEntries(to = LogEntryIndex(4), preserveLogSize = 1).entries.map(_.index.underlying) should be(
+        Seq(5),
+      )
+      log.deleteOldEntries(to = LogEntryIndex(3), preserveLogSize = 1).entries.map(_.index.underlying) should be(
+        Seq(4, 5),
+      )
     }
 
     "keep log entries by preserveLogSize when deleting" in {

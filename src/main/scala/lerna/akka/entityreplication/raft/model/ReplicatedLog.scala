@@ -7,11 +7,7 @@ object ReplicatedLog {
   private def apply(entries: Seq[LogEntry]) = new ReplicatedLog(entries)
 }
 
-case class ReplicatedLog private[model] (
-    entries: Seq[LogEntry],
-    ancestorLastIndex: LogEntryIndex = LogEntryIndex.initial(),
-    ancestorLastTerm: Term = Term.initial(),
-) {
+case class ReplicatedLog private[model] (entries: Seq[LogEntry]) {
   def get(index: LogEntryIndex): Option[LogEntry] = {
     val logCollectionIndex = toSeqIndex(index)
     if (entries.size > logCollectionIndex && logCollectionIndex >= 0) Some(entries(logCollectionIndex))
@@ -37,7 +33,7 @@ case class ReplicatedLog private[model] (
   def nonEmpty: Boolean = entries.nonEmpty
 
   def append(event: EntityEvent, term: Term): ReplicatedLog = {
-    val entryIndex = lastIndexOption.getOrElse(ancestorLastIndex).next()
+    val entryIndex = lastLogIndex.next()
     copy(entries :+ LogEntry(entryIndex, event, term))
   }
 
@@ -49,9 +45,9 @@ case class ReplicatedLog private[model] (
 
   def lastOption: Option[LogEntry] = entries.lastOption
 
-  def lastLogIndex: LogEntryIndex = lastOption.map(_.index).getOrElse(ancestorLastIndex)
+  def lastLogIndex: LogEntryIndex = lastOption.map(_.index).getOrElse(LogEntryIndex.initial())
 
-  def lastLogTerm: Term = lastOption.map(_.term).getOrElse(ancestorLastTerm)
+  def lastLogTerm: Term = lastOption.map(_.term).getOrElse(Term.initial())
 
   def merge(thatEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): ReplicatedLog = {
     val newEntries = this.entries.takeWhile(_.index <= prevLogIndex) ++ thatEntries
@@ -59,17 +55,18 @@ case class ReplicatedLog private[model] (
   }
 
   def deleteOldEntries(to: LogEntryIndex, preserveLogSize: Int): ReplicatedLog = {
+    require(
+      preserveLogSize > 0,
+      s"preserveLogSize ($preserveLogSize) must be greater than 0 because ReplicatedLog must keep at least one log entry after add an entry",
+    )
     val toLogIndex        = toSeqIndex(to.next())
     val preservedLogIndex = if (entries.size > preserveLogSize) entries.size - preserveLogSize else 0
     val from              = Math.min(toLogIndex, preservedLogIndex)
-    val newEntries        = entries.slice(from, entries.size)
-    val headEntryOption   = newEntries.headOption
-    val headLogIndex      = headEntryOption.map(_.index.prev()).getOrElse(ancestorLastIndex)
-    val headLogTerm       = headEntryOption.map(_.term.prev()).getOrElse(ancestorLastTerm)
-    copy(entries = newEntries, ancestorLastIndex = headLogIndex, ancestorLastTerm = headLogTerm)
+    copy(entries = entries.slice(from, entries.size))
   }
 
   private[this] def toSeqIndex(index: LogEntryIndex): Int = {
+    val ancestorLastIndex = headIndexOption.map(_.prev()).getOrElse(LogEntryIndex.initial())
     index.underlying - ancestorLastIndex.underlying - 1
   }
 }
