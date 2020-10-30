@@ -202,7 +202,7 @@ class RaftActor(
       case SnapshottingStarted(logEntryIndex, entityIds) =>
         currentData.startSnapshotting(logEntryIndex, entityIds)
       case EntitySnapshotSaved(metadata) =>
-        currentData.recordSavedSnapshot(metadata)(onComplete = () => {
+        currentData.recordSavedSnapshot(metadata, settings.compactionPreserveLogSize)(onComplete = () => {
           // 失敗する可能性があることに注意
           saveSnapshot(currentData.persistentState)
         })

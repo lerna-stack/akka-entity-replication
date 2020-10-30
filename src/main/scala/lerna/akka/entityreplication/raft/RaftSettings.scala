@@ -64,6 +64,13 @@ class RaftSettings(root: Config) {
     s"log-size-threshold ($compactionLogSizeThreshold) should be larger than 0",
   )
 
+  val compactionPreserveLogSize: Int = config.getInt("compaction.preserve-log-size")
+
+  require(
+    0 < compactionPreserveLogSize,
+    s"preserve-log-size ($compactionPreserveLogSize) should be larger than 0",
+  )
+
   val compactionLogSizeCheckInterval: FiniteDuration = config.getDuration("compaction.log-size-check-interval").asScala
 
   def randomizedCompactionLogSizeCheckInterval(): FiniteDuration = randomized(compactionLogSizeCheckInterval)

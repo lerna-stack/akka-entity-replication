@@ -276,7 +276,9 @@ trait RaftMemberData
     updateVolatileState(snapshottingStatus = SnapshottingStatus(logEntryIndex, entityIds))
   }
 
-  def recordSavedSnapshot(snapshotMetadata: EntitySnapshotMetadata)(onComplete: () => Unit): RaftMemberData = {
+  def recordSavedSnapshot(snapshotMetadata: EntitySnapshotMetadata, preserveLogSize: Int)(
+      onComplete: () => Unit,
+  ): RaftMemberData = {
     if (snapshottingStatus.isInProgress && snapshottingStatus.snapshotLastLogIndex == snapshotMetadata.logEntryIndex) {
       val newStatus =
         snapshottingStatus.recordSnapshottingComplete(snapshotMetadata.logEntryIndex, snapshotMetadata.entityId)
@@ -284,7 +286,7 @@ trait RaftMemberData
         onComplete()
         updateVolatileState(snapshottingStatus = newStatus)
           .updatePersistentState(replicatedLog =
-            replicatedLog.deleteOldEntries(snapshottingStatus.snapshotLastLogIndex),
+            replicatedLog.deleteOldEntries(snapshottingStatus.snapshotLastLogIndex, preserveLogSize),
           )
       } else {
         updateVolatileState(snapshottingStatus = newStatus)

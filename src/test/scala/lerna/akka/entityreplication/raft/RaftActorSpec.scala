@@ -23,6 +23,7 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
                      |   election-timeout = 99999s
                      |   # ログの長さが 3 を超えている場合は snapshot をとる
                      |   compaction.log-size-threshold = 3
+                     |   compaction.preserve-log-size = 1
                      |   compaction.log-size-check-interval = 1s
                      | }
                      |""".stripMargin).withFallback(ConfigFactory.load())
