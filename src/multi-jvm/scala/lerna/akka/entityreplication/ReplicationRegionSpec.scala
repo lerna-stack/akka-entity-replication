@@ -419,7 +419,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
         enterBarrier("message sent")
 
         runOn(node4, node5, node6) {
-          val msgs = raftActorProbe.receiveWhile(max = 1.seconds, messages = 1) {
+          val msgs = raftActorProbe.receiveWhile(max = 5.seconds, messages = 1) {
             case Command(msg: CheckRouting) => msg
           }
           controllerTestActor ! ReceivedMessages(msgs, myself, memberIndexes(myself))
@@ -453,7 +453,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
           }
         }
         runOn(node4, node5, node6) {
-          val msgs = raftActorProbe.receiveWhile(max = 1.seconds, messages = 3) {
+          val msgs = raftActorProbe.receiveWhile(max = 5.seconds, messages = 3) {
             case Command(msg: CheckRouting) => msg
           }
           controllerTestActor ! ReceivedMessages(msgs, myself, memberIndexes(myself))
@@ -487,7 +487,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
           }
         }
         runOn(node4, node5, node6) {
-          val msgs = raftActorProbe.receiveWhile(max = 1.seconds, messages = 2) {
+          val msgs = raftActorProbe.receiveWhile(max = 5.seconds, messages = 2) {
             case Command(msg: CheckRouting) => msg
           }
           controllerTestActor ! ReceivedMessages(msgs, myself, memberIndexes(myself))
@@ -508,7 +508,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
           }
         }
         runOn(node4, node5, node6, node7) {
-          val msgs = raftActorProbe.receiveWhile(max = 1.seconds, messages = 2) {
+          val msgs = raftActorProbe.receiveWhile(max = 5.seconds, messages = 2) {
             case Command(msg: CheckRouting) => msg
           }
           controllerTestActor ! ReceivedMessages(msgs, myself, memberIndexes(myself))
