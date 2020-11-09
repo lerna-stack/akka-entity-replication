@@ -492,7 +492,7 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       enterBarrier("complete scenario (4)")
     }
 
-    "メンバー全てがシャットダウンしても再作成すると状態が復元する" in {
+    "メンバー全てがシャットダウンしても再作成すると状態が復元する" ignore { // FIXME: シャットダウンしたのとは別のノードでクラスターを構成する必要がある
       val replicationId = createSeqShardId()
 
       var raftMember: RaftTestFSMRef = null
