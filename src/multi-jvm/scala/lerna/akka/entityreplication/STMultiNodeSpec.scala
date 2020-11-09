@@ -3,14 +3,16 @@ package lerna.akka.entityreplication
 import akka.Done
 import akka.actor.{ Actor, ActorRef, Identify, Props, Terminated }
 import akka.cluster.Cluster
-import akka.cluster.ClusterEvent.{ CurrentClusterState, MemberUp }
+import akka.cluster.ClusterEvent.{ CurrentClusterState, MemberRemoved, MemberUp }
 import akka.pattern.ask
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.{ MultiNodeSpec, MultiNodeSpecCallbacks }
 import akka.remote.transport.ThrottlerTransportAdapter.Direction
-import akka.testkit.{ DefaultTimeout, ImplicitSender }
+import akka.testkit.{ DefaultTimeout, ImplicitSender, TestProbe }
 import lerna.akka.entityreplication.STMultiNodeSpec.TestActorAutoKillManager
 import org.scalatest.{ BeforeAndAfterAll, BeforeAndAfterEach, Matchers, WordSpecLike }
+
+import scala.concurrent.duration._
 
 object STMultiNodeSpec {
 
@@ -96,11 +98,14 @@ trait STMultiNodeSpec
     super.afterEach()
   }
 
-  def isolate(roleName: RoleName): Unit = {
+  def isolate(roleName: RoleName, excludes: Set[RoleName] = Set()): Unit = {
     enterBarrier(s"isolate $roleName")
     runOn(roles.head) {
       println(s"=== isolate $roleName ===")
-      roles.filterNot(_ == roleName).foreach(testConductor.blackhole(roleName, _, Direction.Both).await)
+      roles
+        .filterNot(r => r == roleName || excludes.contains(r)).foreach(
+          testConductor.blackhole(roleName, _, Direction.Both).await,
+        )
     }
     enterBarrier(s"$roleName isolation complete")
   }
@@ -112,6 +117,18 @@ trait STMultiNodeSpec
       roles.filterNot(_ == roleName).foreach(testConductor.passThrough(roleName, _, Direction.Both).await)
     }
     enterBarrier(s"$roleName release isolation complete")
+  }
+
+  val cluster: Cluster = Cluster(system)
+
+  private[this] var _activeNodes: Seq[RoleName] = Seq()
+
+  private[this] var leftNodes: Seq[RoleName] = Seq()
+
+  private[this] val clusterEventSubscriber = {
+    val probe = TestProbe()
+    cluster.subscribe(probe.ref, classOf[MemberUp], classOf[MemberRemoved])
+    probe
   }
 
   def awaitClusterUp(): Unit = {
@@ -126,5 +143,34 @@ trait STMultiNodeSpec
 
     Cluster(system).unsubscribe(testActor)
     enterBarrier("started up cluster members")
+  }
+
+  def joinCluster(nodes: RoleName*): Unit = {
+    val alreadyLeftNodes = leftNodes.intersect(nodes)
+    require(alreadyLeftNodes.isEmpty, s"$alreadyLeftNodes already left. They can't join cluster again.")
+
+    runOn(nodes: _*) {
+      val seedNode = node(_activeNodes.headOption.getOrElse(roles.head))
+      cluster.join(seedNode.address)
+      clusterEventSubscriber.fishForSpecificMessage(max = 60.seconds) {
+        case up: MemberUp if up.member.address == myAddress => Done
+      }
+    }
+    enterBarrier("new cluster member joined")
+    _activeNodes ++= nodes
+  }
+
+  def leaveCluster(nodes: RoleName*): Unit = {
+    runOn(nodes: _*) {
+      val address = myAddress
+      cluster.leave(address)
+      clusterEventSubscriber.fishForSpecificMessage(max = 60.seconds) {
+        case removed: MemberRemoved if removed.member.address == address =>
+          Done
+      }
+    }
+    enterBarrier("cluster member left")
+    _activeNodes = _activeNodes.filterNot(nodes.contains)
+    leftNodes ++= nodes
   }
 }

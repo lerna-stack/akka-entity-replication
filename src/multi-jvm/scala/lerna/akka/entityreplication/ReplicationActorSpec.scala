@@ -213,7 +213,7 @@ class ReplicationActorSpecMultiJvmNode3 extends ReplicationActorSpec
 
 class ReplicationActorSpec extends MultiNodeSpec(ReplicationActorSpecConfig) with STMultiNodeSpec {
   import ReplicationActorSpec._
-  import ReplicationRegionSpecConfig._
+  import ReplicationActorSpecConfig._
 
   "ReplicationActor" should {
 

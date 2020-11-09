@@ -3,7 +3,6 @@ package lerna.akka.entityreplication
 import java.util.concurrent.atomic.AtomicInteger
 
 import akka.actor.{ Actor, ActorRef, Props }
-import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.{ InitialStateAsEvents, MemberUp }
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import com.typesafe.config.ConfigFactory
@@ -18,9 +17,10 @@ import org.scalatest.Inside.inside
 import scala.concurrent.duration._
 
 object RaftActorSpecConfig extends MultiNodeConfig {
-  val node1 = role("node1")
-  val node2 = role("node2")
-  val node3 = role("node3")
+  val controller = role("controller")
+  val node1      = role("node1")
+  val node2      = role("node2")
+  val node3      = role("node3")
 
   testTransport(true)
 
@@ -44,16 +44,15 @@ object RaftActorSpecConfig extends MultiNodeConfig {
   """))
 }
 
-class RaftActorSpecMultiJvmNode1 extends RaftActorSpec
-class RaftActorSpecMultiJvmNode2 extends RaftActorSpec
-class RaftActorSpecMultiJvmNode3 extends RaftActorSpec
+class RaftActorSpecMultiJvmController extends RaftActorSpec
+class RaftActorSpecMultiJvmNode1      extends RaftActorSpec
+class RaftActorSpecMultiJvmNode2      extends RaftActorSpec
+class RaftActorSpecMultiJvmNode3      extends RaftActorSpec
 
 class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeSpec {
 
   import RaftActor._
   import RaftActorSpecConfig._
-
-  private[this] val cluster = Cluster(system)
 
   private[this] val config = system.settings.config
   private[this] val defaultRaftSettings = new {
@@ -432,7 +431,7 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
 
       // Scenario (1)
       // to prevent events are replicated
-      isolate(node1)
+      isolate(node1, excludes = Set(controller))
       runOn(node1) {
         nodeMember ! Replicate("event1", testActor, entityId)
         awaitCond(getState(nodeMember).stateData.replicatedLog.entries.exists(_.event.event == "event1"))
@@ -454,7 +453,7 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       enterBarrier("scenario (2): node3 becomes a leader")
 
       // replicates event2 to only node3
-      isolate(node3)
+      isolate(node3, excludes = Set(controller))
       runOn(node3) {
         nodeMember ! Replicate("event2", testActor, entityId)
         awaitCond(getState(nodeMember).stateData.replicatedLog.entries.exists(_.event.event == "event2"))
