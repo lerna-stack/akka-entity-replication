@@ -57,6 +57,7 @@ object STMultiNodeSpec {
   */
 trait STMultiNodeSpec
     extends MultiNodeSpecCallbacks
+    with PersistencePluginProxySupport
     with WordSpecLike
     with Matchers
     with BeforeAndAfterAll
