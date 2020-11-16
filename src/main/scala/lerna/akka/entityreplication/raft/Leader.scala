@@ -74,16 +74,28 @@ trait Leader { this: RaftActor =>
         if (currentData.hasMatchLogEntry(appendEntries.prevLogIndex, appendEntries.prevLogTerm)) {
           cancelHeartbeatTimeoutTimer()
           log.debug(s"=== [Leader] append $appendEntries ===")
-          applyDomainEvent(AppendedEntries(appendEntries.term, appendEntries.entries, appendEntries.prevLogIndex)) {
-            domainEvent =>
-              applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
-                sender() ! AppendEntriesSucceeded(
-                  domainEvent.term,
-                  currentData.replicatedLog.lastLogIndex,
-                  selfMemberIndex,
-                )
-                become(Follower)
-              }
+          if (appendEntries.entries.isEmpty && appendEntries.term == currentData.currentTerm) {
+            // do not persist event when no need
+            applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
+              sender() ! AppendEntriesSucceeded(
+                appendEntries.term,
+                currentData.replicatedLog.lastLogIndex,
+                selfMemberIndex,
+              )
+              become(Follower)
+            }
+          } else {
+            applyDomainEvent(AppendedEntries(appendEntries.term, appendEntries.entries, appendEntries.prevLogIndex)) {
+              domainEvent =>
+                applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
+                  sender() ! AppendEntriesSucceeded(
+                    domainEvent.term,
+                    currentData.replicatedLog.lastLogIndex,
+                    selfMemberIndex,
+                  )
+                  become(Follower)
+                }
+            }
           }
         } else { // prevLogIndex と prevLogTerm がマッチするエントリが無かった
           log.debug(s"=== [Leader] could not append $appendEntries ===")
