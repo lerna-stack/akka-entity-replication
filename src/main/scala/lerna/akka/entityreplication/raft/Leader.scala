@@ -146,6 +146,8 @@ trait Leader { this: RaftActor =>
         applyDomainEvent(DetectedNewTerm(failed.term)) { _ =>
           become(Follower)
         }
+
+      case failed: AppendEntriesFailed if failed.term.isOlderThan(currentData.currentTerm) => // ignore
     }
 
   private[this] def handleCommand(req: Command): Unit =
