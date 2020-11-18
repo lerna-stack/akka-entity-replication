@@ -2,7 +2,7 @@ package lerna.akka.entityreplication.raft.snapshot
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import akka.actor.{ ActorRef, ActorSystem }
+import akka.actor.{ ActorRef, ActorSystem, PoisonPill }
 import akka.testkit.TestKit
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
@@ -31,7 +31,7 @@ class ShardSnapshotStoreSuccessSpec extends TestKit(ActorSystem()) with ActorSpe
       expectMsg(SaveSnapshotSuccess(metadata))
     }
 
-    "FetchSnapshot に成功した場合は SnapshotFound でスナップショットが返信される" in {
+    "FetchSnapshot に成功した場合は一度停止しても SnapshotFound でスナップショットが返信される" in {
       val entityId      = generateUniqueEntityId()
       val snapshotStore = createShardSnapshotStore()
       val metadata      = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
@@ -40,7 +40,14 @@ class ShardSnapshotStoreSuccessSpec extends TestKit(ActorSystem()) with ActorSpe
       snapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
       expectMsg(SaveSnapshotSuccess(metadata))
 
-      snapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
+      // terminate SnapshotStore
+      snapshotStore ! PoisonPill
+      watch(snapshotStore)
+      expectTerminated(snapshotStore)
+
+      val newSnapshotStore = createShardSnapshotStore()
+
+      newSnapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
       expectMsg(SnapshotFound(snapshot))
     }
 

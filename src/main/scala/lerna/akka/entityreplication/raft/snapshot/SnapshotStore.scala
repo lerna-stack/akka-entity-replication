@@ -2,7 +2,7 @@ package lerna.akka.entityreplication.raft.snapshot
 
 import akka.actor.{ ActorLogging, ActorRef, Props, ReceiveTimeout }
 import akka.persistence
-import akka.persistence.PersistentActor
+import akka.persistence.{ PersistentActor, Recovery, SnapshotSelectionCriteria }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.RaftSettings
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -36,6 +36,9 @@ class SnapshotStore(
   override def snapshotPluginId: String = settings.snapshotStorePluginId
 
   context.setReceiveTimeout(settings.compactionSnapshotCacheTimeToLive)
+
+  override def recovery: Recovery =
+    Recovery(toSequenceNr = 0L, fromSnapshot = SnapshotSelectionCriteria.Latest)
 
   override def receiveRecover: Receive = {
     case akka.persistence.SnapshotOffer(_, s: EntitySnapshot) =>
@@ -84,7 +87,8 @@ class SnapshotStore(
     case _: persistence.SaveSnapshotSuccess =>
       replyTo ! SaveSnapshotSuccess(snapshot.metadata)
       context.become(hasSnapshot(snapshot))
-    case _: persistence.SaveSnapshotFailure =>
+    case failure: persistence.SaveSnapshotFailure =>
+      log.warning("Saving snapshot failed - {}: {}", failure.cause.getClass.getCanonicalName, failure.cause.getMessage)
       replyTo ! SaveSnapshotFailure(snapshot.metadata)
   }
 
