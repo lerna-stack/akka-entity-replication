@@ -37,6 +37,15 @@ trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash wit
 
   override def aroundPreStart(): Unit = {
     super.aroundPreStart()
+    requestRecovery()
+  }
+
+  override def aroundPreRestart(reason: Throwable, message: Option[Any]): Unit = {
+    super.aroundPreRestart(reason, message)
+    requestRecovery()
+  }
+
+  private[this] def requestRecovery(): Unit = {
     context.parent ! RequestRecovery(NormalizedEntityId.of(self.path))
   }
 
