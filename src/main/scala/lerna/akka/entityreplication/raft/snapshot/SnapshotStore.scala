@@ -87,7 +87,8 @@ class SnapshotStore(
     case _: persistence.SaveSnapshotSuccess =>
       replyTo ! SaveSnapshotSuccess(snapshot.metadata)
       context.become(hasSnapshot(snapshot))
-    case _: persistence.SaveSnapshotFailure =>
+    case failure: persistence.SaveSnapshotFailure =>
+      log.warning("Saving snapshot failed - {}: {}", failure.cause.getClass.getCanonicalName, failure.cause.getMessage)
       replyTo ! SaveSnapshotFailure(snapshot.metadata)
   }
 
