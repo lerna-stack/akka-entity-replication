@@ -132,7 +132,7 @@ class ReplicationRegion(
       ClusterSharding(context.system).start(
         typeName = s"raft-shard-$typeName-${memberIndex.role}",
         entityProps = createRaftActorProps(),
-        settings = ClusterShardingSettings(context.system)
+        settings = ClusterShardingSettings(settings.raftSettings.clusterShardingConfig)
           .withRole(memberIndex.role),
         messageExtractor = new HashCodeMessageExtractor(maxNumberOfShards = 50) {
           override def entityId(message: Any): String = extractNormalizedShardIdInternal(message).raw
