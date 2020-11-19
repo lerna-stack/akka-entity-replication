@@ -122,10 +122,7 @@ trait Leader { this: RaftActor =>
   private[this] def receiveAppendEntriesResponse(res: AppendEntriesResponse): Unit =
     res match {
 
-      case succeeded: AppendEntriesSucceeded if succeeded.term.isNewerThan(currentData.currentTerm) =>
-        unhandled(succeeded) // TODO: 不具合の可能性が高いのでエラーとして報告
-
-      case succeeded: AppendEntriesSucceeded =>
+      case succeeded: AppendEntriesSucceeded if succeeded.term == currentData.currentTerm =>
         val follower = succeeded.sender
         applyDomainEvent(SucceededAppendEntries(follower, succeeded.lastLogIndex)) { _ =>
           val newCommitIndex = currentData.findReplicatedLastLogIndex(numberOfMembers, succeeded.lastLogIndex)
@@ -135,6 +132,12 @@ trait Leader { this: RaftActor =>
             }
           }
         }
+
+      case succeeded: AppendEntriesSucceeded if succeeded.term.isNewerThan(currentData.currentTerm) =>
+        log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
+
+      case succeeded: AppendEntriesSucceeded if succeeded.term.isOlderThan(currentData.currentTerm) =>
+      // ignore: Follower always synchronizes Term before replying, so it does not happen normally
 
       case failed: AppendEntriesFailed if failed.term == currentData.currentTerm =>
         applyDomainEvent(DeniedAppendEntries(failed.sender)) { _ =>
