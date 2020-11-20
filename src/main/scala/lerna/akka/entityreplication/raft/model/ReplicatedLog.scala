@@ -14,7 +14,7 @@ case class ReplicatedLog private[model] (entries: Seq[LogEntry]) {
     else None
   }
 
-  def getAllFrom(nextIndex: LogEntryIndex, maxCount: Int): Seq[LogEntry] =
+  def getFrom(nextIndex: LogEntryIndex, maxCount: Int): Seq[LogEntry] =
     sliceEntries(from = nextIndex, nextIndex.plus(maxCount - 1))
 
   def sliceEntriesFromHead(to: LogEntryIndex): Seq[LogEntry] = {
