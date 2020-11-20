@@ -14,6 +14,8 @@ case class LogEntryIndex(underlying: Int) extends Ordered[LogEntryIndex] {
 
   def next(): LogEntryIndex = copy(underlying + 1)
 
+  def plus(count: Int): LogEntryIndex = copy(underlying + count)
+
   def prev(): LogEntryIndex =
     if (underlying > 0) copy(underlying - 1)
     else LogEntryIndex.initial()
