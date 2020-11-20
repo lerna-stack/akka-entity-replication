@@ -25,7 +25,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       log.get(LogEntryIndex(6)).map(_.index) should be(None)
     }
 
-    "getAllFrom(LogEntryIndex)で指定より新しいログを取得できる" in {
+    "return all logEntries by getAllFrom(LogEntryIndex, maxCount) when maxCount is greater value than count of logEntries" in {
       val logEntries = Seq(
         LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),
         LogEntry(LogEntryIndex(2), EntityEvent(None, "b"), Term(1)),
@@ -35,11 +35,28 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       )
 
       val target   = LogEntryIndex(4)
-      val expected = Seq(4, 5) // 4(を含み)より新しいのは 4,5
+      val expected = Seq(4, 5) // entries from LogEntryIndex(4) to last
 
       val log = new ReplicatedLog(logEntries)
 
-      log.getAllFrom(target).map(_.index.underlying) should be(expected)
+      log.getAllFrom(target, maxCount = 10).map(_.index.underlying) should be(expected)
+    }
+
+    "return part of logEntries by getAllFrom(LogEntryIndex, maxCount) when maxCount is lower value than count of logEntries" in {
+      val logEntries = Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, "b"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, "c"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, "d"), Term(1)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, "e"), Term(1)),
+      )
+
+      val target   = LogEntryIndex(3)
+      val expected = Seq(3, 4) // 2 entries from LogEntryIndex(3)
+
+      val log = new ReplicatedLog(logEntries)
+
+      log.getAllFrom(target, maxCount = 2).map(_.index.underlying) should be(expected)
     }
 
     "sliceEntries(from, to)でログを切り出せる" in {
