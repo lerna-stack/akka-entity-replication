@@ -194,7 +194,7 @@ trait Leader { this: RaftActor =>
       val nextIndex    = currentData.nextIndexFor(memberIndex)
       val prevLogIndex = nextIndex.prev()
       val prevLogTerm  = currentData.replicatedLog.get(prevLogIndex).map(_.term).getOrElse(Term.initial())
-      val entries      = currentData.replicatedLog.getAllFrom(nextIndex)
+      val entries      = currentData.replicatedLog.getAllFrom(nextIndex, settings.maxAppendEntriesSize)
       val message = AppendEntries(
         shardId,
         currentData.currentTerm,

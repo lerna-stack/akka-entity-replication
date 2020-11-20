@@ -14,8 +14,8 @@ case class ReplicatedLog private[model] (entries: Seq[LogEntry]) {
     else None
   }
 
-  def getAllFrom(nextIndex: LogEntryIndex): Seq[LogEntry] =
-    entries.takeRight(entries.size - toSeqIndex(nextIndex))
+  def getAllFrom(nextIndex: LogEntryIndex, maxCount: Int): Seq[LogEntry] =
+    sliceEntries(from = nextIndex, nextIndex.plus(maxCount - 1))
 
   def sliceEntriesFromHead(to: LogEntryIndex): Seq[LogEntry] = {
     headIndexOption match {

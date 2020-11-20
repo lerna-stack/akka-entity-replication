@@ -54,6 +54,8 @@ class RaftSettings(root: Config) {
 
   val quorumSize: Int = (replicationFactor / 2) + 1
 
+  val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
+
   val compactionSnapshotCacheTimeToLive: FiniteDuration =
     config.getDuration("compaction.snapshot-cache-time-to-live").asScala
 
