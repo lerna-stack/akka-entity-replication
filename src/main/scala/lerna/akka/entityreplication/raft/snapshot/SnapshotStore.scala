@@ -37,8 +37,12 @@ class SnapshotStore(
 
   context.setReceiveTimeout(settings.compactionSnapshotCacheTimeToLive)
 
+  // SequenceNr is always 0 because SnapshotStore doesn't persist events (only persist snapshots).
   override def recovery: Recovery =
-    Recovery(toSequenceNr = 0L, fromSnapshot = SnapshotSelectionCriteria.Latest)
+    Recovery(
+      toSequenceNr = 0L,
+      fromSnapshot = SnapshotSelectionCriteria(maxSequenceNr = 0L, maxTimestamp = Long.MaxValue),
+    )
 
   override def receiveRecover: Receive = {
     case akka.persistence.SnapshotOffer(_, s: EntitySnapshot) =>
