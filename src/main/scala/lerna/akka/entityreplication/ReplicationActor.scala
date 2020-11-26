@@ -50,6 +50,7 @@ trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash wit
         case RecoveryTimeout =>
           // to restart
           // TODO: BackoffSupervisor を使ってカスケード障害を回避する
+          log.info("Entity (name: {}) recovering timed out. It will be retried later.", self.path.name)
           throw EntityRecoveryTimeoutException(self.path)
 
         case RecoveryState(logEntries, maybeSnapshot) =>
