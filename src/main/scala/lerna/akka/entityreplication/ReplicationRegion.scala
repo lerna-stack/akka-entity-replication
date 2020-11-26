@@ -247,7 +247,7 @@ class ReplicationRegion(
     val availableRegions = regions.filter { case (_, members) => members.nonEmpty }
     stickyRoutingRouter =
       stickyRoutingRouter.withRoutees(availableRegions.keys.map(i => ActorRefRoutee(shardingRouters(i))).toVector)
-    log.debug("=== available members changed {} ===", availableRegions)
+    log.info("Available cluster members changed: {}", availableRegions)
     // 一度 open になったら、その後は転送先のメンバーを増減させるだけ
     // 想定以上にメッセージが遅延して到着することを避けるため、メンバーが不足していたとしてもメッセージを stash しない
     if (availableRegions.size >= settings.raftSettings.quorumSize) {

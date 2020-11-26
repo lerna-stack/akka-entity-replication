@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.util
 
 import akka.actor.{ ActorRef, ActorSystem }
+import akka.event.Logging
 import akka.pattern.ask
 import akka.util.Timeout
 
@@ -13,6 +14,8 @@ object AtLeastOnceComplete {
       message: Any,
       retryInterval: FiniteDuration,
   )(implicit system: ActorSystem, timeout: Timeout): Future[Any] = {
+
+    val logging = Logging(system, this.getClass)
 
     import system.dispatcher
     val promise = Promise[Any]()
@@ -28,6 +31,12 @@ object AtLeastOnceComplete {
       initialDelay = retryInterval,
       interval = retryInterval,
     ) { () =>
+      logging.debug(
+        "Destination {} did not reply to a message in {}. Retrying to send the message [{}].",
+        destination,
+        retryInterval,
+        message,
+      )
       send()
     }
 
