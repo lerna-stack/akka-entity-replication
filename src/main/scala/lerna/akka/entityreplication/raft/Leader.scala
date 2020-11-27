@@ -68,7 +68,7 @@ trait Leader { this: RaftActor =>
   private[this] def receiveAppendEntries(res: AppendEntries): Unit =
     res match {
 
-      case appendEntries: AppendEntries if appendEntries.leader == self => // ignore
+      case appendEntries: AppendEntries if appendEntries.leader == selfMemberIndex => // ignore
 
       case appendEntries: AppendEntries if appendEntries.term.isNewerThan(currentData.currentTerm) =>
         if (currentData.hasMatchLogEntry(appendEntries.prevLogIndex, appendEntries.prevLogTerm)) {
