@@ -159,6 +159,12 @@ class RaftActor(
       case BecameCandidate() =>
         currentData.initializeCandidateData()
       case BecameLeader() =>
+        log.info(
+          "[Leader] New leader was elected (term: {}, lastLogTerm: {}, lastLogIndex: {})",
+          currentData.currentTerm,
+          currentData.replicatedLog.lastLogTerm,
+          currentData.replicatedLog.lastLogIndex,
+        )
         currentData.initializeLeaderData()
       case DetectedLeaderMember(leaderMember) =>
         currentData.detectLeaderMember(leaderMember)
