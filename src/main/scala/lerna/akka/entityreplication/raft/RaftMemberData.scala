@@ -78,13 +78,19 @@ trait FollowerData { self: RaftMemberData =>
   }
 
   def followLeaderCommit(leaderCommit: LogEntryIndex): RaftMemberData = {
-    require(leaderCommit >= commitIndex, s"should be leaderCommit:$leaderCommit >= commitIndex:$commitIndex")
-    import LogEntryIndex.min
-    val newCommitIndex = replicatedLog.lastIndexOption
-      .map { lastIndex =>
-        if (leaderCommit > commitIndex) min(leaderCommit, lastIndex) else commitIndex
-      }.getOrElse(commitIndex)
-    updateVolatileState(commitIndex = newCommitIndex)
+    if (leaderCommit >= commitIndex) {
+      import LogEntryIndex.min
+      val newCommitIndex = replicatedLog.lastIndexOption
+        .map { lastIndex =>
+          if (leaderCommit > commitIndex) min(leaderCommit, lastIndex) else commitIndex
+        }.getOrElse(commitIndex)
+      updateVolatileState(commitIndex = newCommitIndex)
+    } else {
+      // If a new leader is elected even if the leader is alive,
+      // leaderCommit is less than commitIndex when the old leader didn't tell the follower the new commitIndex.
+      // Do not back commitIndex because there is a risk of applying the event to Entity in duplicate.
+      this
+    }
   }
 
   protected def updateFollowerVolatileState(leaderMember: Option[MemberIndex] = leaderMember): RaftMemberData

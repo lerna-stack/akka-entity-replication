@@ -215,6 +215,44 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       getState(leader).stateData.commitIndex should be(leaderCommit)
     }
 
+    "keep commitIndex even if leaderCommit is less than commitIndex" in {
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+      )
+      val newLeaderMemberIndex = createUniqueMemberIndex()
+      val term1                = Term(1)
+      val term2                = Term(2)
+      val index1               = LogEntryIndex(1)
+      val index2               = LogEntryIndex(2)
+      val index3               = LogEntryIndex(3)
+      val term1LogEntries = Seq(
+        LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
+        LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
+      )
+      val log        = ReplicatedLog().merge(term1LogEntries, LogEntryIndex.initial())
+      val leaderData = createLeaderData(term1, log, commitIndex = index2)
+      setState(leader, Leader, leaderData)
+      // index2 already committed but new Leader doesn't know that
+
+      // new Leader elected
+      val term2LogEntries = Seq(
+        LogEntry(index3, EntityEvent(None, NoOp), term2),
+      )
+      leader ! createAppendEntries(
+        shardId,
+        term = term2,
+        newLeaderMemberIndex,
+        prevLogIndex = index2,
+        prevLogTerm = term1,
+        term2LogEntries,
+        leaderCommit = index1,
+      )
+      expectMsg(AppendEntriesSucceeded(term2, index3, leaderMemberIndex))
+
+      getState(leader).stateData.commitIndex should be(index2)
+    }
+
     "RequestVote の Term が新しくてもログが古い場合は否認する" in {
       val leader    = createRaftActor()
       val term1     = Term.initial()
