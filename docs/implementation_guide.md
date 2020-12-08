@@ -159,11 +159,6 @@ On the command side, there are the following settings.
 ```hocon
 lerna.akka.entityreplication {
 
-    // TODO: consider a better default value
-    // Time to interrupt replication for events that are taking too long
-    // ** This default value may not be appropriate **
-    replication-timeout = 3000 ms
-
     // How long wait before giving up entity recovery.
     // Entity recovery requires a snapshot, and failure fetching it will cause this timeout.
     // If timed out, entity recovery will be retried.
