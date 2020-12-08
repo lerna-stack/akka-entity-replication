@@ -1,6 +1,5 @@
 package lerna.akka.entityreplication.raft
 
-import akka.actor.ActorRef
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -120,7 +119,7 @@ trait CandidateData { self: RaftMemberData =>
 trait LeaderData { self: RaftMemberData =>
   def nextIndex: Option[NextIndex]
   def matchIndex: MatchIndex
-  def clients: Map[LogEntryIndex, ActorRef]
+  def clients: Map[LogEntryIndex, ClientContext]
 
   private[this] def getNextIndex: NextIndex =
     nextIndex.getOrElse(throw new IllegalStateException("nextIndex does not initialized"))
@@ -136,7 +135,7 @@ trait LeaderData { self: RaftMemberData =>
     updatePersistentState(replicatedLog = replicatedLog.append(event, currentTerm))
   }
 
-  def registerClient(client: ActorRef, logEntryIndex: LogEntryIndex): RaftMemberData = {
+  def registerClient(client: ClientContext, logEntryIndex: LogEntryIndex): RaftMemberData = {
     updateLeaderVolatileState(clients = clients + (logEntryIndex -> client))
   }
 
@@ -181,7 +180,7 @@ trait LeaderData { self: RaftMemberData =>
     updateVolatileState(commitIndex = logEntryIndex)
   }
 
-  def handleCommittedLogEntriesAndClients(handler: Seq[(LogEntry, Option[ActorRef])] => Unit): RaftMemberData = {
+  def handleCommittedLogEntriesAndClients(handler: Seq[(LogEntry, Option[ClientContext])] => Unit): RaftMemberData = {
     val applicableLogEntries = selectApplicableLogEntries
     handler(applicableLogEntries.map(e => (e, clients.get(e.index))))
     updateVolatileState(lastApplied = applicableLogEntries.lastOption.map(_.index).getOrElse(lastApplied))
@@ -191,7 +190,7 @@ trait LeaderData { self: RaftMemberData =>
   protected def updateLeaderVolatileState(
       nextIndex: Option[NextIndex] = nextIndex,
       matchIndex: MatchIndex = matchIndex,
-      clients: Map[LogEntryIndex, ActorRef] = clients,
+      clients: Map[LogEntryIndex, ClientContext] = clients,
   ): RaftMemberData
 }
 
@@ -217,7 +216,7 @@ object RaftMemberData {
       acceptedMembers: Set[MemberIndex] = Set(),
       nextIndex: Option[NextIndex] = None,
       matchIndex: MatchIndex = MatchIndex(),
-      clients: Map[LogEntryIndex, ActorRef] = Map(),
+      clients: Map[LogEntryIndex, ClientContext] = Map(),
       snapshottingStatus: SnapshottingStatus = SnapshottingStatus.empty,
   ) =
     RaftMemberDataImpl(
@@ -313,7 +312,7 @@ final case class RaftMemberDataImpl(
     acceptedMembers: Set[MemberIndex],
     nextIndex: Option[NextIndex],
     matchIndex: MatchIndex,
-    clients: Map[LogEntryIndex, ActorRef],
+    clients: Map[LogEntryIndex, ClientContext],
     snapshottingStatus: SnapshottingStatus,
 ) extends RaftMemberData {
 
@@ -345,7 +344,7 @@ final case class RaftMemberDataImpl(
   override protected def updateLeaderVolatileState(
       nextIndex: Option[NextIndex],
       matchIndex: MatchIndex,
-      clients: Map[LogEntryIndex, ActorRef],
+      clients: Map[LogEntryIndex, ClientContext],
   ): RaftMemberData =
     copy(nextIndex = nextIndex, matchIndex = matchIndex, clients = clients)
 }

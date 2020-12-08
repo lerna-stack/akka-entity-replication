@@ -1,9 +1,6 @@
 package lerna.akka.entityreplication
 
-import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, Cancellable, Stash, Status }
-import akka.pattern.extended.ask
-import akka.pattern.{ pipe, AskTimeoutException }
-import akka.util.Timeout
+import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, Cancellable, Stash }
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model.{ LogEntry, LogEntryIndex, NoOp }
@@ -17,8 +14,6 @@ object ReplicationActor {
   private final case object RecoveryTimeout
 
   final case class EntityRecoveryTimeoutException(entityPath: ActorPath) extends RuntimeException
-
-  final case class ReplicationFailure()
 }
 
 trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash with akka.lerna.StashFactory {
@@ -123,13 +118,6 @@ trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash wit
           case msg: ReplicationFailed =>
             // TODO: 実装
             log.warning("ReplicationFailed: {}", msg)
-          case Status.Failure(_: AskTimeoutException) =>
-            changeState(ready)
-            log.warning("replication timeout")
-            self ! ReplicationFailure()
-          case msg: Status.Failure =>
-            // TODO: 実装
-            log.warning("Status.Failure: {}", msg)
           case TakeSnapshot(metadata, replyTo) =>
             replyTo ! Snapshot(metadata, EntityState(currentState))
           case _ => internalStash.stash()
@@ -148,19 +136,9 @@ trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash wit
   override def aroundReceive(receive: Receive, msg: Any): Unit =
     replicationState.stateReceive(receive, msg)
 
-  private[this] val replicationConfig = context.system.settings.config.getConfig("lerna.akka.entityreplication")
-
-  import util.JavaDurationConverters._
-  private[this] val replicationTimeout: Timeout = Timeout(replicationConfig.getDuration("replication-timeout").asScala)
-
   def replicate[A](event: A)(handler: A => Unit): Unit = {
-    val originalSender = sender()
     changeState(waitForReplicationResponse(event, handler))
-    import context.dispatcher
-    context.parent
-      .ask(replyTo => Replicate(event, replyTo, NormalizedEntityId.of(self.path)))(replicationTimeout).pipeTo(self)(
-        originalSender,
-      )
+    context.parent ! Replicate(event, replyTo = self, NormalizedEntityId.of(self.path), originSender = sender())
   }
 
   def ensureConsistency(handler: => Unit): Unit = replicate(NoOp)(_ => (handler _)())

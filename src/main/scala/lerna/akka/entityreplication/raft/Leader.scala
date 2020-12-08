@@ -23,7 +23,7 @@ trait Leader { this: RaftActor =>
     case response: AppendEntriesResponse                      => receiveAppendEntriesResponse(response)
     case request: Command                                     => handleCommand(request)
     case ForwardedCommand(request)                            => handleCommand(request)
-    case Replicate(event, replyTo, entityId)                  => replicate(event, replyTo, entityId)
+    case Replicate(event, replyTo, entityId, originSender)    => replicate(event, replyTo, entityId, originSender)
     case response: ReplicationResponse                        => receiveReplicationResponse(response)
     case ReplicationRegion.Passivate(entityPath, stopMessage) => startEntityPassivationProcess(entityPath, stopMessage)
     case TryCreateEntity(_, entityId)                         => createEntityIfNotExists(entityId)
@@ -162,10 +162,17 @@ trait Leader { this: RaftActor =>
         replicationActor(entityId) forward Command(cmd)
     }
 
-  private[this] def replicate(event: Any, client: ActorRef, entityId: Option[NormalizedEntityId]): Unit = {
+  private[this] def replicate(
+      event: Any,
+      client: ActorRef,
+      entityId: Option[NormalizedEntityId],
+      originSender: Option[ActorRef],
+  ): Unit = {
     cancelHeartbeatTimeoutTimer()
     applyDomainEvent(AppendedEvent(EntityEvent(entityId, event))) { _ =>
-      applyDomainEvent(StartedReplication(client, currentData.replicatedLog.lastLogIndex)) { _ =>
+      applyDomainEvent(
+        StartedReplication(ClientContext(client, originSender), currentData.replicatedLog.lastLogIndex),
+      ) { _ =>
         publishAppendEntries()
       }
     }

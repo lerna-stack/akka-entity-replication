@@ -15,16 +15,21 @@ object RaftProtocol {
   case class Replica(logEntry: LogEntry)
 
   object Replicate {
-    def apply(event: Any, replyTo: ActorRef, entityId: NormalizedEntityId): Replicate = {
-      Replicate(event, replyTo, Option(entityId))
+    def apply(event: Any, replyTo: ActorRef, entityId: NormalizedEntityId, originSender: ActorRef): Replicate = {
+      Replicate(event, replyTo, Option(entityId), Option(originSender))
     }
 
     def internal(event: Any, replyTo: ActorRef): Replicate = {
-      Replicate(event, replyTo, None)
+      Replicate(event, replyTo, None, None)
     }
   }
 
-  case class Replicate(event: Any, replyTo: ActorRef, entityId: Option[NormalizedEntityId])
+  case class Replicate(
+      event: Any,
+      replyTo: ActorRef,
+      entityId: Option[NormalizedEntityId],
+      originSender: Option[ActorRef],
+  )
 
   sealed trait ReplicationResponse
 
