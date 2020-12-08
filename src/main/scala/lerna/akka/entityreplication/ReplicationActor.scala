@@ -3,7 +3,7 @@ package lerna.akka.entityreplication
 import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, Cancellable, Stash }
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol._
-import lerna.akka.entityreplication.raft.model.{ LogEntry, LogEntryIndex, NoOp }
+import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 
@@ -100,18 +100,15 @@ trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash wit
   private[this] def waitForReplicationResponse[A](event: A, handler: A => Unit): State =
     new State {
 
-      private[this] var replicatedLogEntries: Seq[LogEntry] = Seq()
-
       override def stateReceive(receive: Receive, message: Any): Unit =
         message match {
           case Replica(logEntry) =>
-            replicatedLogEntries :+= logEntry
+            // ReplicationActor can receive Replica message when RaftActor demoted to Follower while replicating an event
+            innerApplyEvent(logEntry.event.event, logEntry.index)
+            changeState(ready)
+            internalStash.unstashAll()
           case ReplicationSucceeded(_, logEntryIndex) =>
             changeState(ready)
-            replicatedLogEntries.foreach { logEntry =>
-              innerApplyEvent(logEntry.event.event, logEntry.index)
-            }
-            replicatedLogEntries = Seq()
             internalStash.unstashAll()
             handler(event)
             lastAppliedLogEntryIndex = logEntryIndex
