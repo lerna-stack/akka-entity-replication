@@ -128,7 +128,8 @@ trait Leader { this: RaftActor =>
           val newCommitIndex = currentData.findReplicatedLastLogIndex(numberOfMembers, succeeded.lastLogIndex)
           if (newCommitIndex > currentData.commitIndex) {
             applyDomainEvent(Committed(newCommitIndex)) { _ =>
-              // do nothing
+              // release stashed commands
+              unstashAll()
             }
           }
         }
@@ -157,9 +158,14 @@ trait Leader { this: RaftActor =>
     req match {
 
       case Command(message) =>
-        val (entityId, cmd) = extractEntityId(message)
-        broadcast(TryCreateEntity(shardId, entityId))
-        replicationActor(entityId) forward Command(cmd)
+        if (currentData.currentTermIsCommitted) {
+          val (entityId, cmd) = extractEntityId(message)
+          broadcast(TryCreateEntity(shardId, entityId))
+          replicationActor(entityId) forward Command(cmd)
+        } else {
+          // The commands will be released after initial NoOp event was committed
+          stash()
+        }
     }
 
   private[this] def replicate(

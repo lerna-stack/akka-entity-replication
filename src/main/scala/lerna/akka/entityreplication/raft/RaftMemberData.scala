@@ -180,6 +180,11 @@ trait LeaderData { self: RaftMemberData =>
     updateVolatileState(commitIndex = logEntryIndex)
   }
 
+  def currentTermIsCommitted: Boolean = {
+    val commitIndexTerm = replicatedLog.get(commitIndex).map(_.term)
+    commitIndexTerm.contains(currentTerm)
+  }
+
   def handleCommittedLogEntriesAndClients(handler: Seq[(LogEntry, Option[ClientContext])] => Unit): RaftMemberData = {
     val applicableLogEntries = selectApplicableLogEntries
     handler(applicableLogEntries.map(e => (e, clients.get(e.index))))
