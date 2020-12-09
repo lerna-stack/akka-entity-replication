@@ -6,7 +6,7 @@ import akka.actor.{ Actor, ActorRef, Props }
 import akka.cluster.ClusterEvent.{ InitialStateAsEvents, MemberUp }
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import com.typesafe.config.ConfigFactory
-import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId }
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId }
 import lerna.akka.entityreplication.raft.RaftProtocol.{ ReplicationSucceeded, _ }
 import lerna.akka.entityreplication.raft.RaftTestProbe._
 import lerna.akka.entityreplication.raft.model._
@@ -226,9 +226,12 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       val dummyEvent = "dummyEvent"
 
       runOn(node1) {
-        leaderMember ! Replicate(dummyEvent, testActor, entityId, ActorRef.noSender)
+        val instanceId = EntityInstanceId(1)
+        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
-          case ReplicationSucceeded(event, _) => event should be(dummyEvent)
+          case ReplicationSucceeded(event, _, responseInstanceId) =>
+            event should be(dummyEvent)
+            responseInstanceId should contain(instanceId)
         }
         getState(leaderMember).stateData.replicatedLog.last.event.event should be(dummyEvent)
       }
@@ -274,9 +277,12 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       val expectedCommitIndex = LogEntryIndex(2)
 
       runOn(node1) {
-        leaderMember ! Replicate(dummyEvent, testActor, entityId, ActorRef.noSender)
+        val instanceId = EntityInstanceId(1)
+        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
-          case ReplicationSucceeded(event, _) => event should be(dummyEvent)
+          case ReplicationSucceeded(event, _, responseInstanceId) =>
+            event should be(dummyEvent)
+            responseInstanceId should contain(instanceId)
         }
         getState(leaderMember).stateData.commitIndex should be(expectedCommitIndex)
       }
@@ -350,9 +356,12 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       )
 
       runOn(node1) {
-        leaderMember ! Replicate(dummyEvent, testActor, entityId, ActorRef.noSender)
+        val instanceId = EntityInstanceId(1)
+        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
-          case ReplicationSucceeded(event, _) => event should be(dummyEvent)
+          case ReplicationSucceeded(event, _, responseInstanceId) =>
+            event should be(dummyEvent)
+            responseInstanceId should contain(instanceId)
         }
         getState(leaderMember).stateData.replicatedLog.entries should contain theSameElementsInOrderAs expectedLog
       }
@@ -433,7 +442,7 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       // to prevent events are replicated
       isolate(node1, excludes = Set(controller))
       runOn(node1) {
-        nodeMember ! Replicate("event1", testActor, entityId, ActorRef.noSender)
+        nodeMember ! Replicate("event1", testActor, entityId, EntityInstanceId(1), ActorRef.noSender)
         awaitCond(getState(nodeMember).stateData.replicatedLog.entries.exists(_.event.event == "event1"))
       }
       enterBarrier("complete scenario (1)")
@@ -452,10 +461,12 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       }
       enterBarrier("scenario (2): node3 becomes a leader")
 
+      val instanceId = EntityInstanceId(1)
+
       // replicates event2 to only node3
       isolate(node3, excludes = Set(controller))
       runOn(node3) {
-        nodeMember ! Replicate("event2", testActor, entityId, ActorRef.noSender)
+        nodeMember ! Replicate("event2", testActor, entityId, instanceId, ActorRef.noSender)
         awaitCond(getState(nodeMember).stateData.replicatedLog.entries.exists(_.event.event == "event2"))
       }
       enterBarrier("complete scenario (2)")
@@ -468,7 +479,9 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       // waits until the event is replicated to majority
       runOn(node3) {
         inside(expectMsgType[ReplicationSucceeded]) {
-          case ReplicationSucceeded(event, _) => event should be("event2")
+          case ReplicationSucceeded(event, _, responseInstanceId) =>
+            event should be("event2")
+            responseInstanceId should contain(instanceId)
         }
       }
       runOn(node2) {
@@ -516,9 +529,12 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       val dummyEvent = "dummyEvent"
 
       runOn(node1) {
-        raftMember ! Replicate(dummyEvent, testActor, entityId, ActorRef.noSender)
+        val instanceId = EntityInstanceId(1)
+        raftMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
-          case ReplicationSucceeded(event, _) => event should be(dummyEvent)
+          case ReplicationSucceeded(event, _, responseInstanceId) =>
+            event should be(dummyEvent)
+            responseInstanceId should contain(instanceId)
         }
       }
       enterBarrier("sent event")

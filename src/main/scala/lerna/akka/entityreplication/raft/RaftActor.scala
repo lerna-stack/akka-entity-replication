@@ -197,7 +197,7 @@ class RaftActor(
               case (logEntry, Some(client)) =>
                 log.debug(s"=== [Leader] committed $logEntry and will notify it to $client ===")
                 client.ref.tell(
-                  ReplicationSucceeded(logEntry.event.event, logEntry.index),
+                  ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId),
                   client.originSender.getOrElse(ActorRef.noSender),
                 )
               case (logEntry, None) =>

@@ -1,13 +1,20 @@
 package lerna.akka.entityreplication
 
+import java.util.concurrent.atomic.AtomicInteger
+
 import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, Cancellable, Stash }
-import lerna.akka.entityreplication.model.NormalizedEntityId
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 
 object ReplicationActor {
+
+  private val instanceIdCounter = new AtomicInteger(1)
+
+  private def generateInstanceId(): EntityInstanceId = EntityInstanceId(instanceIdCounter.getAndIncrement())
+
   final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef)
   final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState)
 
@@ -21,6 +28,8 @@ trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash wit
   import context.dispatcher
 
   private val internalStash = createStash()
+
+  private val instanceId = ReplicationActor.generateInstanceId()
 
   private[this] val settings = ClusterReplicationSettings(context.system)
 
@@ -107,11 +116,13 @@ trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash wit
             innerApplyEvent(logEntry.event.event, logEntry.index)
             changeState(ready)
             internalStash.unstashAll()
-          case ReplicationSucceeded(_, logEntryIndex) =>
+          case ReplicationSucceeded(_, logEntryIndex, responseInstanceId) if responseInstanceId.contains(instanceId) =>
             changeState(ready)
             internalStash.unstashAll()
             handler(event)
             lastAppliedLogEntryIndex = logEntryIndex
+          case _: ReplicationSucceeded =>
+          // ignore ReplicationSucceeded which is produced by replicate command of old ReplicationActor instance
           case msg: ReplicationFailed =>
             // TODO: 実装
             log.warning("ReplicationFailed: {}", msg)
@@ -135,7 +146,13 @@ trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash wit
 
   def replicate[A](event: A)(handler: A => Unit): Unit = {
     changeState(waitForReplicationResponse(event, handler))
-    context.parent ! Replicate(event, replyTo = self, NormalizedEntityId.of(self.path), originSender = sender())
+    context.parent ! Replicate(
+      event,
+      replyTo = self,
+      NormalizedEntityId.of(self.path),
+      instanceId,
+      originSender = sender(),
+    )
   }
 
   def ensureConsistency(handler: => Unit): Unit = replicate(NoOp)(_ => (handler _)())

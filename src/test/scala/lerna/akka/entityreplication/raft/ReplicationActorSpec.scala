@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ ActorRef, ActorSystem, Props }
 import akka.testkit.{ TestKit, TestProbe }
 import lerna.akka.entityreplication.ReplicationActor
+import lerna.akka.entityreplication.model.EntityInstanceId
 import lerna.akka.entityreplication.raft.ReplicationActorSpec.ExampleReplicationActor
 import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, Term }
 
@@ -67,7 +68,7 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec")) 
       val r = raftActorProbe.expectMsgType[Replicate]
       replicationActor ! Count()
       raftActorProbe.expectNoMessage() // the command is stashed
-      r.replyTo ! createReplicationSucceeded(Counted())
+      r.replyTo ! createReplicationSucceeded(Counted(), r.instanceId)
       raftActorProbe.expectMsgType[Replicate]
     }
 
@@ -86,8 +87,11 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec")) 
 
   private[this] val logEntrySeq = new AtomicInteger(1)
 
-  private[this] def createReplicationSucceeded(event: Any): ReplicationSucceeded = {
-    ReplicationSucceeded(event, LogEntryIndex(logEntrySeq.getAndIncrement()))
+  private[this] def createReplicationSucceeded(
+      event: Any,
+      instanceId: Option[EntityInstanceId],
+  ): ReplicationSucceeded = {
+    ReplicationSucceeded(event, LogEntryIndex(logEntrySeq.getAndIncrement()), instanceId)
   }
 
   private[this] def createLogEntry(event: Any): LogEntry = {

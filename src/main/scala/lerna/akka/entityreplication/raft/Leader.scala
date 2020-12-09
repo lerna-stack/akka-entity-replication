@@ -1,6 +1,6 @@
 package lerna.akka.entityreplication.raft
 
-import akka.actor.{ ActorPath, ActorRef }
+import akka.actor.ActorPath
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model._
@@ -23,7 +23,7 @@ trait Leader { this: RaftActor =>
     case response: AppendEntriesResponse                      => receiveAppendEntriesResponse(response)
     case request: Command                                     => handleCommand(request)
     case ForwardedCommand(request)                            => handleCommand(request)
-    case Replicate(event, replyTo, entityId, originSender)    => replicate(event, replyTo, entityId, originSender)
+    case request: Replicate                                   => replicate(request)
     case response: ReplicationResponse                        => receiveReplicationResponse(response)
     case ReplicationRegion.Passivate(entityPath, stopMessage) => startEntityPassivationProcess(entityPath, stopMessage)
     case TryCreateEntity(_, entityId)                         => createEntityIfNotExists(entityId)
@@ -168,16 +168,14 @@ trait Leader { this: RaftActor =>
         }
     }
 
-  private[this] def replicate(
-      event: Any,
-      client: ActorRef,
-      entityId: Option[NormalizedEntityId],
-      originSender: Option[ActorRef],
-  ): Unit = {
+  private[this] def replicate(replicate: Replicate): Unit = {
     cancelHeartbeatTimeoutTimer()
-    applyDomainEvent(AppendedEvent(EntityEvent(entityId, event))) { _ =>
+    applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
       applyDomainEvent(
-        StartedReplication(ClientContext(client, originSender), currentData.replicatedLog.lastLogIndex),
+        StartedReplication(
+          ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
+          currentData.replicatedLog.lastLogIndex,
+        ),
       ) { _ =>
         publishAppendEntries()
       }
@@ -187,10 +185,10 @@ trait Leader { this: RaftActor =>
   private[this] def receiveReplicationResponse(event: Any): Unit =
     event match {
 
-      case ReplicationSucceeded(NoOp, _) =>
+      case ReplicationSucceeded(NoOp, _, _) =>
       // ignore: no-op replication when become leader
 
-      case ReplicationSucceeded(unknownEvent, _) =>
+      case ReplicationSucceeded(unknownEvent, _, _) =>
         log.warning("unknown event: {}", unknownEvent)
 
       case ReplicationFailed(cause) =>
