@@ -1,7 +1,8 @@
 package lerna.akka.entityreplication.raft
 import java.util.concurrent.atomic.AtomicInteger
 
-import akka.actor.{ ActorRef, ActorSystem, Props }
+import akka.actor.SupervisorStrategy.Restart
+import akka.actor.{ ActorRef, ActorSystem, OneForOneStrategy, Props }
 import akka.testkit.{ TestKit, TestProbe }
 import lerna.akka.entityreplication.ReplicationActor
 import lerna.akka.entityreplication.model.EntityInstanceId
@@ -15,6 +16,7 @@ object ReplicationActorSpec {
 
     sealed trait Command
     case class Count() extends Command
+    case class Break() extends Command
 
     sealed trait Event
     case class Counted() extends Event
@@ -35,6 +37,8 @@ object ReplicationActorSpec {
           updateState(e)
           sender() ! e
         }
+      case Break() =>
+        throw new RuntimeException("bang!")
     }
 
     override def currentState: Int = count
@@ -54,7 +58,12 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec")) 
 
     def createReplicationActor(parent: TestProbe): ActorRef =
       planAutoKill {
-        val replicationActor = parent.childActorOf(ExampleReplicationActor.props)
+        val replicationActor = parent.childActorOf(
+          ExampleReplicationActor.props,
+          OneForOneStrategy() {
+            case _: RuntimeException => Restart
+          },
+        )
         parent.expectMsgType[RequestRecovery]
         replicationActor ! RecoveryState(Seq(), None)
         replicationActor
@@ -81,6 +90,39 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec")) 
       replicationActor ! Count()
       raftActorProbe.expectNoMessage() // the command is stashed
       replicationActor ! Replica(createLogEntry(Counted()))
+      raftActorProbe.expectMsgType[Replicate]
+    }
+
+    "replace instanceId when it restarted" in {
+      val raftActorProbe   = TestProbe()
+      val replicationActor = createReplicationActor(raftActorProbe)
+
+      replicationActor ! Count()
+      val r1 = raftActorProbe.expectMsgType[Replicate]
+      r1.replyTo ! createReplicationSucceeded(Counted(), r1.instanceId)
+      replicationActor ! Break() // ReplicationActor will restart
+      // recovery start
+      raftActorProbe.expectMsgType[RequestRecovery]
+      replicationActor ! RecoveryState(Seq(), None)
+      // recovery complete
+      replicationActor ! Count()
+      val r2 = raftActorProbe.expectMsgType[Replicate]
+      r2.instanceId should not be (r1.instanceId)
+    }
+
+    "ignore ReplicationSucceeded which has old instanceId" in {
+      val raftActorProbe   = TestProbe()
+      val replicationActor = createReplicationActor(raftActorProbe)
+
+      replicationActor ! Count()
+      val r = raftActorProbe.expectMsgType[Replicate]
+
+      val oldEntityInstanceId = r.instanceId.map(id => EntityInstanceId(id.underlying - 1))
+      r.replyTo ! createReplicationSucceeded(Counted(), oldEntityInstanceId) // this response will be ignored
+
+      replicationActor ! Count()
+      raftActorProbe.expectNoMessage() // the command is stashed
+      r.replyTo ! createReplicationSucceeded(Counted(), r.instanceId)
       raftActorProbe.expectMsgType[Replicate]
     }
   }
