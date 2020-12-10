@@ -208,6 +208,7 @@ class RaftActor(
         currentData.recordSavedSnapshot(metadata, settings.compactionPreserveLogSize)(onComplete = () => {
           // 失敗する可能性があることに注意
           saveSnapshot(currentData.persistentState)
+          log.info("[{}] compaction completed (logEntryIndex: {})", currentState, metadata.logEntryIndex.underlying)
         })
       // TODO: Remove when test code is modified
       case _: NonPersistEventLike =>
@@ -323,7 +324,12 @@ class RaftActor(
     if (currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold) {
       val (logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
       applyDomainEvent(SnapshottingStarted(logEntryIndex, entityIds)) { _ =>
-        log.debug(s"=== [$currentState] snapshotting started (logEntryIndex: $logEntryIndex, entities: $entityIds) ===")
+        log.info(
+          "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
+          currentState,
+          logEntryIndex.underlying,
+          entityIds.size,
+        )
         requestTakeSnapshots(logEntryIndex, entityIds)
       }
     }
