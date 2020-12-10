@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.ActorRef
-import lerna.akka.entityreplication.model.NormalizedEntityId
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.model.{ LogEntry, LogEntryIndex }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshot
 
@@ -15,20 +15,33 @@ object RaftProtocol {
   case class Replica(logEntry: LogEntry)
 
   object Replicate {
-    def apply(event: Any, replyTo: ActorRef, entityId: NormalizedEntityId): Replicate = {
-      Replicate(event, replyTo, Option(entityId))
+    def apply(
+        event: Any,
+        replyTo: ActorRef,
+        entityId: NormalizedEntityId,
+        instanceId: EntityInstanceId,
+        originSender: ActorRef,
+    ): Replicate = {
+      Replicate(event, replyTo, Option(entityId), Option(instanceId), Option(originSender))
     }
 
     def internal(event: Any, replyTo: ActorRef): Replicate = {
-      Replicate(event, replyTo, None)
+      Replicate(event, replyTo, None, None, None)
     }
   }
 
-  case class Replicate(event: Any, replyTo: ActorRef, entityId: Option[NormalizedEntityId])
+  case class Replicate(
+      event: Any,
+      replyTo: ActorRef,
+      entityId: Option[NormalizedEntityId],
+      instanceId: Option[EntityInstanceId],
+      originSender: Option[ActorRef],
+  )
 
   sealed trait ReplicationResponse
 
-  case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex) extends ReplicationResponse
+  case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex, instanceId: Option[EntityInstanceId])
+      extends ReplicationResponse
 
   case class ReplicationFailed(cause: Throwable) extends ReplicationResponse
 }

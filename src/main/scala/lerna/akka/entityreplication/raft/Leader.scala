@@ -1,6 +1,6 @@
 package lerna.akka.entityreplication.raft
 
-import akka.actor.{ ActorPath, ActorRef }
+import akka.actor.ActorPath
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model._
@@ -23,7 +23,7 @@ trait Leader { this: RaftActor =>
     case response: AppendEntriesResponse                      => receiveAppendEntriesResponse(response)
     case request: Command                                     => handleCommand(request)
     case ForwardedCommand(request)                            => handleCommand(request)
-    case Replicate(event, replyTo, entityId)                  => replicate(event, replyTo, entityId)
+    case request: Replicate                                   => replicate(request)
     case response: ReplicationResponse                        => receiveReplicationResponse(response)
     case ReplicationRegion.Passivate(entityPath, stopMessage) => startEntityPassivationProcess(entityPath, stopMessage)
     case TryCreateEntity(_, entityId)                         => createEntityIfNotExists(entityId)
@@ -128,7 +128,8 @@ trait Leader { this: RaftActor =>
           val newCommitIndex = currentData.findReplicatedLastLogIndex(numberOfMembers, succeeded.lastLogIndex)
           if (newCommitIndex > currentData.commitIndex) {
             applyDomainEvent(Committed(newCommitIndex)) { _ =>
-              // do nothing
+              // release stashed commands
+              unstashAll()
             }
           }
         }
@@ -157,15 +158,25 @@ trait Leader { this: RaftActor =>
     req match {
 
       case Command(message) =>
-        val (entityId, cmd) = extractEntityId(message)
-        broadcast(TryCreateEntity(shardId, entityId))
-        replicationActor(entityId) forward Command(cmd)
+        if (currentData.currentTermIsCommitted) {
+          val (entityId, cmd) = extractEntityId(message)
+          broadcast(TryCreateEntity(shardId, entityId))
+          replicationActor(entityId) forward Command(cmd)
+        } else {
+          // The commands will be released after initial NoOp event was committed
+          stash()
+        }
     }
 
-  private[this] def replicate(event: Any, client: ActorRef, entityId: Option[NormalizedEntityId]): Unit = {
+  private[this] def replicate(replicate: Replicate): Unit = {
     cancelHeartbeatTimeoutTimer()
-    applyDomainEvent(AppendedEvent(EntityEvent(entityId, event))) { _ =>
-      applyDomainEvent(StartedReplication(client, currentData.replicatedLog.lastLogIndex)) { _ =>
+    applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
+      applyDomainEvent(
+        StartedReplication(
+          ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
+          currentData.replicatedLog.lastLogIndex,
+        ),
+      ) { _ =>
         publishAppendEntries()
       }
     }
@@ -174,10 +185,10 @@ trait Leader { this: RaftActor =>
   private[this] def receiveReplicationResponse(event: Any): Unit =
     event match {
 
-      case ReplicationSucceeded(NoOp, _) =>
+      case ReplicationSucceeded(NoOp, _, _) =>
       // ignore: no-op replication when become leader
 
-      case ReplicationSucceeded(unknownEvent, _) =>
+      case ReplicationSucceeded(unknownEvent, _, _) =>
         log.warning("unknown event: {}", unknownEvent)
 
       case ReplicationFailed(cause) =>

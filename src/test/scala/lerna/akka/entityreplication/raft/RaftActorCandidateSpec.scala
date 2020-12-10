@@ -175,7 +175,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       region.expectMsg(ReplicationRegion.DeliverTo(leaderMemberIndex, ForwardedCommand(Command(SomeCommand))))
     }
 
-    "コマンドは保留し、リーダーに昇格した場合は ReplicationActor に転送する" in {
+    "stash commands and forward it to ReplicationActor after it commits initial NoOp event as a leader" in {
       val region               = TestProbe()
       val replicationActor     = TestProbe()
       val candidateMemberIndex = createUniqueMemberIndex()
@@ -191,15 +191,21 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       setState(candidate, Candidate, createCandidateData(term))
 
       case object SomeCommand
-      // コマンドはこの時点では保留
+      // the command will be stashed because the member is not a leader yet
       candidate ! Command(SomeCommand)
 
-      // 投票を行いリーダーに昇格
+      // become leader by election
       candidate ! RequestVoteAccepted(term, follower1MemberIndex)
       candidate ! RequestVoteAccepted(term, follower2MemberIndex)
       getState(candidate).stateName should be(Leader)
+      val leader = candidate
+      // commit initial NoOp event
+      awaitCond(getState(leader).stateData.replicatedLog.lastOption.exists(e => e.event.event == NoOp))
+      val lastLogIndex = getState(leader).stateData.replicatedLog.lastLogIndex
+      leader ! AppendEntriesSucceeded(term, lastLogIndex, follower1MemberIndex)
+      leader ! AppendEntriesSucceeded(term, lastLogIndex, follower2MemberIndex)
 
-      // コマンドが ReplicationActor に転送される
+      // the leader forwards the command to ReplicationActor
       replicationActor.expectMsg(Command(SomeCommand))
     }
 

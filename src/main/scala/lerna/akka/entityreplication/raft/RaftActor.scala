@@ -65,7 +65,7 @@ object RaftActor {
   final case class BecameCandidate()                                                            extends NonPersistEvent
   final case class BecameLeader()                                                               extends NonPersistEvent
   final case class DetectedLeaderMember(leaderMember: MemberIndex)                              extends NonPersistEvent
-  final case class StartedReplication(client: ActorRef, logEntryIndex: LogEntryIndex)           extends NonPersistEvent
+  final case class StartedReplication(client: ClientContext, logEntryIndex: LogEntryIndex)      extends NonPersistEvent
   final case class AcceptedRequestVote(follower: MemberIndex)                                   extends NonPersistEvent
   final case class SucceededAppendEntries(follower: MemberIndex, lastLogIndex: LogEntryIndex)   extends NonPersistEvent
   final case class DeniedAppendEntries(follower: MemberIndex)                                   extends NonPersistEvent
@@ -196,7 +196,10 @@ class RaftActor(
             entries.foreach {
               case (logEntry, Some(client)) =>
                 log.debug(s"=== [Leader] committed $logEntry and will notify it to $client ===")
-                client ! ReplicationSucceeded(logEntry.event.event, logEntry.index)
+                client.ref.tell(
+                  ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId),
+                  client.originSender.getOrElse(ActorRef.noSender),
+                )
               case (logEntry, None) =>
                 // 復旧中の commit or リーダー昇格時に未コミットのログがあった場合の commit
                 applyToReplicationActor(logEntry)
