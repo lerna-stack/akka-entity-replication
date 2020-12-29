@@ -60,7 +60,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       setState(leader, Leader, createLeaderData(term1, log))
 
       leader ! RequestVote(shardId, term2, candidateMemberIndex, lastLogIndex = index1, lastLogTerm = term1)
-      expectMsg(RequestVoteDenied(term1))
+      expectMsg(RequestVoteDenied(term2))
     }
 
     "deny RequestVote if lastLogTerm is older than own even if the request has newer lastLogIndex than own" in {
@@ -83,7 +83,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       setState(leader, Leader, createLeaderData(term2, log))
 
       leader ! RequestVote(shardId, term3, candidateMemberIndex, lastLogIndex = index3, lastLogTerm = term1)
-      expectMsg(RequestVoteDenied(term2))
+      expectMsg(RequestVoteDenied(term3))
     }
 
     "AppendEntries が古い Term を持っているときは拒否" in {
@@ -263,7 +263,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val term2              = term1.next()
       val lastLogIndex       = LogEntryIndex.initial()
       leader ! RequestVote(shardId, term2, anotherMemberIndex, lastLogIndex, lastLogTerm = term1)
-      expectMsg(RequestVoteDenied(term1))
+      expectMsg(RequestVoteDenied(term2))
     }
   }
 
