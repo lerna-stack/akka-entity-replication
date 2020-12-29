@@ -64,7 +64,15 @@ trait Candidate { this: RaftActor =>
 
       case request: RequestVote =>
         log.debug(s"=== [Candidate] deny $request ===")
-        sender() ! RequestVoteDenied(currentData.currentTerm)
+        if (request.term.isNewerThan(currentData.currentTerm)) {
+          applyDomainEvent(DetectedNewTerm(request.term)) { _ =>
+            sender() ! RequestVoteDenied(currentData.currentTerm)
+            become(Follower)
+          }
+        } else {
+          // the request has same term
+          sender() ! RequestVoteDenied(currentData.currentTerm)
+        }
     }
 
   private[this] def receiveRequestVoteResponse(response: RequestVoteResponse): Unit =

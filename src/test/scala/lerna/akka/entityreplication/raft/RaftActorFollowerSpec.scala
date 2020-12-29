@@ -106,7 +106,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       setState(follower, Follower, createFollowerData(term1, log))
 
       follower ! RequestVote(shardId, term2, candidateMemberIndex, lastLogIndex = index1, lastLogTerm = term1)
-      expectMsg(RequestVoteDenied(term1))
+      expectMsg(RequestVoteDenied(term2))
     }
 
     "deny RequestVote if lastLogTerm is older than own even if the request has newer lastLogIndex than own" in {
@@ -131,7 +131,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       setState(follower, Follower, createFollowerData(term2, log))
 
       follower ! RequestVote(shardId, term3, candidateMemberIndex, lastLogIndex = index3, lastLogTerm = term1)
-      expectMsg(RequestVoteDenied(term2))
+      expectMsg(RequestVoteDenied(term3))
     }
 
     "自分が持っている Term と同じ場合は AppendEntries を成功させる" in {
@@ -526,7 +526,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       val otherMemberIndex = createUniqueMemberIndex()
       val term2            = term1.next()
       follower ! RequestVote(shardId, term2, otherMemberIndex, LogEntryIndex.initial(), Term.initial())
-      expectMsg(RequestVoteDenied(term1))
+      expectMsg(RequestVoteDenied(term2))
     }
   }
 

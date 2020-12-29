@@ -42,7 +42,13 @@ trait Follower { this: RaftActor =>
       case request: RequestVote
           if request.lastLogTerm < currentData.replicatedLog.lastLogTerm || request.lastLogIndex < currentData.replicatedLog.lastLogIndex =>
         log.debug(s"=== [Follower] deny $request ===")
-        sender() ! RequestVoteDenied(currentData.currentTerm)
+        if (request.term.isNewerThan(currentData.currentTerm)) {
+          applyDomainEvent(DetectedNewTerm(request.term)) { _ =>
+            sender() ! RequestVoteDenied(currentData.currentTerm)
+          }
+        } else {
+          sender() ! RequestVoteDenied(currentData.currentTerm)
+        }
 
       case request: RequestVote if request.term.isNewerThan(currentData.currentTerm) =>
         log.debug(s"=== [Follower] accept $request ===")
@@ -62,7 +68,14 @@ trait Follower { this: RaftActor =>
 
       case request: RequestVote =>
         log.debug(s"=== [Follower] deny $request ===")
-        sender() ! RequestVoteDenied(currentData.currentTerm)
+        if (request.term.isNewerThan(currentData.currentTerm)) {
+          applyDomainEvent(DetectedNewTerm(request.term)) { _ =>
+            sender() ! RequestVoteDenied(currentData.currentTerm)
+          }
+        } else {
+          // the request has same term
+          sender() ! RequestVoteDenied(currentData.currentTerm)
+        }
     }
 
   private[this] def receiveAppendEntries(request: AppendEntries): Unit =

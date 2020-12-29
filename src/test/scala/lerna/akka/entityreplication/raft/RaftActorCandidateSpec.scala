@@ -68,7 +68,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       setState(candidate, Candidate, createCandidateData(term1, log))
 
       candidate ! RequestVote(shardId, term2, candidateMemberIndex2, lastLogIndex = index1, lastLogTerm = term1)
-      expectMsg(RequestVoteDenied(term1))
+      expectMsg(RequestVoteDenied(term2))
     }
 
     "deny RequestVote if lastLogTerm is older than own even if the request has newer lastLogIndex than own" in {
@@ -90,7 +90,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       setState(candidate, Candidate, createCandidateData(term2, log))
 
       candidate ! RequestVote(shardId, term3, candidateMemberIndex, lastLogIndex = index3, lastLogTerm = term1)
-      expectMsg(RequestVoteDenied(term2))
+      expectMsg(RequestVoteDenied(term3))
     }
 
     "メンバーの過半数に Accept されると Leader になる" in {
@@ -333,7 +333,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       val term2        = term1.next()
       val lastLogIndex = LogEntryIndex.initial()
       candidate ! RequestVote(shardId, term2, otherCandidateMemberIndex, lastLogIndex, lastLogTerm = term1)
-      expectMsg(RequestVoteDenied(term1))
+      expectMsg(RequestVoteDenied(term2))
     }
   }
 
