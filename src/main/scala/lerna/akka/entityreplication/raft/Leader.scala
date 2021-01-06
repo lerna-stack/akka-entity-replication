@@ -52,6 +52,7 @@ trait Leader { this: RaftActor =>
       case request: RequestVote =>
         log.debug(s"=== [Leader] deny $request ===")
         if (request.term.isNewerThan(currentData.currentTerm)) {
+          cancelHeartbeatTimeoutTimer()
           applyDomainEvent(DetectedNewTerm(request.term)) { _ =>
             sender() ! RequestVoteDenied(currentData.currentTerm)
             become(Follower)
