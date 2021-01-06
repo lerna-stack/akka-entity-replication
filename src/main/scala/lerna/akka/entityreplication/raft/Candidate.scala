@@ -70,7 +70,7 @@ trait Candidate { this: RaftActor =>
             become(Follower)
           }
         } else {
-          // the request has same term
+          // the request has the same or old term
           sender() ! RequestVoteDenied(currentData.currentTerm)
         }
     }
