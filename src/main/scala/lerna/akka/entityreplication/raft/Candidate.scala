@@ -65,12 +65,13 @@ trait Candidate { this: RaftActor =>
       case request: RequestVote =>
         log.debug(s"=== [Candidate] deny $request ===")
         if (request.term.isNewerThan(currentData.currentTerm)) {
+          cancelElectionTimeoutTimer()
           applyDomainEvent(DetectedNewTerm(request.term)) { _ =>
             sender() ! RequestVoteDenied(currentData.currentTerm)
             become(Follower)
           }
         } else {
-          // the request has same term
+          // the request has the same or old term
           sender() ! RequestVoteDenied(currentData.currentTerm)
         }
     }
