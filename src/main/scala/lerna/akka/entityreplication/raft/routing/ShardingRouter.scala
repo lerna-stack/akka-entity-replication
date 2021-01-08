@@ -26,7 +26,9 @@ class ShardingRouter(
 ) extends Actor
     with ActorLogging {
 
-  private[this] def hashMapping: ConsistentHashMapping = PartialFunction(extractShardId.andThen(_.underlying))
+  private[this] def hashMapping: ConsistentHashMapping = {
+    case message => extractShardId(message).underlying
+  }
   private[this] var router: Router =
     Router(ConsistentHashingRoutingLogic(context.system, virtualNodesFactor = 256, hashMapping), Vector())
 
