@@ -1,6 +1,8 @@
 akka-entity-replication
 ===
 
+[![CI](https://github.com/lerna-stack/akka-entity-replication/workflows/CI/badge.svg?branch=master)](https://github.com/lerna-stack/akka-entity-replication/actions?query=workflow%3ACI+branch%3Amaster)
+
 ## Introduction
 
 If a node failure or network failure occurs, some entities in Cluster Sharding become unavailable and it will take more than 10 seconds to recover. akka-entity-replication provides fast recovery by creating replicas of entities in multiple locations and always synchronizing their status. 
