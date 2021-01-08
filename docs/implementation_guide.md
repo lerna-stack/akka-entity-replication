@@ -131,20 +131,32 @@ When sending commands to an entity, they are sent via the `ReplicationRegion`.
 bankAccountReplicationRegion ! BankAcountActor.Deposit(accountNo = "0001", 1000)
 ```
 
+To reduce errors, it is recommended to perform retry processing so that processing continues even if a single Node fails.
+You can use `AtLeastOnceComplete.askTo` to retry until Future is complete, as shown below.
+
+```scala
+import akka.actor.ActorSystem
+import akka.util.Timeout
+import lerna.akka.entityreplication.util.AtLeastOnceComplete
+
+import scala.concurrent.duration._
+
+implicit val timeout: Timeout    = Timeout(3.seconds) // should be greater than or equal to retryInterval
+implicit val system: ActorSystem = ???                // pass one that is already created
+
+AtLeastOnceComplete.askTo(
+  destination = bankAccountReplicationRegion,
+  message = BankAcountActor.Deposit(accountNo = "0001", 1000),
+  retryInterval = 500.milliseconds,
+)
+```
+
 ### Configuration
 
 On the command side, there are the following settings.
 
 ```
 lerna.akka.entityreplication {
-    util {
-        // Settings for a component to guarantee completion of a process to prevent timeouts during rolling update.
-        at-least-once-complete {
-            // Interval to retry until the process (Future) is completed
-            retry-interval = 1 second
-        }
-    }
-
     // Time to interrupt replication for events that are taking too long
     replication-timeout = 3000 ms
 
