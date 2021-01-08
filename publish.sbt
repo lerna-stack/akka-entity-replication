@@ -17,7 +17,7 @@ ThisBuild / developers := List(
   ),
 )
 
-ThisBuild / description := "Replicate Entity on multiple nodes in Akka Cluster for fast failover in case of node failure."
+ThisBuild / description := "Akka extension for fast recovery from failure with replicating stateful entity on multiple nodes in Cluster."
 ThisBuild / licenses := List("Apache 2" -> new URL("http://www.apache.org/licenses/LICENSE-2.0.txt"))
 ThisBuild / homepage := Some(url("https://github.com/lerna-stack/akka-entity-replication"))
 
