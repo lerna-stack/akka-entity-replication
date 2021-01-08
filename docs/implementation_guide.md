@@ -177,62 +177,63 @@ akka-entity-replication supports the Command Query Responsibility Segregation (C
 
 ### Example
 
-To update a read model, implement the `EventHandler`.
+To update a read model, implement Handler with [Akka Projection](https://doc.akka.io/docs/akka-projection/1.0.0/overview.html).
+
+In the case of [SlickHandler](https://doc.akka.io/docs/akka-projection/1.0.0/slick.html), it will be as follows.
 
 ```scala
-import lerna.akka.entityreplication._
-
-class ReadModelUpdater(db: DB) extends EventHandler {
-
-    override def fetchOffsetUuid(): Future[Option[UUID]] = db.selectOffsetUuid()
-
-    override def handleFlow(): Flow[EventEnvelope, Done, NotUsed] =
-        Flow[EventEnvelope].mapAsync(parallelism = 1) { eventEnvelope =>
-          eventEnvelope.event match {
-              case Deposited(amount) =>
-                  db.updateTransactionAmount(amount)
-                  db.updateOffsetUuid(eventEnvelope.offset)
-              case Withdrawed(amount) =>
-                  db.updateTransactionAmount(amount)
-                  db.updateOffsetUuid(eventEnvelope.offset)
-          }
+class EventHandler(actions: StatisticsActions) extends SlickHandler[EventEnvelope[Event]] {
+  override def process(envelope: EventEnvelope[Event]): DBIO[Done] = {
+    envelope.event match {
+      case Deposited(amount) =>
+        actions.insertDepositRecord(amount)
+      case Withdrawed(amount) =>
+        actions.insertWithdrawalRecord(amount)
     }
-
+  }
 }
 ```
 
-The `EventHandler` implements the methods `fetchOffsetUuid` and `handleFlow`. The `handleFlow` method creates a `Flow` of akka streams that receives events and outputs `Done`. This `Flow` implements the event-based update of the read model, and outputs a `Done` when it succeeds. 
+The definition for starting the defined Handler is as follows.
 
-Along with updating read model, save the Offset UUID to the datastore to restart the processing from the offset of last applied event on next start up.
+```scala
+import lerna.akka.entityreplication.raft.eventhandler.EntityReplicationEventSource
 
-The `fetchOffsetUuid` method implements fetching the Offset UUID from the datastore, which is saved in the `handleFlow`.
+object EventHandler {
+  def start(
+      actions: StatisticsActions,
+      databaseConfig: DatabaseConfig[JdbcProfile],
+  )(implicit
+      system: ActorSystem[_],
+  ): ActorRef[ProjectionBehavior.Command] = {
+    def generateProjection(): ExactlyOnceProjection[Offset, EventEnvelope[Event]] =
+      SlickProjection.exactlyOnce(
+        projectionId = ProjectionId(name = "BankAccount", key = "aggregate"),
+        sourceProvider = EntityReplicationEventSource.sourceProvider,
+        databaseConfig = databaseConfig,
+        handler = () => new EventHandler(actions),
+      )
 
-
+    val projection = generateProjection()
+    ClusterSingleton(system).init(SingletonActor(ProjectionBehavior(projection), projection.projectionId.id))
+  }
+}
 ```
-ClusterReplication(system).start(
-    typeName = "BankAccount",
-    entityProps = BankAcountActor.props,
-    settings = ClusterReplicationSettings(system),
-    extractEntityId = extractEntityId,
-    extractShardId = extractShardId,
-    maybeEventHandler = Option(new ReadModelUpdater(system)),
-)
-```
 
-To enable EventHandler, set the `maybeEventHandler` at the start of the `ClusterReplication` extension.
+`ProjectionId` is used to identify an offset in data store. You can set an arbitrary value however you cannot change the value easily after run the projection.
+`EntityReplicationEventSource.sourceProvider` should be set to `sourceProvider`. `EntityReplicationEventSource.sourceProvider` provides events which were produced in command side of akka-entity-replication.
 
+### Tips
+- If you want to use Handler and Projection other than Slick, please refer to [the official Akka documentation](https://doc.akka.io/docs/akka-projection/1.0.0/overview.html).
+- Akka projection requires typed ActorSystem.
+    - Conversion from classic ActorSystem to typed ActorSystem is possible with `import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps` and `system.toTyped` (see also: [Coexistence - Akka Documentation](https://doc.akka.io/docs/akka/2.6/typed/coexisting.html#classic-to-typed)).
 
 ### Configuration
 
 On the read side, there are the following settings.
 
-```
+```hocon
 lerna.akka.entityreplication.raft.eventhandler {
-    event-handler-singleton {
-      // (deprecated) Buffer for stop on exit, to avoid deadletter (No need to change).
-      stop-self-delay = 5 seconds
-    }
-
     // Settings for saving committed events from each RaftActor
     commit-log-store {
       // Retry setting to prevent events from being lost if commit-log-store(sharding) stops temporarily
@@ -242,24 +243,30 @@ lerna.akka.entityreplication.raft.eventhandler {
       }
     }
 
-    // cassandra-journal & cassandra-query-journal to save committed events (No need to change)
-    // It is currently hard-coded in the source code
-    cassandra-journal = ${cassandra-journal}
-    cassandra-journal = {
-      keyspace = "raft_commited_event"
+    // cassandra-journal & cassandra-query-journal to save committed events
+    persistence.cassandra = ${akka.persistence.cassandra}
+    persistence.cassandra = {
+      journal {
+        keyspace = "raft_commited_event"
 
-      // Tagging to allow some RaftActor(Shard) to handle individually committed events together(No need to change)
-      event-adapters {
-        tagging = "lerna.akka.entityreplication.raft.eventhandler.TaggingEventAdapter"
-      }
-      event-adapter-bindings {
-        "lerna.akka.entityreplication.raft.eventhandler.CommittedEvent" = tagging
+        // Tagging to allow some RaftActor(Shard) to handle individually committed events together(No need to change)
+        event-adapters {
+          tagging = "lerna.akka.entityreplication.raft.eventhandler.TaggingEventAdapter"
+        }
+        event-adapter-bindings {
+          "java.lang.Object" = tagging
+        }
       }
     }
 
-    cassandra-query-journal = ${cassandra-query-journal}
-    cassandra-query-journal = {
-      write-plugin = "lerna.akka.entityreplication.raft.eventhandler.cassandra-journal"
+    persistence {
+      // Absolute path to the journal plugin configuration entry.
+      // The journal stores Raft-committed events.
+      journal.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.journal"
+
+      // Absolute path to the query plugin configuration entry.
+      // The query is used by Raft EventHandler.
+      query.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.query"
     }
 }
 ```
