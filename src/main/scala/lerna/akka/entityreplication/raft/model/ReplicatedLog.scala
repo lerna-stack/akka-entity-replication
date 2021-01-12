@@ -7,18 +7,15 @@ object ReplicatedLog {
   private def apply(entries: Seq[LogEntry]) = new ReplicatedLog(entries)
 }
 
-case class ReplicatedLog private[model] (
-    entries: Seq[LogEntry],
-    ancestorLastIndex: LogEntryIndex = LogEntryIndex.initial(),
-) {
+case class ReplicatedLog private[model] (entries: Seq[LogEntry]) {
   def get(index: LogEntryIndex): Option[LogEntry] = {
     val logCollectionIndex = toSeqIndex(index)
     if (entries.size > logCollectionIndex && logCollectionIndex >= 0) Some(entries(logCollectionIndex))
     else None
   }
 
-  def getAllFrom(nextIndex: LogEntryIndex): Seq[LogEntry] =
-    entries.takeRight(entries.size - toSeqIndex(nextIndex))
+  def getFrom(nextIndex: LogEntryIndex, maxCount: Int): Seq[LogEntry] =
+    sliceEntries(from = nextIndex, nextIndex.plus(maxCount - 1))
 
   def sliceEntriesFromHead(to: LogEntryIndex): Seq[LogEntry] = {
     headIndexOption match {
@@ -36,7 +33,7 @@ case class ReplicatedLog private[model] (
   def nonEmpty: Boolean = entries.nonEmpty
 
   def append(event: EntityEvent, term: Term): ReplicatedLog = {
-    val entryIndex = lastIndexOption.getOrElse(ancestorLastIndex).next()
+    val entryIndex = lastLogIndex.next()
     copy(entries :+ LogEntry(entryIndex, event, term))
   }
 
@@ -48,19 +45,28 @@ case class ReplicatedLog private[model] (
 
   def lastOption: Option[LogEntry] = entries.lastOption
 
-  def lastLogIndex: LogEntryIndex = lastOption.map(_.index).getOrElse(ancestorLastIndex)
+  def lastLogIndex: LogEntryIndex = lastOption.map(_.index).getOrElse(LogEntryIndex.initial())
+
+  def lastLogTerm: Term = lastOption.map(_.term).getOrElse(Term.initial())
 
   def merge(thatEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): ReplicatedLog = {
     val newEntries = this.entries.takeWhile(_.index <= prevLogIndex) ++ thatEntries
     copy(newEntries)
   }
 
-  def deleteOldEntries(to: LogEntryIndex): ReplicatedLog = {
-    val newEntries = entries.dropWhile(_.index <= to)
-    copy(entries = newEntries, ancestorLastIndex = lastLogIndex)
+  def deleteOldEntries(to: LogEntryIndex, preserveLogSize: Int): ReplicatedLog = {
+    require(
+      preserveLogSize > 0,
+      s"preserveLogSize ($preserveLogSize) must be greater than 0 because ReplicatedLog must keep at least one log entry after add an entry",
+    )
+    val toLogIndex        = toSeqIndex(to.next())
+    val preservedLogIndex = if (entries.size > preserveLogSize) entries.size - preserveLogSize else 0
+    val from              = Math.min(toLogIndex, preservedLogIndex)
+    copy(entries = entries.slice(from, entries.size))
   }
 
   private[this] def toSeqIndex(index: LogEntryIndex): Int = {
+    val ancestorLastIndex = headIndexOption.map(_.prev()).getOrElse(LogEntryIndex.initial())
     index.underlying - ancestorLastIndex.underlying - 1
   }
 }

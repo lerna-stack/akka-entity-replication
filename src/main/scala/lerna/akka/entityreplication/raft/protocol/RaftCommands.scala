@@ -14,8 +14,13 @@ object RaftCommands {
     def term: Term
   }
 
-  case class RequestVote(shardId: NormalizedShardId, term: Term, candidate: MemberIndex, lastLogIndex: LogEntryIndex)
-      extends RaftRequest
+  case class RequestVote(
+      shardId: NormalizedShardId,
+      term: Term,
+      candidate: MemberIndex,
+      lastLogIndex: LogEntryIndex,
+      lastLogTerm: Term,
+  ) extends RaftRequest
 
   sealed trait RequestVoteResponse extends RaftResponse
 

@@ -54,6 +54,8 @@ class RaftSettings(root: Config) {
 
   val quorumSize: Int = (replicationFactor / 2) + 1
 
+  val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
+
   val compactionSnapshotCacheTimeToLive: FiniteDuration =
     config.getDuration("compaction.snapshot-cache-time-to-live").asScala
 
@@ -64,9 +66,18 @@ class RaftSettings(root: Config) {
     s"log-size-threshold ($compactionLogSizeThreshold) should be larger than 0",
   )
 
+  val compactionPreserveLogSize: Int = config.getInt("compaction.preserve-log-size")
+
+  require(
+    0 < compactionPreserveLogSize,
+    s"preserve-log-size ($compactionPreserveLogSize) should be larger than 0",
+  )
+
   val compactionLogSizeCheckInterval: FiniteDuration = config.getDuration("compaction.log-size-check-interval").asScala
 
   def randomizedCompactionLogSizeCheckInterval(): FiniteDuration = randomized(compactionLogSizeCheckInterval)
+
+  val clusterShardingConfig: Config = config.getConfig("sharding")
 
   val journalPluginId: String = config.getString("persistence.journal.plugin")
 

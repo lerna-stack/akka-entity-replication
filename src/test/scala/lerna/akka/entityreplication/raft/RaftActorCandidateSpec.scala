@@ -24,7 +24,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       val term                 = Term.initial()
       setState(candidate, Candidate, createCandidateData(term))
 
-      candidate ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial())
+      candidate ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteAccepted(term, candidateMemberIndex))
     }
 
@@ -35,7 +35,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       setState(candidate, Candidate, createCandidateData(term))
 
       val anotherMemberIndex = createUniqueMemberIndex()
-      candidate ! RequestVote(shardId, term, anotherMemberIndex, LogEntryIndex.initial())
+      candidate ! RequestVote(shardId, term, anotherMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteDenied(term))
     }
 
@@ -46,9 +46,51 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       setState(candidate, Candidate, createCandidateData(term1))
 
       val term2 = term1.next()
-      candidate ! RequestVote(shardId, term2, candidateMemberIndex, LogEntryIndex.initial())
+      candidate ! RequestVote(shardId, term2, candidateMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteAccepted(term2, candidateMemberIndex))
       getState(candidate).stateName should be(Follower)
+    }
+
+    "deny RequestVote if lastLogIndex is older than own even if the request has same lastLogTerm" in {
+      val candidateMemberIndex1 = createUniqueMemberIndex()
+      val candidate             = createRaftActor(selfMemberIndex = candidateMemberIndex1)
+
+      val candidateMemberIndex2 = createUniqueMemberIndex()
+      val term1                 = Term(1)
+      val term2                 = Term(2)
+      val index1                = LogEntryIndex(1)
+      val index2                = LogEntryIndex(2)
+      val logEntries = Seq(
+        LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
+        LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
+      )
+      val log = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
+      setState(candidate, Candidate, createCandidateData(term1, log))
+
+      candidate ! RequestVote(shardId, term2, candidateMemberIndex2, lastLogIndex = index1, lastLogTerm = term1)
+      expectMsg(RequestVoteDenied(term2))
+    }
+
+    "deny RequestVote if lastLogTerm is older than own even if the request has newer lastLogIndex than own" in {
+      val candidateMemberIndex1 = createUniqueMemberIndex()
+      val candidate             = createRaftActor(selfMemberIndex = candidateMemberIndex1)
+
+      val candidateMemberIndex = createUniqueMemberIndex()
+      val term1                = Term(1)
+      val term2                = Term(2)
+      val term3                = Term(3)
+      val index1               = LogEntryIndex(1)
+      val index2               = LogEntryIndex(2)
+      val index3               = LogEntryIndex(3)
+      val logEntries = Seq(
+        LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
+        LogEntry(index2, EntityEvent(Option(entityId), "b"), term2),
+      )
+      val log = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
+      setState(candidate, Candidate, createCandidateData(term2, log))
+
+      candidate ! RequestVote(shardId, term3, candidateMemberIndex, lastLogIndex = index3, lastLogTerm = term1)
+      expectMsg(RequestVoteDenied(term3))
     }
 
     "メンバーの過半数に Accept されると Leader になる" in {
@@ -133,7 +175,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       region.expectMsg(ReplicationRegion.DeliverTo(leaderMemberIndex, ForwardedCommand(Command(SomeCommand))))
     }
 
-    "コマンドは保留し、リーダーに昇格した場合は ReplicationActor に転送する" in {
+    "stash commands and forward it to ReplicationActor after it commits initial NoOp event as a leader" in {
       val region               = TestProbe()
       val replicationActor     = TestProbe()
       val candidateMemberIndex = createUniqueMemberIndex()
@@ -149,15 +191,21 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       setState(candidate, Candidate, createCandidateData(term))
 
       case object SomeCommand
-      // コマンドはこの時点では保留
+      // the command will be stashed because the member is not a leader yet
       candidate ! Command(SomeCommand)
 
-      // 投票を行いリーダーに昇格
+      // become leader by election
       candidate ! RequestVoteAccepted(term, follower1MemberIndex)
       candidate ! RequestVoteAccepted(term, follower2MemberIndex)
       getState(candidate).stateName should be(Leader)
+      val leader = candidate
+      // commit initial NoOp event
+      awaitCond(getState(leader).stateData.replicatedLog.lastOption.exists(e => e.event.event == NoOp))
+      val lastLogIndex = getState(leader).stateData.replicatedLog.lastLogIndex
+      leader ! AppendEntriesSucceeded(term, lastLogIndex, follower1MemberIndex)
+      leader ! AppendEntriesSucceeded(term, lastLogIndex, follower2MemberIndex)
 
-      // コマンドが ReplicationActor に転送される
+      // the leader forwards the command to ReplicationActor
       replicationActor.expectMsg(Command(SomeCommand))
     }
 
@@ -284,8 +332,8 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
 
       val term2        = term1.next()
       val lastLogIndex = LogEntryIndex.initial()
-      candidate ! RequestVote(shardId, term2, otherCandidateMemberIndex, lastLogIndex)
-      expectMsg(RequestVoteDenied(term1))
+      candidate ! RequestVote(shardId, term2, otherCandidateMemberIndex, lastLogIndex, lastLogTerm = term1)
+      expectMsg(RequestVoteDenied(term2))
     }
   }
 

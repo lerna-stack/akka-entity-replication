@@ -3,11 +3,10 @@ package lerna.akka.entityreplication
 import java.util.concurrent.atomic.AtomicInteger
 
 import akka.actor.{ Actor, ActorRef, Props }
-import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.{ InitialStateAsEvents, MemberUp }
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import com.typesafe.config.ConfigFactory
-import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId }
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId }
 import lerna.akka.entityreplication.raft.RaftProtocol.{ ReplicationSucceeded, _ }
 import lerna.akka.entityreplication.raft.RaftTestProbe._
 import lerna.akka.entityreplication.raft.model._
@@ -18,9 +17,10 @@ import org.scalatest.Inside.inside
 import scala.concurrent.duration._
 
 object RaftActorSpecConfig extends MultiNodeConfig {
-  val node1 = role("node1")
-  val node2 = role("node2")
-  val node3 = role("node3")
+  val controller = role("controller")
+  val node1      = role("node1")
+  val node2      = role("node2")
+  val node3      = role("node3")
 
   testTransport(true)
 
@@ -44,16 +44,15 @@ object RaftActorSpecConfig extends MultiNodeConfig {
   """))
 }
 
-class RaftActorSpecMultiJvmNode1 extends RaftActorSpec
-class RaftActorSpecMultiJvmNode2 extends RaftActorSpec
-class RaftActorSpecMultiJvmNode3 extends RaftActorSpec
+class RaftActorSpecMultiJvmController extends RaftActorSpec
+class RaftActorSpecMultiJvmNode1      extends RaftActorSpec
+class RaftActorSpecMultiJvmNode2      extends RaftActorSpec
+class RaftActorSpecMultiJvmNode3      extends RaftActorSpec
 
 class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeSpec {
 
   import RaftActor._
   import RaftActorSpecConfig._
-
-  private[this] val cluster = Cluster(system)
 
   private[this] val config = system.settings.config
   private[this] val defaultRaftSettings = new {
@@ -138,11 +137,20 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
         awaitCond(getState(leaderMember).stateName == Leader)
       }
       enterBarrier("Leader elected")
+      val expectedLeaderMemberIndex = MemberIndex("member-3")
       runOn(node1, node2) {
-        getState(followerMember).stateName should be(Follower)
+        awaitAssert {
+          val state = getState(followerMember)
+          state.stateName should be(Follower)
+          state.stateData.currentTerm should be > Term.initial()
+          state.stateData.votedFor should contain(expectedLeaderMemberIndex)
+        }
       }
       runOn(node3) {
-        getState(leaderMember).stateName should be(Leader)
+        val state = getState(leaderMember)
+        state.stateName should be(Leader)
+        state.stateData.currentTerm should be > Term.initial()
+        state.stateData.votedFor should contain(expectedLeaderMemberIndex)
       }
     }
 
@@ -218,9 +226,12 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       val dummyEvent = "dummyEvent"
 
       runOn(node1) {
-        leaderMember ! Replicate(dummyEvent, testActor, entityId)
+        val instanceId = EntityInstanceId(1)
+        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
-          case ReplicationSucceeded(event, _) => event should be(dummyEvent)
+          case ReplicationSucceeded(event, _, responseInstanceId) =>
+            event should be(dummyEvent)
+            responseInstanceId should contain(instanceId)
         }
         getState(leaderMember).stateData.replicatedLog.last.event.event should be(dummyEvent)
       }
@@ -266,9 +277,12 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       val expectedCommitIndex = LogEntryIndex(2)
 
       runOn(node1) {
-        leaderMember ! Replicate(dummyEvent, testActor, entityId)
+        val instanceId = EntityInstanceId(1)
+        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
-          case ReplicationSucceeded(event, _) => event should be(dummyEvent)
+          case ReplicationSucceeded(event, _, responseInstanceId) =>
+            event should be(dummyEvent)
+            responseInstanceId should contain(instanceId)
         }
         getState(leaderMember).stateData.commitIndex should be(expectedCommitIndex)
       }
@@ -342,9 +356,12 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       )
 
       runOn(node1) {
-        leaderMember ! Replicate(dummyEvent, testActor, entityId)
+        val instanceId = EntityInstanceId(1)
+        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
-          case ReplicationSucceeded(event, _) => event should be(dummyEvent)
+          case ReplicationSucceeded(event, _, responseInstanceId) =>
+            event should be(dummyEvent)
+            responseInstanceId should contain(instanceId)
         }
         getState(leaderMember).stateData.replicatedLog.entries should contain theSameElementsInOrderAs expectedLog
       }
@@ -362,35 +379,35 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       }
     }
 
-    "コミットしたイベントが書き換わらない" in {
-      // シナリオ
-      // *: リーダー  -: リーダーがネットワーク分断により孤立
+    "will eventually be the only leader if it has the most recent log entry even if multiple leader was elected" in {
+      // Scenario
+      // *: is a leader  -: belongs with isolated network
       // (1)
-      // *node1 Term:1 Log:[(Term(1), NoOp), (Term(1), event1)]
-      //  node2 Term:1 Log:[(Term(1), NoOp)]
-      //  node3 Term:1 Log:[(Term(1), NoOp)]
+      //  * node1 Term:1 Log:[(Term(1), NoOp), (Term(1), event1)]
+      //    node2 Term:1 Log:[(Term(1), NoOp)]
+      //    node3 Term:1 Log:[(Term(1), NoOp)]
       // (2)
-      // -node1 Term:1 Log:[(Term(1), NoOp), (Term(1), event1)]
-      //  node2 Term:2 Log:[(Term(1), NoOp)]
-      // *node3 Term:2 Log:[(Term(1), NoOp), (Term(2), NoOp), (Term(2), event2)]
+      // -* node1 Term:1 Log:[(Term(1), NoOp), (Term(1), event1)]
+      //    node2 Term:2 Log:[(Term(1), NoOp), (Term(2), NoOp)]
+      // -* node3 Term:2 Log:[(Term(1), NoOp), (Term(2), NoOp), (Term(2), event2)]
       // (3)
-      // *node1 Term:3 Log:[(Term(1), NoOp), (Term(1), event1), (Term(3), NoOp)]
-      //  node2 Term:3 Log:[(Term(1), NoOp), (Term(1), event1), (Term(3), NoOp)] <- 過半数に複製（コミット）
-      // -node3 Term:2 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)]
+      //  * node1 Term:3 Log:[(Term(1), NoOp), (Term(1), event1)]
+      //    node2 Term:3 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)] <- replicated in the majority (committed)
+      //  * node3 Term:2 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)]
       // (4)
-      // *node1 Term:3 Log:[(Term(1), NoOp), (Term(1), event1), (Term(3), NoOp)]
-      //  node2 Term:3 Log:[(Term(1), NoOp), (Term(1), event1), (Term(3), NoOp)]
-      //  node3 Term:3 Log:[(Term(1), NoOp), (Term(1), event1), (Term(3), NoOp)] <- 過半数に複製されていない新しい Term のログが負ける
+      //    node1 Term:3 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)] <- becomes a follower (uncommitted entries will be overwritten)
+      //    node2 Term:3 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)]
+      //  * node3 Term:3 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)]
 
       val replicationId = createSeqShardId()
 
       var nodeMember: RaftTestFSMRef = null
-      // node1 をリーダーにする
+      // make node1 be a leader
       runOn(node1) {
         nodeMember = createRaftActor(
           replicationId,
           new {
-            // リーダーになりやすくするため
+            // to make it be a leader
             override val electionTimeout   = 1.seconds
             override val heartbeatInterval = 0.5.seconds
           } with RaftSettings(config),
@@ -405,7 +422,7 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
         nodeMember = createRaftActor(
           replicationId,
           new {
-            // リーダーになりやすくするため
+            // to make it be a leader
             override val electionTimeout   = 6.seconds
             override val heartbeatInterval = 0.5.seconds
           } with RaftSettings(config),
@@ -421,66 +438,74 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       }
       enterBarrier("a leader is elected")
 
-      // シナリオ (1)
-      // イベントが複製されるのを防ぐ
-      isolate(node1)
+      // Scenario (1)
+      // to prevent events are replicated
+      isolate(node1, excludes = Set(controller))
       runOn(node1) {
-        nodeMember ! Replicate("event1", testActor, entityId)
+        nodeMember ! Replicate("event1", testActor, entityId, EntityInstanceId(1), ActorRef.noSender)
         awaitCond(getState(nodeMember).stateData.replicatedLog.entries.exists(_.event.event == "event1"))
       }
       enterBarrier("complete scenario (1)")
 
-      // シナリオ (2)
+      // Scenario (2)
       runOn(node3) {
         // node 1 が孤立するため
         awaitCond(getState(nodeMember).stateName == Leader)
       }
-      enterBarrier("scenario (2): node3 が leader になった")
+      runOn(node2) {
+        awaitCond {
+          getState(nodeMember).stateData.replicatedLog.lastOption.exists { e =>
+            e.term > Term(1) && e.event.event == NoOp
+          }
+        }
+      }
+      enterBarrier("scenario (2): node3 becomes a leader")
 
-      // node 3 にだけ event2 を複製
-      isolate(node3)
+      val instanceId = EntityInstanceId(1)
+
+      // replicates event2 to only node3
+      isolate(node3, excludes = Set(controller))
       runOn(node3) {
-        nodeMember ! Replicate("event2", testActor, entityId)
+        nodeMember ! Replicate("event2", testActor, entityId, instanceId, ActorRef.noSender)
         awaitCond(getState(nodeMember).stateData.replicatedLog.entries.exists(_.event.event == "event2"))
       }
       enterBarrier("complete scenario (2)")
 
-      // シナリオ (3)
-      // 再び node1 をリーダーに
+      // Scenario (3)
+      // resolves the network isolation in the situation as node1 and node3 are leader together
       releaseIsolation(node1)
-      runOn(node1) {
-        // 強制的に Follower に遷移させて新たな Term を開始する
-        setState(nodeMember, Follower, getState(nodeMember).stateData.initializeFollowerData())
-        awaitCond(getState(nodeMember).stateName == Leader)
-      }
+      releaseIsolation(node3)
 
-      // 過半数に複製（コミット）されるのを待つ
-      runOn(node1) {
+      // waits until the event is replicated to majority
+      runOn(node3) {
         inside(expectMsgType[ReplicationSucceeded]) {
-          case ReplicationSucceeded(event, _) => event should be("event1")
+          case ReplicationSucceeded(event, _, responseInstanceId) =>
+            event should be("event2")
+            responseInstanceId should contain(instanceId)
         }
       }
-      runOn(node1, node2) {
+      runOn(node2) {
         awaitCond {
+          // event2 was committed
           val commitIndex = getState(nodeMember).stateData.commitIndex
           getState(nodeMember).stateData.replicatedLog
-            .sliceEntries(LogEntryIndex.initial(), commitIndex).exists(_.event.event == "event1")
+            .sliceEntries(LogEntryIndex.initial(), commitIndex).exists(_.event.event == "event2")
         }
       }
       enterBarrier("complete scenario (3)")
 
-      // シナリオ (4)
-      runOn(node3) {
-        getState(nodeMember).stateData.replicatedLog.entries.map(_.event.event) should contain("event2")
-      }
-      releaseIsolation(node3)
-      runOn(node3) {
-        awaitAssert(getState(nodeMember).stateData.replicatedLog.entries.map(_.event.event) should not contain "event2")
+      // Scenario (4)
+      runOn(node1) {
+        awaitAssert {
+          val replicatedLog = getState(nodeMember).stateData.replicatedLog
+          replicatedLog.entries.map(_.event.event) should contain("event2")
+          replicatedLog.entries.map(_.event.event) should not contain "event1"
+        }
       }
       enterBarrier("complete scenario (4)")
     }
 
-    "メンバー全てがシャットダウンしても再作成すると状態が復元する" in {
+    "メンバー全てがシャットダウンしても再作成すると状態が復元する" ignore { // FIXME: シャットダウンしたのとは別のノードでクラスターを構成する必要がある
       val replicationId = createSeqShardId()
 
       var raftMember: RaftTestFSMRef = null
@@ -504,9 +529,12 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       val dummyEvent = "dummyEvent"
 
       runOn(node1) {
-        raftMember ! Replicate(dummyEvent, testActor, entityId)
+        val instanceId = EntityInstanceId(1)
+        raftMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
-          case ReplicationSucceeded(event, _) => event should be(dummyEvent)
+          case ReplicationSucceeded(event, _, responseInstanceId) =>
+            event should be(dummyEvent)
+            responseInstanceId should contain(instanceId)
         }
       }
       enterBarrier("sent event")
@@ -545,33 +573,30 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
     })
     val extractEntityId: ReplicationRegion.ExtractEntityId = { case msg => ("test-entity", msg) }
     val extractShardId: ReplicationRegion.ExtractShardId = { _ => shardId.underlying }
+    val typeName = s"sample-${shardId.underlying}"
     val regionProps = {
       Props(
         new ReplicationRegion(
-          typeName = "sample",
+          typeName = typeName,
           replicationActorProps,
           ClusterReplicationSettings(system),
           extractEntityId,
           extractShardId,
           maybeCommitLogStore = None,
         ) {
-          override def createRaftActor(shardId: NormalizedShardId): ActorRef = {
-            context.actorOf(
-              Props(
-                new RaftActor(
-                  typeName = "test",
-                  shardId,
-                  extractNormalizedEntityId,
-                  replicationActorProps,
-                  self,
-                  shardSnapshotStoreProps = Props.empty,
-                  selfMemberIndex,
-                  otherMemberIndexes,
-                  settings,
-                  maybeCommitLogStore = None,
-                ) with RaftTestProbeSupport,
-              ),
-              shardId.underlying,
+          override def createRaftActorProps(): Props = {
+            Props(
+              new RaftActor(
+                typeName = "test",
+                extractNormalizedEntityId,
+                replicationActorProps,
+                self,
+                shardSnapshotStoreProps = Props.empty,
+                selfMemberIndex,
+                otherMemberIndexes,
+                settings,
+                maybeCommitLogStore = None,
+              ) with RaftTestProbeSupport,
             )
           }
         },
@@ -580,10 +605,16 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
     val regionRef = planAutoKill(system.actorOf(regionProps, s"ReplicationRegion-for-${shardId.underlying}"))
     regionRef ! "create RaftActor"
 
-    // RaftActor
-    def resolveRaftActor(): ActorRef = system.actorSelection(regionRef.path / shardId.underlying).resolveOne().await
+    def resolveRaftActor(): ActorRef = {
+      val role         = "*" // Specify a wildcard because the role differs depending on the node
+      val clusterShard = "*" // Since cluster shard is calculated from hash and difficult to predict, specify a wildcard
+      system
+        .actorSelection(
+          s"/system/sharding/raft-shard-$typeName-$role/$clusterShard/${shardId.underlying}",
+        ).resolveOne(100.millis).await
+    }
+
     awaitAssert(resolveRaftActor())
-    resolveRaftActor()
   }
 
   private[this] def createCandidateData(

@@ -16,7 +16,6 @@ object RaftActor {
 
   def props(
       typeName: String,
-      shardId: NormalizedShardId,
       extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
       replicationActorProps: Props,
       region: ActorRef,
@@ -29,7 +28,6 @@ object RaftActor {
     Props(
       new RaftActor(
         typeName,
-        shardId,
         extractEntityId,
         replicationActorProps,
         region,
@@ -67,7 +65,7 @@ object RaftActor {
   final case class BecameCandidate()                                                            extends NonPersistEvent
   final case class BecameLeader()                                                               extends NonPersistEvent
   final case class DetectedLeaderMember(leaderMember: MemberIndex)                              extends NonPersistEvent
-  final case class StartedReplication(client: ActorRef, logEntryIndex: LogEntryIndex)           extends NonPersistEvent
+  final case class StartedReplication(client: ClientContext, logEntryIndex: LogEntryIndex)      extends NonPersistEvent
   final case class AcceptedRequestVote(follower: MemberIndex)                                   extends NonPersistEvent
   final case class SucceededAppendEntries(follower: MemberIndex, lastLogIndex: LogEntryIndex)   extends NonPersistEvent
   final case class DeniedAppendEntries(follower: MemberIndex)                                   extends NonPersistEvent
@@ -82,7 +80,6 @@ object RaftActor {
 
 class RaftActor(
     typeName: String,
-    _shardId: NormalizedShardId,
     val extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
     replicationActorProps: Props,
     _region: ActorRef,
@@ -99,7 +96,7 @@ class RaftActor(
   import RaftActor._
   import context.dispatcher
 
-  protected[this] def shardId: NormalizedShardId = _shardId
+  protected[this] def shardId: NormalizedShardId = NormalizedShardId.from(self.path)
 
   protected[this] def region: ActorRef = _region
 
@@ -162,6 +159,12 @@ class RaftActor(
       case BecameCandidate() =>
         currentData.initializeCandidateData()
       case BecameLeader() =>
+        log.info(
+          "[Leader] New leader was elected (term: {}, lastLogTerm: {}, lastLogIndex: {})",
+          currentData.currentTerm,
+          currentData.replicatedLog.lastLogTerm,
+          currentData.replicatedLog.lastLogIndex,
+        )
         currentData.initializeLeaderData()
       case DetectedLeaderMember(leaderMember) =>
         currentData.detectLeaderMember(leaderMember)
@@ -193,7 +196,10 @@ class RaftActor(
             entries.foreach {
               case (logEntry, Some(client)) =>
                 log.debug(s"=== [Leader] committed $logEntry and will notify it to $client ===")
-                client ! ReplicationSucceeded(logEntry.event.event, logEntry.index)
+                client.ref.tell(
+                  ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId),
+                  client.originSender.getOrElse(ActorRef.noSender),
+                )
               case (logEntry, None) =>
                 // 復旧中の commit or リーダー昇格時に未コミットのログがあった場合の commit
                 applyToReplicationActor(logEntry)
@@ -202,9 +208,10 @@ class RaftActor(
       case SnapshottingStarted(logEntryIndex, entityIds) =>
         currentData.startSnapshotting(logEntryIndex, entityIds)
       case EntitySnapshotSaved(metadata) =>
-        currentData.recordSavedSnapshot(metadata)(onComplete = () => {
+        currentData.recordSavedSnapshot(metadata, settings.compactionPreserveLogSize)(onComplete = () => {
           // 失敗する可能性があることに注意
           saveSnapshot(currentData.persistentState)
+          log.info("[{}] compaction completed (logEntryIndex: {})", currentState, metadata.logEntryIndex.underlying)
         })
       // TODO: Remove when test code is modified
       case _: NonPersistEventLike =>
@@ -320,7 +327,12 @@ class RaftActor(
     if (currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold) {
       val (logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
       applyDomainEvent(SnapshottingStarted(logEntryIndex, entityIds)) { _ =>
-        log.debug(s"=== [$currentState] snapshotting started (logEntryIndex: $logEntryIndex, entities: $entityIds) ===")
+        log.info(
+          "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
+          currentState,
+          logEntryIndex.underlying,
+          entityIds.size,
+        )
         requestTakeSnapshots(logEntryIndex, entityIds)
       }
     }

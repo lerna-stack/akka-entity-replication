@@ -1,6 +1,5 @@
 package lerna.akka.entityreplication.raft
 
-import akka.actor.ActorRef
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -58,9 +57,10 @@ trait FollowerData { self: RaftMemberData =>
 
   def vote(candidate: MemberIndex, term: Term): RaftMemberData = {
     require(
-      term > currentTerm || (term == currentTerm && votedFor.contains(candidate)),
-      s"should be term:$term > currentTerm:$currentTerm or (candidate:$candidate == votedFor:$votedFor on same term)",
+      !(term < currentTerm),
+      s"term:$term should be greater than or equal to currentTerm:$currentTerm",
     )
+
     updatePersistentState(currentTerm = term, votedFor = Some(candidate))
   }
 
@@ -77,13 +77,19 @@ trait FollowerData { self: RaftMemberData =>
   }
 
   def followLeaderCommit(leaderCommit: LogEntryIndex): RaftMemberData = {
-    require(leaderCommit >= commitIndex, s"should be leaderCommit:$leaderCommit >= commitIndex:$commitIndex")
-    import LogEntryIndex.min
-    val newCommitIndex = replicatedLog.lastIndexOption
-      .map { lastIndex =>
-        if (leaderCommit > commitIndex) min(leaderCommit, lastIndex) else commitIndex
-      }.getOrElse(commitIndex)
-    updateVolatileState(commitIndex = newCommitIndex)
+    if (leaderCommit >= commitIndex) {
+      import LogEntryIndex.min
+      val newCommitIndex = replicatedLog.lastIndexOption
+        .map { lastIndex =>
+          if (leaderCommit > commitIndex) min(leaderCommit, lastIndex) else commitIndex
+        }.getOrElse(commitIndex)
+      updateVolatileState(commitIndex = newCommitIndex)
+    } else {
+      // If a new leader is elected even if the leader is alive,
+      // leaderCommit is less than commitIndex when the old leader didn't tell the follower the new commitIndex.
+      // Do not back commitIndex because there is a risk of applying the event to Entity in duplicate.
+      this
+    }
   }
 
   protected def updateFollowerVolatileState(leaderMember: Option[MemberIndex] = leaderMember): RaftMemberData
@@ -113,7 +119,7 @@ trait CandidateData { self: RaftMemberData =>
 trait LeaderData { self: RaftMemberData =>
   def nextIndex: Option[NextIndex]
   def matchIndex: MatchIndex
-  def clients: Map[LogEntryIndex, ActorRef]
+  def clients: Map[LogEntryIndex, ClientContext]
 
   private[this] def getNextIndex: NextIndex =
     nextIndex.getOrElse(throw new IllegalStateException("nextIndex does not initialized"))
@@ -129,7 +135,7 @@ trait LeaderData { self: RaftMemberData =>
     updatePersistentState(replicatedLog = replicatedLog.append(event, currentTerm))
   }
 
-  def registerClient(client: ActorRef, logEntryIndex: LogEntryIndex): RaftMemberData = {
+  def registerClient(client: ClientContext, logEntryIndex: LogEntryIndex): RaftMemberData = {
     updateLeaderVolatileState(clients = clients + (logEntryIndex -> client))
   }
 
@@ -174,7 +180,12 @@ trait LeaderData { self: RaftMemberData =>
     updateVolatileState(commitIndex = logEntryIndex)
   }
 
-  def handleCommittedLogEntriesAndClients(handler: Seq[(LogEntry, Option[ActorRef])] => Unit): RaftMemberData = {
+  def currentTermIsCommitted: Boolean = {
+    val commitIndexTerm = replicatedLog.get(commitIndex).map(_.term)
+    commitIndexTerm.contains(currentTerm)
+  }
+
+  def handleCommittedLogEntriesAndClients(handler: Seq[(LogEntry, Option[ClientContext])] => Unit): RaftMemberData = {
     val applicableLogEntries = selectApplicableLogEntries
     handler(applicableLogEntries.map(e => (e, clients.get(e.index))))
     updateVolatileState(lastApplied = applicableLogEntries.lastOption.map(_.index).getOrElse(lastApplied))
@@ -184,7 +195,7 @@ trait LeaderData { self: RaftMemberData =>
   protected def updateLeaderVolatileState(
       nextIndex: Option[NextIndex] = nextIndex,
       matchIndex: MatchIndex = matchIndex,
-      clients: Map[LogEntryIndex, ActorRef] = clients,
+      clients: Map[LogEntryIndex, ClientContext] = clients,
   ): RaftMemberData
 }
 
@@ -210,7 +221,7 @@ object RaftMemberData {
       acceptedMembers: Set[MemberIndex] = Set(),
       nextIndex: Option[NextIndex] = None,
       matchIndex: MatchIndex = MatchIndex(),
-      clients: Map[LogEntryIndex, ActorRef] = Map(),
+      clients: Map[LogEntryIndex, ClientContext] = Map(),
       snapshottingStatus: SnapshottingStatus = SnapshottingStatus.empty,
   ) =
     RaftMemberDataImpl(
@@ -275,7 +286,9 @@ trait RaftMemberData
     updateVolatileState(snapshottingStatus = SnapshottingStatus(logEntryIndex, entityIds))
   }
 
-  def recordSavedSnapshot(snapshotMetadata: EntitySnapshotMetadata)(onComplete: () => Unit): RaftMemberData = {
+  def recordSavedSnapshot(snapshotMetadata: EntitySnapshotMetadata, preserveLogSize: Int)(
+      onComplete: () => Unit,
+  ): RaftMemberData = {
     if (snapshottingStatus.isInProgress && snapshottingStatus.snapshotLastLogIndex == snapshotMetadata.logEntryIndex) {
       val newStatus =
         snapshottingStatus.recordSnapshottingComplete(snapshotMetadata.logEntryIndex, snapshotMetadata.entityId)
@@ -283,7 +296,7 @@ trait RaftMemberData
         onComplete()
         updateVolatileState(snapshottingStatus = newStatus)
           .updatePersistentState(replicatedLog =
-            replicatedLog.deleteOldEntries(snapshottingStatus.snapshotLastLogIndex),
+            replicatedLog.deleteOldEntries(snapshottingStatus.snapshotLastLogIndex, preserveLogSize),
           )
       } else {
         updateVolatileState(snapshottingStatus = newStatus)
@@ -304,7 +317,7 @@ final case class RaftMemberDataImpl(
     acceptedMembers: Set[MemberIndex],
     nextIndex: Option[NextIndex],
     matchIndex: MatchIndex,
-    clients: Map[LogEntryIndex, ActorRef],
+    clients: Map[LogEntryIndex, ClientContext],
     snapshottingStatus: SnapshottingStatus,
 ) extends RaftMemberData {
 
@@ -336,7 +349,7 @@ final case class RaftMemberDataImpl(
   override protected def updateLeaderVolatileState(
       nextIndex: Option[NextIndex],
       matchIndex: MatchIndex,
-      clients: Map[LogEntryIndex, ActorRef],
+      clients: Map[LogEntryIndex, ClientContext],
   ): RaftMemberData =
     copy(nextIndex = nextIndex, matchIndex = matchIndex, clients = clients)
 }

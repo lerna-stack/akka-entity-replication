@@ -2,15 +2,16 @@ package lerna.akka.entityreplication.raft.snapshot
 
 import akka.actor.{ ActorLogging, ActorRef, Props, ReceiveTimeout }
 import akka.persistence
-import akka.persistence.PersistentActor
-import lerna.akka.entityreplication.model.NormalizedEntityId
+import akka.persistence.{ PersistentActor, Recovery, SnapshotSelectionCriteria }
+import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.RaftSettings
 import lerna.akka.entityreplication.raft.routing.MemberIndex
+import lerna.akka.entityreplication.util.ActorIds
 
 object SnapshotStore {
 
   def props(
-      typeName: String,
+      typeName: TypeName,
       entityId: NormalizedEntityId,
       settings: RaftSettings,
       selfMemberIndex: MemberIndex,
@@ -19,7 +20,7 @@ object SnapshotStore {
 }
 
 class SnapshotStore(
-    typeName: String,
+    typeName: TypeName,
     entityId: NormalizedEntityId,
     settings: RaftSettings,
     selfMemberIndex: MemberIndex,
@@ -27,13 +28,21 @@ class SnapshotStore(
     with ActorLogging {
   import SnapshotProtocol._
 
-  override def persistenceId: String = s"SnapshotStore-${typeName}-${entityId.underlying}-${selfMemberIndex.role}"
+  override def persistenceId: String =
+    ActorIds.persistenceId("SnapshotStore", typeName.underlying, entityId.underlying, selfMemberIndex.role)
 
   override def journalPluginId: String = settings.journalPluginId
 
   override def snapshotPluginId: String = settings.snapshotStorePluginId
 
   context.setReceiveTimeout(settings.compactionSnapshotCacheTimeToLive)
+
+  // SequenceNr is always 0 because SnapshotStore doesn't persist events (only persist snapshots).
+  override def recovery: Recovery =
+    Recovery(
+      toSequenceNr = 0L,
+      fromSnapshot = SnapshotSelectionCriteria(maxSequenceNr = 0L, maxTimestamp = Long.MaxValue),
+    )
 
   override def receiveRecover: Receive = {
     case akka.persistence.SnapshotOffer(_, s: EntitySnapshot) =>
@@ -82,7 +91,8 @@ class SnapshotStore(
     case _: persistence.SaveSnapshotSuccess =>
       replyTo ! SaveSnapshotSuccess(snapshot.metadata)
       context.become(hasSnapshot(snapshot))
-    case _: persistence.SaveSnapshotFailure =>
+    case failure: persistence.SaveSnapshotFailure =>
+      log.warning("Saving snapshot failed - {}: {}", failure.cause.getClass.getCanonicalName, failure.cause.getMessage)
       replyTo ! SaveSnapshotFailure(snapshot.metadata)
   }
 

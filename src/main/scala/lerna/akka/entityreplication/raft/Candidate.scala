@@ -16,7 +16,13 @@ trait Candidate { this: RaftActor =>
       val newTerm = currentData.currentTerm.next()
       cancelElectionTimeoutTimer()
       broadcast(
-        RequestVote(shardId, newTerm, selfMemberIndex, currentData.replicatedLog.lastLogIndex),
+        RequestVote(
+          shardId,
+          newTerm,
+          selfMemberIndex,
+          currentData.replicatedLog.lastLogIndex,
+          currentData.replicatedLog.lastLogTerm,
+        ),
       ) // TODO: 永続化前に broadcast して問題ないか調べる
       applyDomainEvent(BegunNewTerm(newTerm)) { _ =>
         become(Candidate)
@@ -39,12 +45,16 @@ trait Candidate { this: RaftActor =>
   private[this] def receiveRequestVote(request: RequestVote): Unit =
     request match {
 
-      case RequestVote(_, term, candidate, _) if term == currentData.currentTerm && candidate == selfMemberIndex =>
+      case RequestVote(_, term, candidate, _, _) if term == currentData.currentTerm && candidate == selfMemberIndex =>
         log.debug(s"=== [Candidate] accept self RequestVote ===")
-        sender() ! RequestVoteAccepted(term, selfMemberIndex)
+        applyDomainEvent(Voted(term, selfMemberIndex)) { _ =>
+          sender() ! RequestVoteAccepted(term, selfMemberIndex)
+        }
 
-      case RequestVote(_, term, otherCandidate, lastLogIndex)
-          if term.isNewerThan(currentData.currentTerm) && lastLogIndex >= currentData.replicatedLog.lastLogIndex =>
+      case RequestVote(_, term, otherCandidate, lastLogIndex, lastLogTerm)
+          if term.isNewerThan(
+            currentData.currentTerm,
+          ) && lastLogTerm >= currentData.replicatedLog.lastLogTerm && lastLogIndex >= currentData.replicatedLog.lastLogIndex =>
         log.debug(s"=== [Candidate] accept RequestVote($term, $otherCandidate) ===")
         cancelElectionTimeoutTimer()
         applyDomainEvent(Voted(term, otherCandidate)) { domainEvent =>
@@ -54,7 +64,16 @@ trait Candidate { this: RaftActor =>
 
       case request: RequestVote =>
         log.debug(s"=== [Candidate] deny $request ===")
-        sender() ! RequestVoteDenied(currentData.currentTerm)
+        if (request.term.isNewerThan(currentData.currentTerm)) {
+          cancelElectionTimeoutTimer()
+          applyDomainEvent(DetectedNewTerm(request.term)) { _ =>
+            sender() ! RequestVoteDenied(currentData.currentTerm)
+            become(Follower)
+          }
+        } else {
+          // the request has the same or old term
+          sender() ! RequestVoteDenied(currentData.currentTerm)
+        }
     }
 
   private[this] def receiveRequestVoteResponse(response: RequestVoteResponse): Unit =
@@ -100,16 +119,28 @@ trait Candidate { this: RaftActor =>
         if (currentData.hasMatchLogEntry(appendEntries.prevLogIndex, appendEntries.prevLogTerm)) {
           log.debug(s"=== [Candidate] append $appendEntries ===")
           cancelElectionTimeoutTimer()
-          applyDomainEvent(AppendedEntries(appendEntries.term, appendEntries.entries, appendEntries.prevLogIndex)) {
-            domainEvent =>
-              applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
-                sender() ! AppendEntriesSucceeded(
-                  domainEvent.term,
-                  currentData.replicatedLog.lastLogIndex,
-                  selfMemberIndex,
-                )
-                become(Follower)
-              }
+          if (appendEntries.entries.isEmpty && appendEntries.term == currentData.currentTerm) {
+            // do not persist event when no need
+            applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
+              sender() ! AppendEntriesSucceeded(
+                appendEntries.term,
+                currentData.replicatedLog.lastLogIndex,
+                selfMemberIndex,
+              )
+              become(Follower)
+            }
+          } else {
+            applyDomainEvent(AppendedEntries(appendEntries.term, appendEntries.entries, appendEntries.prevLogIndex)) {
+              domainEvent =>
+                applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
+                  sender() ! AppendEntriesSucceeded(
+                    domainEvent.term,
+                    currentData.replicatedLog.lastLogIndex,
+                    selfMemberIndex,
+                  )
+                  become(Follower)
+                }
+            }
           }
         } else { // prevLogIndex と prevLogTerm がマッチするエントリが無かった
           log.debug(s"=== [Candidate] could not append $appendEntries ===")

@@ -1,31 +1,35 @@
 package lerna.akka.entityreplication
 
-import akka.actor.{ ActorLogging, ActorPath, ActorRef, Cancellable, Stash, Status }
-import akka.pattern.extended.ask
-import akka.pattern.{ pipe, AskTimeoutException }
-import akka.util.Timeout
-import lerna.akka.entityreplication.model.NormalizedEntityId
+import java.util.concurrent.atomic.AtomicInteger
+
+import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, Cancellable, Stash }
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.RaftProtocol._
-import lerna.akka.entityreplication.raft.model.{ LogEntry, LogEntryIndex, NoOp }
+import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 
 object ReplicationActor {
+
+  private val instanceIdCounter = new AtomicInteger(1)
+
+  private def generateInstanceId(): EntityInstanceId = EntityInstanceId(instanceIdCounter.getAndIncrement())
+
   final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef)
   final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState)
 
   private final case object RecoveryTimeout
 
   final case class EntityRecoveryTimeoutException(entityPath: ActorPath) extends RuntimeException
-
-  final case class ReplicationFailure()
 }
 
-trait ReplicationActor[StateData] extends akka.lerna.Actor with ActorLogging with Stash with akka.lerna.StashFactory {
+trait ReplicationActor[StateData] extends Actor with ActorLogging with Stash with akka.lerna.StashFactory {
   import ReplicationActor._
   import context.dispatcher
 
   private val internalStash = createStash()
+
+  private val instanceId = ReplicationActor.generateInstanceId()
 
   private[this] val settings = ClusterReplicationSettings(context.system)
 
@@ -37,6 +41,15 @@ trait ReplicationActor[StateData] extends akka.lerna.Actor with ActorLogging wit
 
   override def aroundPreStart(): Unit = {
     super.aroundPreStart()
+    requestRecovery()
+  }
+
+  override def aroundPreRestart(reason: Throwable, message: Option[Any]): Unit = {
+    super.aroundPreRestart(reason, message)
+    requestRecovery()
+  }
+
+  private[this] def requestRecovery(): Unit = {
     context.parent ! RequestRecovery(NormalizedEntityId.of(self.path))
   }
 
@@ -50,6 +63,7 @@ trait ReplicationActor[StateData] extends akka.lerna.Actor with ActorLogging wit
         case RecoveryTimeout =>
           // to restart
           // TODO: BackoffSupervisor を使ってカスケード障害を回避する
+          log.info("Entity (name: {}) recovering timed out. It will be retried later.", self.path.name)
           throw EntityRecoveryTimeoutException(self.path)
 
         case RecoveryState(logEntries, maybeSnapshot) =>
@@ -95,31 +109,23 @@ trait ReplicationActor[StateData] extends akka.lerna.Actor with ActorLogging wit
   private[this] def waitForReplicationResponse[A](event: A, handler: A => Unit): State =
     new State {
 
-      private[this] var replicatedLogEntries: Seq[LogEntry] = Seq()
-
       override def stateReceive(receive: Receive, message: Any): Unit =
         message match {
           case Replica(logEntry) =>
-            replicatedLogEntries :+= logEntry
-          case ReplicationSucceeded(_, logEntryIndex) =>
+            // ReplicationActor can receive Replica message when RaftActor demoted to Follower while replicating an event
+            innerApplyEvent(logEntry.event.event, logEntry.index)
             changeState(ready)
-            replicatedLogEntries.foreach { logEntry =>
-              innerApplyEvent(logEntry.event.event, logEntry.index)
-            }
-            replicatedLogEntries = Seq()
+            internalStash.unstashAll()
+          case ReplicationSucceeded(_, logEntryIndex, responseInstanceId) if responseInstanceId.contains(instanceId) =>
+            changeState(ready)
             internalStash.unstashAll()
             handler(event)
             lastAppliedLogEntryIndex = logEntryIndex
+          case _: ReplicationSucceeded =>
+          // ignore ReplicationSucceeded which is produced by replicate command of old ReplicationActor instance
           case msg: ReplicationFailed =>
             // TODO: 実装
             log.warning("ReplicationFailed: {}", msg)
-          case Status.Failure(_: AskTimeoutException) =>
-            changeState(ready)
-            log.warning("replication timeout")
-            self ! ReplicationFailure()
-          case msg: Status.Failure =>
-            // TODO: 実装
-            log.warning("Status.Failure: {}", msg)
           case TakeSnapshot(metadata, replyTo) =>
             replyTo ! Snapshot(metadata, EntityState(currentState))
           case _ => internalStash.stash()
@@ -138,19 +144,15 @@ trait ReplicationActor[StateData] extends akka.lerna.Actor with ActorLogging wit
   override def aroundReceive(receive: Receive, msg: Any): Unit =
     replicationState.stateReceive(receive, msg)
 
-  private[this] val replicationConfig = context.system.settings.config.getConfig("lerna.akka.entityreplication")
-
-  import util.JavaDurationConverters._
-  private[this] val replicationTimeout: Timeout = Timeout(replicationConfig.getDuration("replication-timeout").asScala)
-
   def replicate[A](event: A)(handler: A => Unit): Unit = {
-    val originalSender = sender()
     changeState(waitForReplicationResponse(event, handler))
-    import context.dispatcher
-    context.parent
-      .ask(replyTo => Replicate(event, replyTo, NormalizedEntityId.of(self.path)))(replicationTimeout).pipeTo(self)(
-        originalSender,
-      )
+    context.parent ! Replicate(
+      event,
+      replyTo = self,
+      NormalizedEntityId.of(self.path),
+      instanceId,
+      originSender = sender(),
+    )
   }
 
   def ensureConsistency(handler: => Unit): Unit = replicate(NoOp)(_ => (handler _)())

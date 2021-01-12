@@ -2,7 +2,7 @@ package lerna.akka.entityreplication
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import akka.NotUsed
+import akka.{ Done, NotUsed }
 import akka.actor.{ ActorRef, PoisonPill, Props }
 import akka.cluster.Cluster
 import akka.cluster.ClusterEvent.{ CurrentClusterState, MemberUp }
@@ -11,14 +11,21 @@ import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import akka.util.Timeout
 import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
-import scala.concurrent.duration._
+import lerna.akka.entityreplication.raft.routing.MemberIndex
 
+import scala.concurrent.duration._
 import scala.collection.Set
 
 object ReplicationActorSpecConfig extends MultiNodeConfig {
   val node1: RoleName = role("node1")
   val node2: RoleName = role("node2")
   val node3: RoleName = role("node3")
+
+  val memberIndexes: Map[RoleName, MemberIndex] = Map(
+    node1 -> MemberIndex("member-1"),
+    node2 -> MemberIndex("member-2"),
+    node3 -> MemberIndex("member-3"),
+  )
 
   commonConfig(
     debugConfig(false)
@@ -28,18 +35,20 @@ object ReplicationActorSpecConfig extends MultiNodeConfig {
       lerna.akka.entityreplication.raft.multi-raft-roles = ["member-1", "member-2", "member-3"]
       // 1 イベントごとに snapshot が取得されるようにする
       lerna.akka.entityreplication.raft.compaction.log-size-threshold = 1
+      lerna.akka.entityreplication.raft.compaction.preserve-log-size = 1
       lerna.akka.entityreplication.raft.compaction.log-size-check-interval = 0.1s
+      lerna.akka.entityreplication.recovery-entity-timeout = 1s
       """))
       .withFallback(ConfigFactory.parseResources("multi-jvm-testing.conf")),
   )
-  nodeConfig(node1)(ConfigFactory.parseString("""
-    akka.cluster.roles = ["member-1"]
+  nodeConfig(node1)(ConfigFactory.parseString(s"""
+    akka.cluster.roles = ["${memberIndexes(node1)}"]
   """))
-  nodeConfig(node2)(ConfigFactory.parseString("""
-    akka.cluster.roles = ["member-2"]
+  nodeConfig(node2)(ConfigFactory.parseString(s"""
+    akka.cluster.roles = ["${memberIndexes(node2)}"]
   """))
-  nodeConfig(node3)(ConfigFactory.parseString("""
-    akka.cluster.roles = ["member-3"]
+  nodeConfig(node3)(ConfigFactory.parseString(s"""
+    akka.cluster.roles = ["${memberIndexes(node3)}"]
   """))
 }
 
@@ -47,14 +56,18 @@ object ReplicationActorSpec {
 
   object PingPongReplicationActor {
 
-    case class Ping(id: String)
+    sealed trait Command {
+      def id: String
+    }
+    case class Ping(id: String) extends Command
     case class Pong(id: String, count: Int)
+    case class Break(id: String) extends Command
 
     val extractEntityId: ReplicationRegion.ExtractEntityId = {
-      case c @ Ping(id) => (id, c)
+      case c: Command => (c.id, c)
     }
     val extractShardId: ReplicationRegion.ExtractShardId = {
-      case Ping(id) => (Math.abs(id.hashCode) % 256).toString
+      case c: Command => (Math.abs(c.id.hashCode) % 256).toString
     }
   }
 
@@ -69,6 +82,8 @@ object ReplicationActorSpec {
     }
 
     override def receiveReplica: Receive = {
+      case SnapshotOffer(snapshot: Int) =>
+        count = snapshot
       case Ping(_) => updateState()
     }
 
@@ -79,6 +94,8 @@ object ReplicationActorSpec {
             updateState()
             sender() ! Pong(id, count)
         }
+      case _: Break =>
+        throw new RuntimeException("break!")
     }
 
     def updateState(): Unit = {
@@ -205,7 +222,7 @@ class ReplicationActorSpecMultiJvmNode3 extends ReplicationActorSpec
 
 class ReplicationActorSpec extends MultiNodeSpec(ReplicationActorSpecConfig) with STMultiNodeSpec {
   import ReplicationActorSpec._
-  import ReplicationRegionSpecConfig._
+  import ReplicationActorSpecConfig._
 
   "ReplicationActor" should {
 
@@ -251,6 +268,40 @@ class ReplicationActorSpec extends MultiNodeSpec(ReplicationActorSpecConfig) wit
         expectMsg(Pong(entityId, count = 2))
         clusterReplication ! Ping(entityId)
         expectMsg(Pong(entityId, count = 3))
+      }
+    }
+
+    "be able to continue processing commands even if an exception occurred" in {
+      import PingPongReplicationActor._
+
+      var clusterReplication: ActorRef = null
+
+      runOn(node1, node2, node3) {
+        clusterReplication = planAutoKill {
+          ClusterReplication(system).start(
+            typeName = "ping-pong-sample-2",
+            entityProps = Props[PingPongReplicationActor],
+            settings = ClusterReplicationSettings(system),
+            extractEntityId = PingPongReplicationActor.extractEntityId,
+            extractShardId = PingPongReplicationActor.extractShardId,
+          )
+        }
+      }
+
+      val entityId = createSeqReplicationId()
+
+      runOn(node1) {
+        clusterReplication ! Ping(entityId)
+        expectMsg(Pong(entityId, count = 1))
+        clusterReplication ! Ping(entityId)
+        expectMsg(Pong(entityId, count = 2))
+        clusterReplication ! Break(entityId)
+        awaitAssert {
+          clusterReplication ! Ping(entityId)
+          fishForSpecificMessage(max = 1.seconds) {
+            case Pong(`entityId`, count) if count >= 3 => Done
+          }
+        }
       }
     }
 
@@ -314,8 +365,9 @@ class ReplicationActorSpec extends MultiNodeSpec(ReplicationActorSpecConfig) wit
         awaitAssert {
           // なるべく早くリトライ
           implicit val timeout: Timeout = Timeout(0.25.seconds)
-          raftMember =
-            watch(system.actorSelection(s"/user/replicationRegion-passivate-sample/*/$entityId").resolveOne().await)
+          raftMember = watch(
+            system.actorSelection(s"/system/sharding/raft-shard-passivate-sample-*/*/*/$entityId").resolveOne().await,
+          )
         }
       }
       enterBarrier("raft members created")
@@ -364,8 +416,12 @@ class ReplicationActorSpec extends MultiNodeSpec(ReplicationActorSpecConfig) wit
       awaitAssert {
         // なるべく早くリトライ
         implicit val timeout: Timeout = Timeout(0.25.seconds)
-        raftMember =
-          watch(system.actorSelection(s"/user/replicationRegion-recovery-sample/*/$entityId").resolveOne().await)
+        raftMember = watch(
+          system
+            .actorSelection(
+              s"/system/sharding/raft-shard-recovery-sample-${memberIndexes(myself)}/*/*/$entityId",
+            ).resolveOne().await,
+        )
       }
     }
     enterBarrier("raft members found")

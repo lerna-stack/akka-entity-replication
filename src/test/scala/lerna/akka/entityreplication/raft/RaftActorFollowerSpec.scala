@@ -26,7 +26,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
 
       val candidateMemberIndex = createUniqueMemberIndex()
       val term                 = Term.initial().next()
-      follower ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial())
+      follower ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteAccepted(term, followerMemberIndex))
     }
 
@@ -40,12 +40,12 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
 
       val candidateMemberIndex = createUniqueMemberIndex()
       val term                 = Term.initial().next()
-      follower ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial())
+      follower ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteAccepted(term, followerMemberIndex))
 
       val anotherCandidateMemberIndex = createUniqueMemberIndex()
 
-      follower ! RequestVote(shardId, term, anotherCandidateMemberIndex, LogEntryIndex.initial())
+      follower ! RequestVote(shardId, term, anotherCandidateMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteDenied(term))
     }
 
@@ -59,13 +59,13 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
 
       val candidateMemberIndex = createUniqueMemberIndex()
       val term1                = Term.initial().next()
-      follower ! RequestVote(shardId, term1, candidateMemberIndex, LogEntryIndex.initial())
+      follower ! RequestVote(shardId, term1, candidateMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteAccepted(term1, followerMemberIndex))
 
       val anotherCandidateMemberIndex = createUniqueMemberIndex()
 
       val term2 = term1.next()
-      follower ! RequestVote(shardId, term2, anotherCandidateMemberIndex, LogEntryIndex.initial())
+      follower ! RequestVote(shardId, term2, anotherCandidateMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteAccepted(term2, followerMemberIndex))
     }
 
@@ -79,11 +79,59 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
 
       val candidateMemberIndex = createUniqueMemberIndex()
       val term                 = Term.initial().next()
-      follower ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial())
+      follower ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteAccepted(term, followerMemberIndex))
 
-      follower ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial())
+      follower ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteAccepted(term, followerMemberIndex))
+    }
+
+    "deny RequestVote if lastLogIndex is older than own even if the request has same lastLogTerm" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val candidateMemberIndex = createUniqueMemberIndex()
+      val term1                = Term(1)
+      val term2                = Term(2)
+      val index1               = LogEntryIndex(1)
+      val index2               = LogEntryIndex(2)
+      val logEntries = Seq(
+        LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
+        LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
+      )
+      val log = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
+      setState(follower, Follower, createFollowerData(term1, log))
+
+      follower ! RequestVote(shardId, term2, candidateMemberIndex, lastLogIndex = index1, lastLogTerm = term1)
+      expectMsg(RequestVoteDenied(term2))
+    }
+
+    "deny RequestVote if lastLogTerm is older than own even if the request has newer lastLogIndex than own" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val candidateMemberIndex = createUniqueMemberIndex()
+      val term1                = Term(1)
+      val term2                = Term(2)
+      val term3                = Term(3)
+      val index1               = LogEntryIndex(1)
+      val index2               = LogEntryIndex(2)
+      val index3               = LogEntryIndex(3)
+      val logEntries = Seq(
+        LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
+        LogEntry(index2, EntityEvent(Option(entityId), "b"), term2),
+      )
+      val log = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
+      setState(follower, Follower, createFollowerData(term2, log))
+
+      follower ! RequestVote(shardId, term3, candidateMemberIndex, lastLogIndex = index3, lastLogTerm = term1)
+      expectMsg(RequestVoteDenied(term3))
     }
 
     "自分が持っている Term と同じ場合は AppendEntries を成功させる" in {
@@ -97,7 +145,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       val candidateMemberIndex = createUniqueMemberIndex()
       val term                 = Term.initial().next()
       // term に同期させる
-      follower ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial())
+      follower ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteAccepted(term, followerMemberIndex))
 
       val leaderMemberIndex = candidateMemberIndex
@@ -117,7 +165,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       val term1                = Term.initial().next()
       val term2                = term1.next()
       // term1 に同期させる
-      follower ! RequestVote(shardId, term1, candidateMemberIndex, LogEntryIndex.initial())
+      follower ! RequestVote(shardId, term1, candidateMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteAccepted(term1, followerMemberIndex))
 
       val leaderMemberIndex = candidateMemberIndex
@@ -137,7 +185,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       val term1            = Term.initial()
       val term2            = term1.next()
       // term2 に同期させる
-      follower ! RequestVote(shardId, term2, otherMemberIndex, LogEntryIndex.initial())
+      follower ! RequestVote(shardId, term2, otherMemberIndex, LogEntryIndex.initial(), Term.initial())
       expectMsg(RequestVoteAccepted(term2, followerMemberIndex))
 
       follower ! createAppendEntries(shardId, term1, otherMemberIndex)
@@ -477,8 +525,8 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
 
       val otherMemberIndex = createUniqueMemberIndex()
       val term2            = term1.next()
-      follower ! RequestVote(shardId, term2, otherMemberIndex, LogEntryIndex.initial())
-      expectMsg(RequestVoteDenied(term1))
+      follower ! RequestVote(shardId, term2, otherMemberIndex, LogEntryIndex.initial(), Term.initial())
+      expectMsg(RequestVoteDenied(term2))
     }
   }
 
