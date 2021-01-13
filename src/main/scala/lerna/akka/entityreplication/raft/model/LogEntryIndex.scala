@@ -2,7 +2,7 @@ package lerna.akka.entityreplication.raft.model
 
 object LogEntryIndex {
 
-  def initial() = LogEntryIndex(0)
+  def initial(): LogEntryIndex = LogEntryIndex(0)
 
   def min(a: LogEntryIndex, b: LogEntryIndex): LogEntryIndex = {
     if (a <= b) a else b
