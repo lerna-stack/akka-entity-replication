@@ -9,7 +9,7 @@ object LogEntryIndex {
   }
 }
 
-case class LogEntryIndex(underlying: Int) extends Ordered[LogEntryIndex] {
+case class LogEntryIndex(underlying: Long) extends Ordered[LogEntryIndex] {
   require(underlying >= 0)
 
   def next(): LogEntryIndex = copy(underlying + 1)
