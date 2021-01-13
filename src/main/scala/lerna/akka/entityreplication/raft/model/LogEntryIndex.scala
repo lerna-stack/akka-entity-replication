@@ -9,7 +9,7 @@ object LogEntryIndex {
   }
 }
 
-case class LogEntryIndex(underlying: Long) extends Ordered[LogEntryIndex] {
+case class LogEntryIndex(private[model] val underlying: Long) extends Ordered[LogEntryIndex] {
   require(underlying >= 0)
 
   def next(): LogEntryIndex = copy(underlying + 1)
@@ -22,4 +22,10 @@ case class LogEntryIndex(underlying: Long) extends Ordered[LogEntryIndex] {
 
   override def compare(that: LogEntryIndex): Int =
     underlying.compareTo(that.underlying)
+
+  override def toString: String = underlying.toString
+
+  def toSeqIndex(offset: LogEntryIndex): Int = {
+    (underlying - offset.underlying - 1).toInt
+  }
 }
