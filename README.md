@@ -39,6 +39,8 @@ resolvers += Resolver.sonatypeRepo("snapshots")  // If you use SNAPSHOT, you nee
 libraryDependencies += "io.github.lerna-stack" %% "akka-entity-replication" % "0.1.0-SNAPSHOT"
 ```
 
+[![Sonatype Nexus (Snapshots)](https://img.shields.io/nexus/s/io.github.lerna-stack/akka-entity-replication_2.12?color=%237B1FA2&label=master&server=https%3A%2F%2Foss.sonatype.org)](https://oss.sonatype.org/index.html#nexus-search;gav~io.github.lerna-stack~akka-entity-replication_*~~~)
+
 This version of akka-entity-replication depends on **Akka 2.6.x**. It has been published for Scala 2.12.
 
 akka-entity-replication currently uses Apache Cassandra to store entity events. Other data stores may be available in future releases.
