@@ -234,5 +234,23 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
         Seq(4, 5),
       )
     }
+
+    "clear log entries and update lastLogIndex and lastLogTerm" in {
+      val logEntries = Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, "b"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, "c"), Term(1)),
+      )
+
+      val log = new ReplicatedLog(logEntries)
+
+      val ancestorLastTerm  = Term(10)
+      val ancestorLastIndex = LogEntryIndex(10)
+      val updated           = log.reset(ancestorLastTerm, ancestorLastIndex)
+
+      updated.entries should have size 0
+      updated.lastLogTerm should be(ancestorLastTerm)
+      updated.lastLogIndex should be(ancestorLastIndex)
+    }
   }
 }
