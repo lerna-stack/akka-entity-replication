@@ -77,9 +77,16 @@ class RaftSettings(root: Config) {
 
   def randomizedCompactionLogSizeCheckInterval(): FiniteDuration = randomized(compactionLogSizeCheckInterval)
 
+  val snapshotSyncCopyingParallelism: Int = config.getInt("snapshot-sync.snapshot-copying-parallelism")
+
+  val snapshotSyncPersistenceOperationTimeout: FiniteDuration =
+    config.getDuration("snapshot-sync.persistence-operation-timeout").asScala
+
   val clusterShardingConfig: Config = config.getConfig("sharding")
 
   val journalPluginId: String = config.getString("persistence.journal.plugin")
 
   val snapshotStorePluginId: String = config.getString("persistence.snapshot-store.plugin")
+
+  val queryPluginId: String = config.getString("persistence.query.plugin")
 }
