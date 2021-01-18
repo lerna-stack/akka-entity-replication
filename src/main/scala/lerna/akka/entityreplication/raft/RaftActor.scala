@@ -60,6 +60,14 @@ object RaftActor {
       extends PersistEvent
       with ClusterReplicationSerializable
   final case class AppendedEvent(event: EntityEvent) extends PersistEvent with ClusterReplicationSerializable
+  final case class CompactionCompleted(
+      memberIndex: MemberIndex,
+      shardId: NormalizedShardId,
+      snapshotLastLogTerm: Term,
+      snapshotLastLogIndex: LogEntryIndex,
+      entityIds: Set[NormalizedEntityId],
+  ) extends PersistEvent
+      with ClusterReplicationSerializable
 
   sealed trait NonPersistEvent                                                                  extends DomainEvent
   final case class BecameFollower()                                                             extends NonPersistEvent
@@ -72,7 +80,7 @@ object RaftActor {
   final case class DeniedAppendEntries(follower: MemberIndex)                                   extends NonPersistEvent
   final case class FollowedLeaderCommit(leaderMember: MemberIndex, leaderCommit: LogEntryIndex) extends NonPersistEvent
   final case class Committed(logEntryIndex: LogEntryIndex)                                      extends NonPersistEvent
-  final case class SnapshottingStarted(logEntryIndex: LogEntryIndex, entityIds: Set[NormalizedEntityId])
+  final case class SnapshottingStarted(term: Term, logEntryIndex: LogEntryIndex, entityIds: Set[NormalizedEntityId])
       extends NonPersistEvent
   final case class EntitySnapshotSaved(metadata: EntitySnapshotMetadata) extends NonPersistEvent
 
@@ -206,14 +214,31 @@ class RaftActor(
                 applyToReplicationActor(logEntry)
             }
           }
-      case SnapshottingStarted(logEntryIndex, entityIds) =>
-        currentData.startSnapshotting(logEntryIndex, entityIds)
+      case SnapshottingStarted(term, logEntryIndex, entityIds) =>
+        currentData.startSnapshotting(term, logEntryIndex, entityIds)
       case EntitySnapshotSaved(metadata) =>
         currentData.recordSavedSnapshot(metadata, settings.compactionPreserveLogSize)(onComplete = () => {
-          // 失敗する可能性があることに注意
-          saveSnapshot(currentData.persistentState)
-          log.info("[{}] compaction completed (logEntryIndex: {})", currentState, metadata.logEntryIndex)
+          val status = currentData.snapshottingStatus
+          applyDomainEvent(
+            CompactionCompleted(
+              selfMemberIndex,
+              shardId,
+              status.snapshotLastLogTerm,
+              status.snapshotLastLogIndex,
+              status.completedEntities,
+            ),
+          ) { _ =>
+            saveSnapshot(currentData.persistentState) // Note that this persistence can fail
+            log.info(
+              "[{}] compaction completed (term: {}, logEntryIndex: {})",
+              currentState,
+              status.snapshotLastLogTerm,
+              status.snapshotLastLogIndex,
+            )
+          }
         })
+      case CompactionCompleted(_, _, snapshotLastTerm, snapshotLastIndex, _) =>
+        currentData.updateLastSnapshotStatus(snapshotLastTerm, snapshotLastIndex)
       // TODO: Remove when test code is modified
       case _: NonPersistEventLike =>
         log.error("must not use NonPersistEventLike in production code")
@@ -326,8 +351,8 @@ class RaftActor(
 
   def handleSnapshotTick(): Unit = {
     if (currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold) {
-      val (logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
-      applyDomainEvent(SnapshottingStarted(logEntryIndex, entityIds)) { _ =>
+      val (term, logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
+      applyDomainEvent(SnapshottingStarted(term, logEntryIndex, entityIds)) { _ =>
         log.info(
           "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
           currentState,

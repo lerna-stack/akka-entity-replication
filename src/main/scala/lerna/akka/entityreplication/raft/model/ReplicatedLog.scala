@@ -53,6 +53,11 @@ case class ReplicatedLog private[model] (
 
   def lastLogTerm: Term = lastOption.map(_.term).getOrElse(ancestorLastTerm)
 
+  def termAt(logEntryIndex: LogEntryIndex): Term =
+    get(logEntryIndex).map(_.term).getOrElse {
+      throw new IllegalArgumentException(s"Term not found at $logEntryIndex")
+    }
+
   def merge(thatEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): ReplicatedLog = {
     val newEntries = this.entries.takeWhile(_.index <= prevLogIndex) ++ thatEntries
     copy(newEntries)
