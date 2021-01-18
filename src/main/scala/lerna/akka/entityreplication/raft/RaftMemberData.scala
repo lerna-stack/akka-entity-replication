@@ -8,8 +8,12 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapsho
 
 object PersistentStateData {
 
-  final case class PersistentState(currentTerm: Term, votedFor: Option[MemberIndex], replicatedLog: ReplicatedLog)
-      extends ClusterReplicationSerializable
+  final case class PersistentState(
+      currentTerm: Term,
+      votedFor: Option[MemberIndex],
+      replicatedLog: ReplicatedLog,
+      lastSnapshotStatus: SnapshotStatus,
+  ) extends ClusterReplicationSerializable
 }
 
 trait PersistentStateData[T <: PersistentStateData[T]] {
@@ -18,15 +22,17 @@ trait PersistentStateData[T <: PersistentStateData[T]] {
   def currentTerm: Term
   def votedFor: Option[MemberIndex]
   def replicatedLog: ReplicatedLog
+  def lastSnapshotStatus: SnapshotStatus
 
   protected def updatePersistentState(
       currentTerm: Term = currentTerm,
       votedFor: Option[MemberIndex] = votedFor,
       replicatedLog: ReplicatedLog = replicatedLog,
+      lastSnapshotStatus: SnapshotStatus = lastSnapshotStatus,
   ): T
 
   def persistentState: PersistentState =
-    PersistentState(currentTerm, votedFor, replicatedLog)
+    PersistentState(currentTerm, votedFor, replicatedLog, lastSnapshotStatus)
 }
 
 trait VolatileStateData[T <: VolatileStateData[T]] {
@@ -205,11 +211,12 @@ object RaftMemberData {
   import PersistentStateData._
 
   def apply(persistentState: PersistentState): RaftMemberData = {
-    val PersistentState(currentTerm, votedFor, replicatedLog) = persistentState
+    val PersistentState(currentTerm, votedFor, replicatedLog, snapshotStatus) = persistentState
     apply(
       currentTerm = currentTerm,
       votedFor = votedFor,
       replicatedLog = replicatedLog,
+      lastSnapshotStatus = snapshotStatus,
     )
   }
 
@@ -225,6 +232,7 @@ object RaftMemberData {
       matchIndex: MatchIndex = MatchIndex(),
       clients: Map[LogEntryIndex, ClientContext] = Map(),
       snapshottingStatus: SnapshottingStatus = SnapshottingStatus.empty,
+      lastSnapshotStatus: SnapshotStatus = SnapshotStatus.empty,
   ) =
     RaftMemberDataImpl(
       currentTerm = currentTerm,
@@ -238,6 +246,7 @@ object RaftMemberData {
       matchIndex = matchIndex,
       clients = clients,
       snapshottingStatus = snapshottingStatus,
+      lastSnapshotStatus = lastSnapshotStatus,
     )
 }
 
@@ -277,15 +286,22 @@ trait RaftMemberData
     prevLogIndex == LogEntryIndex.initial() || replicatedLog.get(prevLogIndex).exists(_.term == prevLogTerm)
   }
 
-  def resolveSnapshotTargets(): (LogEntryIndex, Set[NormalizedEntityId]) = {
+  def resolveSnapshotTargets(): (Term, LogEntryIndex, Set[NormalizedEntityId]) = {
     (
+      replicatedLog.termAt(lastApplied),
       lastApplied,
       replicatedLog.sliceEntriesFromHead(lastApplied).flatMap(_.event.entityId.toSeq).toSet,
     )
   }
 
-  def startSnapshotting(logEntryIndex: LogEntryIndex, entityIds: Set[NormalizedEntityId]): RaftMemberData = {
-    updateVolatileState(snapshottingStatus = SnapshottingStatus(logEntryIndex, entityIds))
+  def startSnapshotting(
+      term: Term,
+      logEntryIndex: LogEntryIndex,
+      entityIds: Set[NormalizedEntityId],
+  ): RaftMemberData = {
+    updateVolatileState(snapshottingStatus =
+      SnapshottingStatus(term, logEntryIndex, inProgressEntities = entityIds, completedEntities = Set()),
+    )
   }
 
   def recordSavedSnapshot(snapshotMetadata: EntitySnapshotMetadata, preserveLogSize: Int)(
@@ -307,6 +323,11 @@ trait RaftMemberData
       this
     }
   }
+
+  def updateLastSnapshotStatus(snapshotLastTerm: Term, snapshotLastIndex: LogEntryIndex): RaftMemberData = {
+    updatePersistentState(lastSnapshotStatus = SnapshotStatus(snapshotLastTerm, snapshotLastIndex))
+  }
+
 }
 
 final case class RaftMemberDataImpl(
@@ -321,14 +342,21 @@ final case class RaftMemberDataImpl(
     matchIndex: MatchIndex,
     clients: Map[LogEntryIndex, ClientContext],
     snapshottingStatus: SnapshottingStatus,
+    lastSnapshotStatus: SnapshotStatus,
 ) extends RaftMemberData {
 
   override protected def updatePersistentState(
       currentTerm: Term,
       votedFor: Option[MemberIndex],
       replicatedLog: ReplicatedLog,
+      lastSnapshotStatus: SnapshotStatus,
   ): RaftMemberData =
-    copy(currentTerm = currentTerm, votedFor = votedFor, replicatedLog = replicatedLog)
+    copy(
+      currentTerm = currentTerm,
+      votedFor = votedFor,
+      replicatedLog = replicatedLog,
+      lastSnapshotStatus = lastSnapshotStatus,
+    )
 
   override protected def updateVolatileState(
       commitIndex: LogEntryIndex,
