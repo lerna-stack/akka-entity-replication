@@ -181,8 +181,15 @@ lerna.akka.entityreplication {
           // Time interval to check the size of the log and check if a snapshotting is needed to be taken
           log-size-check-interval = 10s
 
-          // Threshold for saving snapshots and compaction of the log
-          log-size-threshold = 10000
+          // Threshold for saving snapshots and compaction of the log.
+          // If this value is too large, your application will use a lot of memory and you may get an OutOfMemoryError.
+          // If this value is too small, it compaction may occur frequently and overload the application and the data store.
+          log-size-threshold = 50000
+
+          // Preserving log entries from log reduction to avoid log replication failure.
+          // If more number of logs than this value cannot be synchronized, the raft member will be unavailable.
+          // It is recommended to set this value even less than log-size-threshold. Otherwise compaction will be run at every log-size-check-interval.
+          preserve-log-size = 10000
 
           // Time to keep a cache of snapshots in memory
           snapshot-cache-time-to-live = 10s
