@@ -7,7 +7,7 @@ object LogEntry {
 }
 
 class LogEntry(val index: LogEntryIndex, val event: EntityEvent, val term: Term) extends Serializable {
-  require(index.underlying >= 1)
+  require(index > LogEntryIndex.initial())
 
   def canEqual(other: Any): Boolean = other.isInstanceOf[LogEntry]
 

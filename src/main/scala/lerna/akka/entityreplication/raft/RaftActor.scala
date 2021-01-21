@@ -211,7 +211,7 @@ class RaftActor(
         currentData.recordSavedSnapshot(metadata, settings.compactionPreserveLogSize)(onComplete = () => {
           // 失敗する可能性があることに注意
           saveSnapshot(currentData.persistentState)
-          log.info("[{}] compaction completed (logEntryIndex: {})", currentState, metadata.logEntryIndex.underlying)
+          log.info("[{}] compaction completed (logEntryIndex: {})", currentState, metadata.logEntryIndex)
         })
       // TODO: Remove when test code is modified
       case _: NonPersistEventLike =>
@@ -330,7 +330,7 @@ class RaftActor(
         log.info(
           "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
           currentState,
-          logEntryIndex.underlying,
+          logEntryIndex,
           entityIds.size,
         )
         requestTakeSnapshots(logEntryIndex, entityIds)

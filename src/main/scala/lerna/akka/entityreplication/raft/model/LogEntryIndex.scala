@@ -1,15 +1,17 @@
 package lerna.akka.entityreplication.raft.model
 
+import lerna.akka.entityreplication.raft.model.exception.SeqIndexOutOfBoundsException
+
 object LogEntryIndex {
 
-  def initial() = LogEntryIndex(0)
+  def initial(): LogEntryIndex = LogEntryIndex(0)
 
   def min(a: LogEntryIndex, b: LogEntryIndex): LogEntryIndex = {
     if (a <= b) a else b
   }
 }
 
-case class LogEntryIndex(underlying: Int) extends Ordered[LogEntryIndex] {
+case class LogEntryIndex(private[model] val underlying: Long) extends Ordered[LogEntryIndex] {
   require(underlying >= 0)
 
   def next(): LogEntryIndex = copy(underlying + 1)
@@ -22,4 +24,15 @@ case class LogEntryIndex(underlying: Int) extends Ordered[LogEntryIndex] {
 
   override def compare(that: LogEntryIndex): Int =
     underlying.compareTo(that.underlying)
+
+  override def toString: String = underlying.toString
+
+  def toSeqIndex(offset: LogEntryIndex): Int = {
+    val maybeSeqIndex = underlying - offset.underlying - 1
+    if (maybeSeqIndex > Int.MaxValue) {
+      throw SeqIndexOutOfBoundsException(this, offset)
+    } else {
+      maybeSeqIndex.toInt
+    }
+  }
 }

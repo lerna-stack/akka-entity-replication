@@ -67,6 +67,6 @@ case class ReplicatedLog private[model] (entries: Seq[LogEntry]) {
 
   private[this] def toSeqIndex(index: LogEntryIndex): Int = {
     val ancestorLastIndex = headIndexOption.map(_.prev()).getOrElse(LogEntryIndex.initial())
-    index.underlying - ancestorLastIndex.underlying - 1
+    index.toSeqIndex(offset = ancestorLastIndex)
   }
 }
