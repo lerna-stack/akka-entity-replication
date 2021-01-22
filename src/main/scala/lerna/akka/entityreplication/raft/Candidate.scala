@@ -5,6 +5,7 @@ import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.protocol.{ SuspendEntity, TryCreateEntity }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
+import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 
 trait Candidate { this: RaftActor =>
   import RaftActor._
@@ -28,18 +29,21 @@ trait Candidate { this: RaftActor =>
         become(Candidate)
       }
 
-    case request: RequestVote                             => receiveRequestVote(request)
-    case response: RequestVoteResponse                    => receiveRequestVoteResponse(response)
-    case request: AppendEntries                           => receiveAppendEntries(request)
-    case command: Command                                 => handleCommand(command)
-    case _: ForwardedCommand                              => // ignore, because I'm not a leader
-    case TryCreateEntity(_, entityId)                     => createEntityIfNotExists(entityId)
-    case RequestRecovery(entityId)                        => recoveryEntity(entityId)
-    case response: SnapshotProtocol.FetchSnapshotResponse => receiveFetchSnapshotResponse(response)
-    case SuspendEntity(_, entityId, stopMessage)          => suspendEntity(entityId, stopMessage)
-    case SnapshotTick                                     => handleSnapshotTick()
-    case response: ReplicationActor.Snapshot              => receiveEntitySnapshotResponse(response)
-    case response: SnapshotProtocol.SaveSnapshotResponse  => receiveSaveSnapshotResponse(response)
+    case request: RequestVote                                => receiveRequestVote(request)
+    case response: RequestVoteResponse                       => receiveRequestVoteResponse(response)
+    case request: AppendEntries                              => receiveAppendEntries(request)
+    case request: InstallSnapshot                            => receiveInstallSnapshot(request)
+    case _: InstallSnapshotResponse                          => // ignore, because I'm not a leader
+    case response: SnapshotSyncManager.SyncSnapshotCompleted => receiveSyncSnapshotResponse(response)
+    case command: Command                                    => handleCommand(command)
+    case _: ForwardedCommand                                 => // ignore, because I'm not a leader
+    case TryCreateEntity(_, entityId)                        => createEntityIfNotExists(entityId)
+    case RequestRecovery(entityId)                           => recoveryEntity(entityId)
+    case response: SnapshotProtocol.FetchSnapshotResponse    => receiveFetchSnapshotResponse(response)
+    case SuspendEntity(_, entityId, stopMessage)             => suspendEntity(entityId, stopMessage)
+    case SnapshotTick                                        => handleSnapshotTick()
+    case response: ReplicationActor.Snapshot                 => receiveEntitySnapshotResponse(response)
+    case response: SnapshotProtocol.SaveSnapshotResponse     => receiveSaveSnapshotResponse(response)
   }
 
   private[this] def receiveRequestVote(request: RequestVote): Unit =

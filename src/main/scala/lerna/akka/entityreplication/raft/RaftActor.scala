@@ -3,13 +3,16 @@ package lerna.akka.entityreplication.raft
 import akka.actor.{ ActorRef, Cancellable, Props, Stash }
 import lerna.akka.entityreplication.ReplicationActor.Snapshot
 import lerna.akka.entityreplication.ReplicationRegion.Msg
-import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId }
+import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, _ }
 import lerna.akka.entityreplication.raft.eventhandler.CommitLogStore
 import lerna.akka.entityreplication.raft.model._
+import lerna.akka.entityreplication.raft.protocol.RaftCommands.{ InstallSnapshot, InstallSnapshotSucceeded }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshotMetadata
+import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
+import lerna.akka.entityreplication.util.ActorIds
 import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ReplicationActor, ReplicationRegion }
 
 object RaftActor {
@@ -67,6 +70,8 @@ object RaftActor {
       snapshotLastLogIndex: LogEntryIndex,
       entityIds: Set[NormalizedEntityId],
   ) extends PersistEvent
+  final case class SnapshotSyncCompleted(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex)
+      extends PersistEvent
       with ClusterReplicationSerializable
 
   sealed trait NonPersistEvent                                                                  extends DomainEvent
@@ -88,7 +93,7 @@ object RaftActor {
 }
 
 class RaftActor(
-    typeName: String,
+    val typeName: String,
     val extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
     replicationActorProps: Props,
     _region: ActorRef,
@@ -239,6 +244,8 @@ class RaftActor(
         })
       case CompactionCompleted(_, _, snapshotLastTerm, snapshotLastIndex, _) =>
         currentData.updateLastSnapshotStatus(snapshotLastTerm, snapshotLastIndex)
+      case SnapshotSyncCompleted(snapshotLastLogTerm, snapshotLastLogIndex) =>
+        currentData.syncSnapshot(snapshotLastLogTerm, snapshotLastLogIndex)
       // TODO: Remove when test code is modified
       case _: NonPersistEventLike =>
         log.error("must not use NonPersistEventLike in production code")
@@ -370,6 +377,70 @@ class RaftActor(
       val metadata = EntitySnapshotMetadata(entityId, logEntryIndex)
       replicationActor(entityId) ! ReplicationActor.TakeSnapshot(metadata, self)
     }
+  }
+
+  protected def receiveInstallSnapshot(request: InstallSnapshot): Unit =
+    request match {
+      case installSnapshot if installSnapshot.term.isOlderThan(currentData.currentTerm) =>
+      // ignore the message because this member knows another newer leader
+      case installSnapshot =>
+        if (installSnapshot.term == currentData.currentTerm) {
+          applyDomainEvent(DetectedLeaderMember(installSnapshot.srcMemberIndex)) { _ =>
+            startSyncSnapshot(installSnapshot)
+            become(Follower)
+          }
+        } else {
+          applyDomainEvent(DetectedNewTerm(installSnapshot.term)) { _ =>
+            applyDomainEvent(DetectedLeaderMember(installSnapshot.srcMemberIndex)) { _ =>
+              startSyncSnapshot(installSnapshot)
+              become(Follower)
+            }
+          }
+        }
+    }
+
+  protected def receiveSyncSnapshotResponse(response: SnapshotSyncManager.SyncSnapshotCompleted): Unit = {
+    applyDomainEvent(SnapshotSyncCompleted(response.snapshotLastLogTerm, response.snapshotLastLogIndex)) { _ =>
+      region ! ReplicationRegion.DeliverTo(
+        response.srcMemberIndex,
+        InstallSnapshotSucceeded(
+          shardId,
+          currentData.currentTerm,
+          currentData.replicatedLog.lastLogIndex,
+          selfMemberIndex,
+        ),
+      )
+    }
+  }
+
+  protected def startSyncSnapshot(installSnapshot: InstallSnapshot): Unit = {
+    val snapshotSyncManagerName = ActorIds.actorName(
+      "SnapshotSyncManager",
+      installSnapshot.srcTypeName.underlying,
+      installSnapshot.srcMemberIndex.role,
+    )
+    val snapshotSyncManager =
+      context.child(snapshotSyncManagerName).getOrElse {
+        context.actorOf(
+          SnapshotSyncManager.props(
+            srcTypeName = installSnapshot.srcTypeName,
+            srcMemberIndex = installSnapshot.srcMemberIndex,
+            dstTypeName = TypeName(typeName),
+            dstMemberIndex = selfMemberIndex,
+            dstShardSnapshotStore = shardSnapshotStore,
+            shardId,
+            settings,
+          ),
+          snapshotSyncManagerName,
+        )
+      }
+    snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
+      srcLatestSnapshotLastLogTerm = installSnapshot.srcLatestSnapshotLastLogTerm,
+      srcLatestSnapshotLastLogIndex = installSnapshot.srcLatestSnapshotLastLogLogIndex,
+      dstLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
+      dstLatestSnapshotLastLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
+      replyTo = self,
+    )
   }
 
   override def postStop(): Unit = {

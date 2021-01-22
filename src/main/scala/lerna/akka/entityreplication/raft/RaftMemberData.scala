@@ -283,7 +283,7 @@ trait RaftMemberData
     // リーダーにログが無い場合は LogEntryIndex.initial が送られてくる。
     // そのケースでは AppendEntries が成功したとみなしたいので、
     // prevLogIndex が LogEntryIndex.initial の場合はマッチするログが存在するとみなす
-    prevLogIndex == LogEntryIndex.initial() || replicatedLog.get(prevLogIndex).exists(_.term == prevLogTerm)
+    prevLogIndex == LogEntryIndex.initial() || replicatedLog.termAt(prevLogIndex).contains(prevLogTerm)
   }
 
   def resolveSnapshotTargets(): (Term, LogEntryIndex, Set[NormalizedEntityId]) = {
@@ -326,6 +326,13 @@ trait RaftMemberData
 
   def updateLastSnapshotStatus(snapshotLastTerm: Term, snapshotLastIndex: LogEntryIndex): RaftMemberData = {
     updatePersistentState(lastSnapshotStatus = SnapshotStatus(snapshotLastTerm, snapshotLastIndex))
+  }
+
+  def syncSnapshot(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex): RaftMemberData = {
+    updatePersistentState(
+      lastSnapshotStatus = SnapshotStatus(snapshotLastLogTerm, snapshotLastLogIndex),
+      replicatedLog = replicatedLog.reset(snapshotLastLogTerm, snapshotLastLogIndex),
+    )
   }
 
 }
