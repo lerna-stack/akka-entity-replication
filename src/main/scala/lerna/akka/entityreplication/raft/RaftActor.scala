@@ -357,7 +357,10 @@ class RaftActor(
     }
 
   def handleSnapshotTick(): Unit = {
-    if (currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold) {
+    if (
+      currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold
+      && currentData.hasLogEntriesThatCanBeCompacted
+    ) {
       val (term, logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
       applyDomainEvent(SnapshottingStarted(term, logEntryIndex, entityIds)) { _ =>
         log.info(
