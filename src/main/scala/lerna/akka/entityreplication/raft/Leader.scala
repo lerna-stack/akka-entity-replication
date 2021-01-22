@@ -1,12 +1,13 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.ActorPath
-import lerna.akka.entityreplication.model.NormalizedEntityId
+import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.protocol.{ SuspendEntity, TryCreateEntity }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
+import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 import lerna.akka.entityreplication.{ ReplicationActor, ReplicationRegion }
 
 trait Leader { this: RaftActor =>
@@ -21,6 +22,9 @@ trait Leader { this: RaftActor =>
     case response: RequestVoteResponse                        => ignoreRequestVoteResponse(response)
     case request: AppendEntries                               => receiveAppendEntries(request)
     case response: AppendEntriesResponse                      => receiveAppendEntriesResponse(response)
+    case request: InstallSnapshot                             => receiveInstallSnapshot(request)
+    case response: InstallSnapshotResponse                    => receiveInstallSnapshotResponse(response)
+    case response: SnapshotSyncManager.SyncSnapshotCompleted  => receiveSyncSnapshotResponse(response)
     case request: Command                                     => handleCommand(request)
     case ForwardedCommand(request)                            => handleCommand(request)
     case request: Replicate                                   => replicate(request)
@@ -169,6 +173,19 @@ trait Leader { this: RaftActor =>
         unhandled(failed)
     }
 
+  private[this] def receiveInstallSnapshotResponse(response: InstallSnapshotResponse): Unit =
+    response match {
+      case succeeded: InstallSnapshotSucceeded if succeeded.term == currentData.currentTerm =>
+        val follower = succeeded.sender
+        applyDomainEvent(SucceededAppendEntries(follower, succeeded.dstLatestSnapshotLastLogLogIndex)) { _ => }
+
+      case succeeded: InstallSnapshotSucceeded if succeeded.term.isNewerThan(currentData.currentTerm) =>
+        log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
+
+      case succeeded: InstallSnapshotSucceeded if succeeded.term.isOlderThan(currentData.currentTerm) =>
+      // ignore: Snapshot synchronization of Follower was too slow
+    }
+
   private[this] def handleCommand(req: Command): Unit =
     req match {
 
@@ -219,17 +236,39 @@ trait Leader { this: RaftActor =>
     otherMemberIndexes.foreach { memberIndex =>
       val nextIndex    = currentData.nextIndexFor(memberIndex)
       val prevLogIndex = nextIndex.prev()
-      val prevLogTerm  = currentData.replicatedLog.get(prevLogIndex).map(_.term).getOrElse(Term.initial())
       val entries      = currentData.replicatedLog.getFrom(nextIndex, settings.maxAppendEntriesSize)
-      val message = AppendEntries(
-        shardId,
-        currentData.currentTerm,
-        selfMemberIndex,
-        prevLogIndex,
-        prevLogTerm,
-        entries,
-        currentData.commitIndex,
-      )
+      val message =
+        currentData.replicatedLog.get(prevLogIndex) match {
+          case Some(prevLogEntry) =>
+            AppendEntries(
+              shardId,
+              currentData.currentTerm,
+              selfMemberIndex,
+              prevLogIndex,
+              prevLogTerm = prevLogEntry.term,
+              entries,
+              currentData.commitIndex,
+            )
+          case None if prevLogIndex == LogEntryIndex.initial() =>
+            AppendEntries(
+              shardId,
+              currentData.currentTerm,
+              selfMemberIndex,
+              prevLogIndex,
+              prevLogTerm = Term.initial(),
+              entries,
+              currentData.commitIndex,
+            )
+          case None =>
+            InstallSnapshot(
+              shardId,
+              currentData.currentTerm,
+              TypeName(typeName),
+              selfMemberIndex,
+              srcLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
+              srcLatestSnapshotLastLogLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
+            )
+        }
       log.debug(s"=== [Leader] publish $message to $memberIndex ===")
       region ! ReplicationRegion.DeliverTo(memberIndex, message)
     }
