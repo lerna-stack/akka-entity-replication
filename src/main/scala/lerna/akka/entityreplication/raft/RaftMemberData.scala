@@ -286,6 +286,10 @@ trait RaftMemberData
     prevLogIndex == LogEntryIndex.initial() || replicatedLog.termAt(prevLogIndex).contains(prevLogTerm)
   }
 
+  def hasLogEntriesThatCanBeCompacted: Boolean = {
+    replicatedLog.sliceEntriesFromHead(lastApplied).nonEmpty
+  }
+
   def resolveSnapshotTargets(): (Term, LogEntryIndex, Set[NormalizedEntityId]) = {
     (
       replicatedLog.termAt(lastApplied),
