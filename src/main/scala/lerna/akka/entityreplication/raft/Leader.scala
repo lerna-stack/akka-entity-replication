@@ -236,41 +236,56 @@ trait Leader { this: RaftActor =>
     otherMemberIndexes.foreach { memberIndex =>
       val nextIndex    = currentData.nextIndexFor(memberIndex)
       val prevLogIndex = nextIndex.prev()
-      val entries      = currentData.replicatedLog.getFrom(nextIndex, settings.maxAppendEntriesSize)
-      val message =
-        currentData.replicatedLog.get(prevLogIndex) match {
-          case Some(prevLogEntry) =>
-            AppendEntries(
-              shardId,
-              currentData.currentTerm,
-              selfMemberIndex,
-              prevLogIndex,
-              prevLogTerm = prevLogEntry.term,
-              entries,
-              currentData.commitIndex,
+      val prevLogTerm  = currentData.replicatedLog.termAt(prevLogIndex)
+      val messages =
+        prevLogTerm match {
+          case Some(prevLogTerm) =>
+            val batchEntries = currentData.replicatedLog.getFrom(
+              nextIndex,
+              settings.maxAppendEntriesSize,
+              settings.maxAppendEntriesBatchSize,
             )
-          case None if prevLogIndex == LogEntryIndex.initial() =>
-            AppendEntries(
-              shardId,
-              currentData.currentTerm,
-              selfMemberIndex,
-              prevLogIndex,
-              prevLogTerm = Term.initial(),
-              entries,
-              currentData.commitIndex,
-            )
+            batchEntries match {
+              case batchEntries if batchEntries.isEmpty =>
+                Seq(
+                  AppendEntries(
+                    shardId,
+                    currentData.currentTerm,
+                    selfMemberIndex,
+                    prevLogIndex,
+                    prevLogTerm,
+                    entries = Seq.empty,
+                    currentData.commitIndex,
+                  ),
+                )
+              case batchEntries =>
+                batchEntries.map { entries =>
+                  AppendEntries(
+                    shardId,
+                    currentData.currentTerm,
+                    selfMemberIndex,
+                    prevLogIndex,
+                    prevLogTerm,
+                    entries,
+                    currentData.commitIndex,
+                  )
+                }
+            }
           case None =>
-            InstallSnapshot(
-              shardId,
-              currentData.currentTerm,
-              TypeName(typeName),
-              selfMemberIndex,
-              srcLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
-              srcLatestSnapshotLastLogLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
+            // prevLogTerm not found: the log entries have been removed by compaction
+            Seq(
+              InstallSnapshot(
+                shardId,
+                currentData.currentTerm,
+                TypeName(typeName),
+                selfMemberIndex,
+                srcLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
+                srcLatestSnapshotLastLogLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
+              ),
             )
         }
-      log.debug(s"=== [Leader] publish $message to $memberIndex ===")
-      region ! ReplicationRegion.DeliverTo(memberIndex, message)
+      log.debug(s"=== [Leader] publish ${messages.mkString(",")} to $memberIndex ===")
+      messages.foreach(region ! ReplicationRegion.DeliverTo(memberIndex, _))
     }
   }
 }

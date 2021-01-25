@@ -56,6 +56,8 @@ class RaftSettings(root: Config) {
 
   val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
 
+  val maxAppendEntriesBatchSize: Int = config.getInt("max-append-entries-batch-size")
+
   val compactionSnapshotCacheTimeToLive: FiniteDuration =
     config.getDuration("compaction.snapshot-cache-time-to-live").asScala
 

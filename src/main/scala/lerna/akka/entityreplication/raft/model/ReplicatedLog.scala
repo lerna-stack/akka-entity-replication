@@ -18,8 +18,10 @@ case class ReplicatedLog private[model] (
     else None
   }
 
-  def getFrom(nextIndex: LogEntryIndex, maxCount: Int): Seq[LogEntry] =
-    sliceEntries(from = nextIndex, nextIndex.plus(maxCount - 1))
+  def getFrom(nextIndex: LogEntryIndex, maxEntryCount: Int, maxBatchCount: Int): Seq[Seq[LogEntry]] = {
+    sliceEntries(from = nextIndex, nextIndex.plus(maxEntryCount * maxBatchCount - 1))
+      .sliding(maxEntryCount, maxEntryCount).toSeq
+  }
 
   def sliceEntriesFromHead(to: LogEntryIndex): Seq[LogEntry] = {
     headIndexOption match {
