@@ -291,11 +291,17 @@ trait RaftMemberData
   }
 
   def resolveSnapshotTargets(): (Term, LogEntryIndex, Set[NormalizedEntityId]) = {
-    (
-      replicatedLog.termAt(lastApplied),
-      lastApplied,
-      replicatedLog.sliceEntriesFromHead(lastApplied).flatMap(_.event.entityId.toSeq).toSet,
-    )
+    replicatedLog.termAt(lastApplied) match {
+      case Some(lastAppliedTerm) =>
+        (
+          lastAppliedTerm,
+          lastApplied,
+          replicatedLog.sliceEntriesFromHead(lastApplied).flatMap(_.event.entityId.toSeq).toSet,
+        )
+      case None =>
+        // This exception is not thrown unless there is a bug
+        throw new IllegalStateException(s"Term not found at lastApplied: $lastApplied")
+    }
   }
 
   def startSnapshotting(
