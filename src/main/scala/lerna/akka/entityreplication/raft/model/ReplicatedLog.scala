@@ -53,9 +53,11 @@ case class ReplicatedLog private[model] (
 
   def lastLogTerm: Term = lastOption.map(_.term).getOrElse(ancestorLastTerm)
 
-  def termAt(logEntryIndex: LogEntryIndex): Term =
-    get(logEntryIndex).map(_.term).getOrElse {
-      throw new IllegalArgumentException(s"Term not found at $logEntryIndex")
+  def termAt(logEntryIndex: LogEntryIndex): Option[Term] =
+    logEntryIndex match {
+      case `ancestorLastIndex`                                           => Option(ancestorLastTerm)
+      case initialLogIndex if initialLogIndex == LogEntryIndex.initial() => Option(Term.initial())
+      case logEntryIndex                                                 => get(logEntryIndex).map(_.term)
     }
 
   def merge(thatEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): ReplicatedLog = {
