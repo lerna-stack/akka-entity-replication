@@ -1,6 +1,8 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.{ ActorRef, Cancellable, Props, Stash }
+import akka.persistence.RuntimePluginConfig
+import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ReplicationActor.Snapshot
 import lerna.akka.entityreplication.ReplicationRegion.Msg
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
@@ -103,6 +105,7 @@ class RaftActor(
     val settings: RaftSettings,
     maybeCommitLogStore: Option[CommitLogStore],
 ) extends RaftActorBase
+    with RuntimePluginConfig
     with Stash
     with Follower
     with Candidate
@@ -159,7 +162,11 @@ class RaftActor(
 
   override def journalPluginId: String = settings.journalPluginId
 
+  override def journalPluginConfig: Config = settings.journalPluginAdditionalConfig
+
   override def snapshotPluginId: String = settings.snapshotStorePluginId
+
+  override def snapshotPluginConfig: Config = ConfigFactory.empty()
 
   private[this] def replicationId = s"$typeName-${shardId.underlying}"
 

@@ -3,9 +3,10 @@ package lerna.akka.entityreplication.raft.snapshot.sync
 import akka.Done
 import akka.actor.Status
 import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
-import akka.persistence.PersistentActor
+import akka.persistence.{ PersistentActor, RuntimePluginConfig }
 import akka.persistence.inmemory.extension.{ InMemoryJournalStorage, InMemorySnapshotStorage, StorageExtension }
 import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
+import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ClusterReplicationSettings
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftActor.CompactionCompleted
@@ -29,12 +30,16 @@ object SnapshotSyncManagerSpec {
     final case class PersistEvents(events: Seq[Any])
   }
 
-  class EventStore(settings: ClusterReplicationSettings) extends PersistentActor {
+  class EventStore(settings: ClusterReplicationSettings) extends PersistentActor with RuntimePluginConfig {
     import EventStore._
 
     override def journalPluginId: String = settings.raftSettings.journalPluginId
 
+    override def journalPluginConfig: Config = settings.raftSettings.journalPluginAdditionalConfig
+
     override def snapshotPluginId: String = settings.raftSettings.snapshotStorePluginId
+
+    override def snapshotPluginConfig: Config = ConfigFactory.empty()
 
     override def persistenceId: String = getClass.getCanonicalName
 
