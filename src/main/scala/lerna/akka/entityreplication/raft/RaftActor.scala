@@ -114,8 +114,12 @@ class RaftActor(
 
   protected[this] def region: ActorRef = _region
 
+  private[this] val shardSnapshotStoreNamePrefix = "ShardSnapshotStore"
+
+  private[this] val snapshotSyncManagerNamePrefix = "SnapshotSyncManager"
+
   private[this] val shardSnapshotStore: ActorRef =
-    context.actorOf(shardSnapshotStoreProps)
+    context.actorOf(shardSnapshotStoreProps, ActorIds.actorName(shardSnapshotStoreNamePrefix, shardId.underlying))
 
   protected[this] def selfMemberIndex: MemberIndex = _selfMemberIndex
 
@@ -141,7 +145,14 @@ class RaftActor(
     }
 
   protected[this] def replicationActor(entityId: NormalizedEntityId): ActorRef = {
-    context.child(entityId.underlying).getOrElse(context.actorOf(replicationActorProps, entityId.underlying))
+    context.child(entityId.underlying).getOrElse {
+      log.debug(
+        "=== [{}] created an entity ({}) ===",
+        currentState,
+        entityId,
+      )
+      context.actorOf(replicationActorProps, entityId.underlying)
+    }
   }
 
   override val persistenceId: String = s"raft-$typeName-${shardId.underlying}-${selfMemberIndex.role}"
@@ -245,6 +256,7 @@ class RaftActor(
       case CompactionCompleted(_, _, snapshotLastTerm, snapshotLastIndex, _) =>
         currentData.updateLastSnapshotStatus(snapshotLastTerm, snapshotLastIndex)
       case SnapshotSyncCompleted(snapshotLastLogTerm, snapshotLastLogIndex) =>
+        stopAllEntities()
         currentData.syncSnapshot(snapshotLastLogTerm, snapshotLastLogIndex)
       // TODO: Remove when test code is modified
       case _: NonPersistEventLike =>
@@ -418,7 +430,7 @@ class RaftActor(
 
   protected def startSyncSnapshot(installSnapshot: InstallSnapshot): Unit = {
     val snapshotSyncManagerName = ActorIds.actorName(
-      "SnapshotSyncManager",
+      snapshotSyncManagerNamePrefix,
       installSnapshot.srcTypeName.underlying,
       installSnapshot.srcMemberIndex.role,
     )
@@ -443,6 +455,19 @@ class RaftActor(
       dstLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
       dstLatestSnapshotLastLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
       replyTo = self,
+    )
+  }
+
+  private[this] def stopAllEntities(): Unit = {
+    // FIXME: Make it possible to stop only entities by using Actor hierarchy
+    val excludes: Set[String] =
+      Set(ActorIds.actorName(shardSnapshotStoreNamePrefix, ""), ActorIds.actorName(snapshotSyncManagerNamePrefix, ""))
+    context.children.filterNot(c => excludes.exists(c.path.name.startsWith)).foreach { child =>
+      context.stop(child)
+    }
+    log.debug(
+      "=== [{}] stopped all entities ===",
+      currentState,
     )
   }
 
