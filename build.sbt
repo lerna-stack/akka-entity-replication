@@ -29,7 +29,6 @@ lazy val lerna = (project in file("."))
         "com.typesafe.akka" %% "akka-cluster-typed"    % akkaVersion,
         "com.typesafe.akka" %% "akka-cluster"          % akkaVersion,
         "com.typesafe.akka" %% "akka-cluster-sharding" % akkaVersion,
-        "com.typesafe.akka" %% "akka-slf4j"            % akkaVersion,
         // persistence-query 2.6.x を明示的に指定しないとエラーになる。
         // 恐らく akka-persistence-inmemory の影響である。
         "com.typesafe.akka"  %% "akka-persistence-query"       % akkaVersion,
@@ -37,6 +36,7 @@ lazy val lerna = (project in file("."))
         "com.lightbend.akka" %% "akka-projection-core"         % akkaProjectionVersion,
         "com.lightbend.akka" %% "akka-projection-eventsourced" % akkaProjectionVersion,
         "io.altoo"           %% "akka-kryo-serialization"      % "1.1.5",
+        "com.typesafe.akka"  %% "akka-slf4j"                   % akkaVersion % Test,
         "ch.qos.logback"      % "logback-classic"              % "1.2.3"     % Test,
         "org.scalatest"      %% "scalatest"                    % "3.0.5"     % Test,
         "com.typesafe.akka"  %% "akka-multi-node-testkit"      % akkaVersion % Test,
