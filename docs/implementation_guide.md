@@ -223,10 +223,7 @@ lerna.akka.entityreplication {
             // Replication factor list for data centers, e.g. ["dc0:3", "dc1:3"]. This setting is only used when replication-strategy is NetworkTopologyStrategy.
             // Replication factors should be 3 or more to maintain data consisstency.
             data-center-replication-factors = ["dc0:3"]
-    
-            // To limit the Cassandra hosts this plugin connects with to a specific datacenter.
-            local-datacenter = "dc0"
-    
+        
             // Name of the keyspace to be used by the journal
             keyspace = "entity_replication"
           }
@@ -244,10 +241,7 @@ lerna.akka.entityreplication {
             // Replication factor list for data centers, e.g. ["dc0:3", "dc1:3"]. This setting is only used when replication-strategy is NetworkTopologyStrategy.
             // Replication factors should be 3 or more to maintain data consisstency.
             data-center-replication-factors = ["dc0:3"]
-    
-            // To limit the Cassandra hosts this plugin connects with to a specific datacenter.
-            local-datacenter = "dc0"
-    
+        
             // Name of the keyspace to be used by the snapshot store
             keyspace = "entity_replication_snapshot"
           }
@@ -356,9 +350,6 @@ lerna.akka.entityreplication.raft.eventhandler {
         // Replication factors should be 3 or more to maintain data consisstency.
         data-center-replication-factors = ["dc0:3"]
 
-        // To limit the Cassandra hosts this plugin connects with to a specific datacenter.
-        local-datacenter = "dc0"
-
         // Name of the keyspace to be used by the journal
         keyspace = "raft_commited_event"
 
@@ -385,6 +376,13 @@ The default settings are bellow.
 // https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/reference/
 // see also: https://doc.akka.io/docs/akka-persistence-cassandra/1.0.3/configuration.html#cassandra-driver-configuration
 datastax-java-driver {
+  
+  // The contact points to use for the initial connection to the cluster.
+  // basic.contact-points = ["127.0.0.1:9042"]
+
+  // To limit the Cassandra hosts this plugin connects with to a specific datacenter.
+  // basic.load-balancing-policy.local-datacenter = "dc0"
+  
   profiles {
 
     // It is recommended to set this value.
