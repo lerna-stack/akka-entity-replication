@@ -32,7 +32,6 @@ lazy val lerna = (project in file("."))
         // persistence-query 2.6.x を明示的に指定しないとエラーになる。
         // 恐らく akka-persistence-inmemory の影響である。
         "com.typesafe.akka"  %% "akka-persistence-query"       % akkaVersion,
-        "com.typesafe.akka"  %% "akka-persistence-cassandra"   % "1.0.1",
         "com.lightbend.akka" %% "akka-projection-core"         % akkaProjectionVersion,
         "com.lightbend.akka" %% "akka-projection-eventsourced" % akkaProjectionVersion,
         "io.altoo"           %% "akka-kryo-serialization"      % "1.1.5",

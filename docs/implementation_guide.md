@@ -203,52 +203,11 @@ lerna.akka.entityreplication {
         persistence {
           // Absolute path to the journal plugin configuration entry.
           // The journal will be stored events which related to Raft.
-          journal.plugin = "lerna.akka.entityreplication.raft.persistence.cassandra.journal"
+          journal.plugin = ""
     
           // Absolute path to the snapshot store plugin configuration entry.
           // The snapshot store will be stored state which related to Raft.
-          snapshot-store.plugin = "lerna.akka.entityreplication.raft.persistence.cassandra.snapshot"
-        }
-
-        // The settings for Cassandra persistence plugin
-        persistence.cassandra = ${akka.persistence.cassandra}
-        persistence.cassandra {
-    
-          // Profile to use.
-          // See https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/ for overriding any settings
-          read-profile = "akka-entity-replication-profile"
-          write-profile = "akka-entity-replication-profile"
-
-          journal {
-    
-            // replication strategy to use.
-            replication-strategy = "NetworkTopologyStrategy"
-    
-            // Replication factor list for data centers, e.g. ["dc0:3", "dc1:3"]. This setting is only used when replication-strategy is NetworkTopologyStrategy.
-            // Replication factors should be 3 or more to maintain data consisstency.
-            data-center-replication-factors = ["dc0:3"]
-        
-            // Name of the keyspace to be used by the journal
-            keyspace = "entity_replication"
-          }
-    
-          snapshot {
-    
-            // Profile to use.
-            // See https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/ for overriding any settings
-            read-profile = "akka-entity-replication-snapshot-profile"
-            write-profile = "akka-entity-replication-snapshot-profile"
-
-            // replication strategy to use.
-            replication-strategy = "NetworkTopologyStrategy"
-    
-            // Replication factor list for data centers, e.g. ["dc0:3", "dc1:3"]. This setting is only used when replication-strategy is NetworkTopologyStrategy.
-            // Replication factors should be 3 or more to maintain data consisstency.
-            data-center-replication-factors = ["dc0:3"]
-        
-            // Name of the keyspace to be used by the snapshot store
-            keyspace = "entity_replication_snapshot"
-          }
+          snapshot-store.plugin = ""
         }
     }
 }
@@ -329,89 +288,34 @@ lerna.akka.entityreplication.raft.eventhandler {
     persistence {
       // Absolute path to the journal plugin configuration entry.
       // The journal stores Raft-committed events.
-      journal.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.journal"
+      journal.plugin = ""
 
       // Absolute path to the query plugin configuration entry.
       // The query is used by Raft EventHandler.
-      query.plugin = "lerna.akka.entityreplication.raft.eventhandler.persistence.cassandra.query"
-    }
-
-    // cassandra-journal & cassandra-query-journal to save committed events
-    persistence.cassandra = ${akka.persistence.cassandra}
-    persistence.cassandra = {
-
-      // Profile to use.
-      // See https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/ for overriding any settings
-      read-profile = "akka-entity-replication-profile"
-      write-profile = "akka-entity-replication-profile"
-
-      journal {
-
-        // replication strategy to use.
-        replication-strategy = "NetworkTopologyStrategy"
-
-        // Replication factor list for data centers, e.g. ["dc0:3", "dc1:3"]. This setting is only used when replication-strategy is NetworkTopologyStrategy.
-        // Replication factors should be 3 or more to maintain data consisstency.
-        data-center-replication-factors = ["dc0:3"]
-
-        // Name of the keyspace to be used by the journal
-        keyspace = "raft_commited_event"
-
-        // Tagging to allow some RaftActor(Shard) to handle individually committed events together(No need to change)
-        event-adapters {
-          tagging = "lerna.akka.entityreplication.raft.eventhandler.TaggingEventAdapter"
-        }
-        event-adapter-bindings {
-          "java.lang.Object" = tagging
-        }
-      }
+      query.plugin = ""
     }
 }
 ```
 
-## Cassandra driver configuration
+## Persistence plugin configuration
 
-akka-entity-replication has default profile settings for DataStax Java Driver.
-
-The default settings are bellow.
+By default, the persistence plugin configurations are empty (`""`) in [reference.conf](/src/main/resources/reference.conf):
 
 ```hocon
-// You can find reference configuration at
-// https://docs.datastax.com/en/developer/java-driver/latest/manual/core/configuration/reference/
-// see also: https://doc.akka.io/docs/akka-persistence-cassandra/1.0.3/configuration.html#cassandra-driver-configuration
-datastax-java-driver {
-  
-  // The contact points to use for the initial connection to the cluster.
-  // basic.contact-points = ["127.0.0.1:9042"]
+lerna.akka.entityreplication.raft.persistence {
+    journal.plugin        = ""
+    snapshot-store.plugin = ""
+}
 
-  // To limit the Cassandra hosts this plugin connects with to a specific datacenter.
-  // basic.load-balancing-policy.local-datacenter = "dc0"
-  
-  profiles {
-
-    // It is recommended to set this value.
-    // For more details see https://doc.akka.io/docs/akka-persistence-cassandra/1.0.3/configuration.html#cassandra-driver-configuration
-    // advanced.reconnect-on-init = true
-
-    akka-entity-replication-profile {
-      basic.request {
-        // Important: akka-entity-replication recommends quorum based consistency level to remain data consistency
-        consistency = LOCAL_QUORUM
-        // the journal does not use any counters or collections
-        default-idempotence = true
-      }
-    }
-
-    akka-entity-replication-snapshot-profile {
-      basic.request {
-        // Important: akka-entity-replication recommends quorum based consistency level to remain data consistency
-        consistency = LOCAL_QUORUM
-        // the snapshot store does not use any counters or collections
-        default-idempotence = true
-      }
-    }
-  }
+lerna.akka.entityreplication.raft.eventhandler.persistence {
+    journal.plugin  = ""
+    query.plugin    = ""
 }
 ```
 
-For more details see [Akka Persistence Cassandra official document](https://doc.akka.io/docs/akka-persistence-cassandra/1.0.3/configuration.html#cassandra-driver-configuration).
+It requires explicit user configuration by overriding them in the application.conf.
+
+For an example configuration to use Cassandra as a data store with [akka-persistence-cassandra](https://doc.akka.io/docs/akka-persistence-cassandra/current/) see [akka-entity-replication-with-cassandra.conf](/src/main/resources/akka-entity-replication-with-cassandra.conf).
+
+Persistence plugins to set can be selected.
+For more details see [Akka Persistence Plugins official document](https://doc.akka.io/docs/akka/current/persistence-plugins.html)
