@@ -52,6 +52,7 @@ class BankAccountActor extends ReplicationActor[Account] {
         case Deposit(_, amount) =>
             replicate(Deposited(amount)) { event =>
                 updateState(event)
+                sender() ! event
             }
         case Withdraw(_, amount) if amount > account.balance =>
             ensureConsistency {
@@ -60,6 +61,7 @@ class BankAccountActor extends ReplicationActor[Account] {
         case Withdraw(_, amount) =>         
             replicate(Withdrawed(amount)) { event =>
                 updateState(event)
+                sender() ! event
             }
         case GetBalance(_) =>
             ensureConsistency {
@@ -89,6 +91,8 @@ This example has two data types `Command` and `DomainEvent` (as sealed trait) to
 The replication actor handles commands using `receiveCommand` method. A command  is handled by creating an event. Events which are passed to `replica` method are sent to all other replicas of the entity and updates replicas state. The second argument to the `replica` method is a callback that will be called after the entity's replica state update is complete. You can receive the same events as the first argument in the callback. In a callback, an entity state update is performed based on an event. In the example, the `Deposit` and `Withdraw` commands perform these operations.
 
 Operations that inform the client of the state without updating the entity's state are checked for consistency by calling `ensureConsistency` instead of `replicate`. The example calls this method when querying the account balance with the `GetBalance` command.
+
+Note that when you call `replicate`, the response can be returned to the client with consistency without calling `ensureConsistency`. Simply returning the response to the `sender` in the callback of `replicate` will guarantee consistency.
 
 The `receiveReplica` method of the replication actor implements the process of receiving an event. The event is received when a replica of another entity sends an event in the `replica` method, or when an event created immediately after the creation of the replication actor is replayed to restore the entity's state.
 
