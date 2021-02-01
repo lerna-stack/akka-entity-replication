@@ -1,13 +1,14 @@
-package lerna.akka.entityreplication.raft
-import java.util.concurrent.atomic.AtomicInteger
+package lerna.akka.entityreplication
 
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor.{ ActorRef, ActorSystem, OneForOneStrategy, Props }
 import akka.testkit.{ TestKit, TestProbe }
-import lerna.akka.entityreplication.ReplicationActor
+import lerna.akka.entityreplication.ReplicationActorSpec.ExampleReplicationActor
 import lerna.akka.entityreplication.model.EntityInstanceId
-import lerna.akka.entityreplication.raft.ReplicationActorSpec.ExampleReplicationActor
 import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, Term }
+import lerna.akka.entityreplication.raft.{ ActorSpec, RaftProtocol }
+
+import java.util.concurrent.atomic.AtomicInteger
 
 object ReplicationActorSpec {
 
