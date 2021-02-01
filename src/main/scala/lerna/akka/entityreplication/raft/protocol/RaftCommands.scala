@@ -22,6 +22,7 @@ object RaftCommands {
       lastLogIndex: LogEntryIndex,
       lastLogTerm: Term,
   ) extends RaftRequest
+      with ClusterReplicationSerializable
 
   sealed trait RequestVoteResponse extends RaftResponse
 
@@ -40,6 +41,7 @@ object RaftCommands {
       entries: Seq[LogEntry],
       leaderCommit: LogEntryIndex,
   ) extends RaftRequest
+      with ClusterReplicationSerializable
 
   sealed trait AppendEntriesResponse extends RaftResponse
 
