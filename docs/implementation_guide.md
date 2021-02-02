@@ -302,11 +302,13 @@ lerna.akka.entityreplication.raft.eventhandler {
 By default, the persistence plugin configurations are empty (`""`) in [reference.conf](/src/main/resources/reference.conf):
 
 ```hocon
+// Command side persistence plugin settings
 lerna.akka.entityreplication.raft.persistence {
     journal.plugin        = ""
     snapshot-store.plugin = ""
 }
 
+// Query side persistence plugin settings
 lerna.akka.entityreplication.raft.eventhandler.persistence {
     journal.plugin  = ""
     query.plugin    = ""
@@ -319,3 +321,12 @@ For an example configuration to use Cassandra as a data store with [akka-persist
 
 Persistence plugins to set can be selected.
 For more details see [Akka Persistence Plugins official document](https://doc.akka.io/docs/akka/current/persistence-plugins.html)
+
+Make sure the configuration has as low as possible risk of data loss to ensure consistency.
+(e.g. In Cassandra, set replication-factor larger than 2, and set consistency level higher than LOCAL_QUORUM)
+
+The data durability required by the command side, and the query side is different.
+
+The command side is more durable because the data is replicated by the Raft protocol. However, it is recommended to maintain durability using the data store because this extension does not currently have sufficient recovery capabilities in case of data loss. This recommendation may be changed in a future release.
+
+The query side data is not replicated like the command side data, so the data store should ensure durability. Otherwise, the query side may fail to update data.
