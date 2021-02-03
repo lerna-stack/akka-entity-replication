@@ -25,7 +25,10 @@ lazy val lerna = (project in file("."))
     fork in Test := true,
     parallelExecution in Test := false,
     libraryDependencies ++= Seq(
-        "com.typesafe.akka" %% "akka-stream"           % akkaVersion,
+        "com.typesafe.akka" %% "akka-stream" % akkaVersion,
+        // akka-projection-core requires akka-cluster-typed:
+        // akka-projection-core depends on actor-typed, and actor-typed requires akka-cluster-typed when the cluster is enabled
+        // see: https://github.com/akka/akka/blob/v2.6.9/akka-actor-typed/src/main/scala/akka/actor/typed/internal/receptionist/ReceptionistImpl.scala#L21-L32
         "com.typesafe.akka" %% "akka-cluster-typed"    % akkaVersion,
         "com.typesafe.akka" %% "akka-cluster"          % akkaVersion,
         "com.typesafe.akka" %% "akka-cluster-sharding" % akkaVersion,
