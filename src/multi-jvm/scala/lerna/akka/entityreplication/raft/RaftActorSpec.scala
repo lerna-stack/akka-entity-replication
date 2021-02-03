@@ -1,6 +1,4 @@
-package lerna.akka.entityreplication
-
-import java.util.concurrent.atomic.AtomicInteger
+package lerna.akka.entityreplication.raft
 
 import akka.actor.{ Actor, ActorRef, Props }
 import akka.cluster.ClusterEvent.{ InitialStateAsEvents, MemberUp }
@@ -11,9 +9,10 @@ import lerna.akka.entityreplication.raft.RaftProtocol.{ ReplicationSucceeded, _ 
 import lerna.akka.entityreplication.raft.RaftTestProbe._
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
-import lerna.akka.entityreplication.raft.{ RaftActor, RaftMemberData, RaftMemberDataImpl, RaftSettings }
+import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion, STMultiNodeSpec }
 import org.scalatest.Inside.inside
 
+import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.duration._
 
 object RaftActorSpecConfig extends MultiNodeConfig {
