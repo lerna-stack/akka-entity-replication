@@ -1,8 +1,7 @@
 package lerna.akka.entityreplication
 
 import java.util.concurrent.atomic.AtomicInteger
-
-import akka.actor.{ Actor, ActorRef, ActorSelection, Props, RootActorPath, Terminated }
+import akka.actor.{ Actor, ActorRef, ActorSelection, DiagnosticActorLogging, Props, RootActorPath, Terminated }
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import akka.testkit.TestProbe
@@ -43,7 +42,7 @@ object ReplicationRegionSpec {
     }
   }
 
-  class DummyReplicationActor(probe: TestProbe) extends ReplicationActor[Int] {
+  class DummyReplicationActor(probe: TestProbe) extends DiagnosticActorLogging with ReplicationActor[Int] {
 
     import DummyReplicationActor._
 
