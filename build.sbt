@@ -38,7 +38,7 @@ lazy val lerna = (project in file("."))
         "com.lightbend.akka" %% "akka-projection-eventsourced" % akkaProjectionVersion,
         "io.altoo"           %% "akka-kryo-serialization"      % "1.1.5",
         "ch.qos.logback"      % "logback-classic"              % "1.2.3"     % Test,
-        "org.scalatest"      %% "scalatest"                    % "3.0.5"     % Test,
+        "org.scalatest"      %% "scalatest"                    % "3.0.9"     % Test,
         "com.typesafe.akka"  %% "akka-multi-node-testkit"      % akkaVersion % Test,
         // akka-persistence-inmemory が 2.6.x 系に対応していない。
         // TODO 2.6.x 系に対応できる方法に変更する。
