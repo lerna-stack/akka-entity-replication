@@ -11,7 +11,7 @@ lazy val lerna = (project in file("."))
   .settings(
     inThisBuild(
       List(
-        scalaVersion := "2.12.12",
+        scalaVersion := "2.13.4",
         scalacOptions ++= Seq(
             "-deprecation",
             "-feature",
