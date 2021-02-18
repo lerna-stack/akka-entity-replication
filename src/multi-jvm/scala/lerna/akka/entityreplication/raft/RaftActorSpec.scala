@@ -3,7 +3,7 @@ package lerna.akka.entityreplication.raft
 import akka.actor.{ Actor, ActorRef, Props }
 import akka.cluster.ClusterEvent.{ InitialStateAsEvents, MemberUp }
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
-import com.typesafe.config.ConfigFactory
+import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId }
 import lerna.akka.entityreplication.raft.RaftProtocol.{ ReplicationSucceeded, _ }
 import lerna.akka.entityreplication.raft.RaftTestProbe._
@@ -48,17 +48,35 @@ class RaftActorSpecMultiJvmNode1      extends RaftActorSpec
 class RaftActorSpecMultiJvmNode2      extends RaftActorSpec
 class RaftActorSpecMultiJvmNode3      extends RaftActorSpec
 
+object RaftActorSpec {
+  import scala.jdk.CollectionConverters._
+  import scala.jdk.DurationConverters._
+  class RaftSettingsForTest(root: Config)(
+      overrideElectionTimeout: Option[FiniteDuration] = None,
+      overrideHeartbeatInterval: Option[FiniteDuration] = None,
+  ) extends RaftSettings(
+        ConfigFactory
+          .parseMap(
+            (
+              overrideElectionTimeout.map("lerna.akka.entityreplication.raft.election-timeout" -> _.toJava).toMap
+              ++ overrideHeartbeatInterval.map("lerna.akka.entityreplication.raft.heartbeat-interval" -> _.toJava)
+            ).asJava,
+          ).withFallback(root),
+      )
+}
+
 class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeSpec {
 
   import RaftActor._
+  import RaftActorSpec._
   import RaftActorSpecConfig._
 
   private[this] val config = system.settings.config
-  private[this] val defaultRaftSettings = new {
+  private[this] val defaultRaftSettings = new RaftSettingsForTest(config)(
     // テスト中はデフォルトで各種タイマーが作動しないようにする
-    override val electionTimeout   = 999.seconds
-    override val heartbeatInterval = 99.seconds
-  } with RaftSettings(config)
+    overrideElectionTimeout = Option(999.seconds),
+    overrideHeartbeatInterval = Option(99.seconds),
+  )
 
   private[this] val entityId = NormalizedEntityId.from("test-entity")
 
@@ -108,30 +126,30 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       runOn(node1) {
         followerMember = createRaftActor(
           shardId,
-          new {
+          new RaftSettingsForTest(config)(
             // 確実にリーダーになるように仕向けるため
-            override val electionTimeout = 99.seconds
-          } with RaftSettings(config),
+            overrideElectionTimeout = Option(99.seconds),
+          ),
         )
         awaitCond(getState(followerMember).stateName == Follower)
       }
       runOn(node2) {
         followerMember = createRaftActor(
           shardId,
-          new {
+          new RaftSettingsForTest(config)(
             // 確実にリーダーになるように仕向けるため
-            override val electionTimeout = 99.seconds
-          } with RaftSettings(config),
+            overrideElectionTimeout = Option(99.seconds),
+          ),
         )
         awaitCond(getState(followerMember).stateName == Follower)
       }
       runOn(node3) {
         leaderMember = createRaftActor(
           shardId,
-          new {
+          new RaftSettingsForTest(config)(
             // 確実にリーダーになるように仕向けるため
-            override val electionTimeout = 1.seconds
-          } with RaftSettings(config),
+            overrideElectionTimeout = Option(1.seconds),
+          ),
         )
         awaitCond(getState(leaderMember).stateName == Leader)
       }
@@ -162,9 +180,9 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       runOn(node1) {
         candidateMember = createRaftActor(
           replicationId,
-          new {
-            override val electionTimeout = 6.seconds
-          } with RaftSettings(config),
+          new RaftSettingsForTest(config)(
+            overrideElectionTimeout = Option(6.seconds),
+          ),
         )
         awaitCond(getState(candidateMember).stateName == Follower)
         setState(candidateMember, Candidate, createCandidateData(term))
@@ -172,9 +190,9 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       runOn(node2) {
         candidateMember = createRaftActor(
           replicationId,
-          new {
-            override val electionTimeout = 6.seconds
-          } with RaftSettings(config),
+          new RaftSettingsForTest(config)(
+            overrideElectionTimeout = Option(6.seconds),
+          ),
         )
         awaitCond(getState(candidateMember).stateName == Follower)
         setState(candidateMember, Candidate, createCandidateData(term))
@@ -182,10 +200,10 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       runOn(node3) {
         candidateMember = createRaftActor(
           replicationId,
-          new {
+          new RaftSettingsForTest(config)(
             // 確実にリーダーになるように仕向けるため
-            override val electionTimeout = 3.seconds
-          } with RaftSettings(config),
+            overrideElectionTimeout = Option(3.seconds),
+          ),
         )
         awaitCond(getState(candidateMember).stateName == Follower)
         setState(candidateMember, Candidate, createCandidateData(term))
@@ -204,11 +222,11 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       runOn(node1) {
         leaderMember = createRaftActor(
           replicationId,
-          new {
+          new RaftSettingsForTest(config)(
             // リーダーとして選出させるため
-            override val electionTimeout   = 500.millis
-            override val heartbeatInterval = 100.millis
-          } with RaftSettings(config),
+            overrideElectionTimeout = Option(500.millis),
+            overrideHeartbeatInterval = Option(100.millis),
+          ),
         )
         awaitCond(getState(leaderMember).stateName == Leader)
       }
@@ -252,11 +270,11 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       runOn(node1) {
         leaderMember = createRaftActor(
           replicationId,
-          new {
+          new RaftSettingsForTest(config)(
             // リーダーとして選出させるため
-            override val electionTimeout   = 500.millis
-            override val heartbeatInterval = 100.millis
-          } with RaftSettings(config),
+            overrideElectionTimeout = Option(500.millis),
+            overrideHeartbeatInterval = Option(100.millis),
+          ),
         )
         awaitCond(getState(leaderMember).stateName == Leader)
       }
@@ -304,11 +322,11 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       runOn(node1) {
         leaderMember = createRaftActor(
           replicationId,
-          new {
+          new RaftSettingsForTest(config)(
             // リーダーとして選出させるため
-            override val electionTimeout   = 3.seconds
-            override val heartbeatInterval = 1.seconds
-          } with RaftSettings(config),
+            overrideElectionTimeout = Option(3.seconds),
+            overrideHeartbeatInterval = Option(1.seconds),
+          ),
         )
         awaitCond(getState(leaderMember).stateName == Leader)
         val leaderData = getState(leaderMember).stateData
@@ -405,11 +423,11 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       runOn(node1) {
         nodeMember = createRaftActor(
           replicationId,
-          new {
+          new RaftSettingsForTest(config)(
             // to make it be a leader
-            override val electionTimeout   = 1.seconds
-            override val heartbeatInterval = 0.5.seconds
-          } with RaftSettings(config),
+            overrideElectionTimeout = Option(1.seconds),
+            overrideHeartbeatInterval = Option(0.5.seconds),
+          ),
         )
         awaitCond(getState(nodeMember).stateName == Leader)
       }
@@ -420,11 +438,11 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       runOn(node3) {
         nodeMember = createRaftActor(
           replicationId,
-          new {
+          new RaftSettingsForTest(config)(
             // to make it be a leader
-            override val electionTimeout   = 6.seconds
-            override val heartbeatInterval = 0.5.seconds
-          } with RaftSettings(config),
+            overrideElectionTimeout = Option(6.seconds),
+            overrideHeartbeatInterval = Option(0.5.seconds),
+          ),
         )
         awaitCond(getState(nodeMember).stateName == Follower)
       }
@@ -511,11 +529,11 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
       runOn(node1) {
         raftMember = createRaftActor(
           replicationId,
-          new {
+          new RaftSettingsForTest(config)(
             // リーダーになりやすくするため
-            override val electionTimeout   = 1.seconds
-            override val heartbeatInterval = 0.5.seconds
-          } with RaftSettings(config),
+            overrideElectionTimeout = Option(1.seconds),
+            overrideHeartbeatInterval = Option(0.5.seconds),
+          ),
         )
         awaitCond(getState(raftMember).stateName == Leader)
       }
