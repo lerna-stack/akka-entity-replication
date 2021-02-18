@@ -22,7 +22,7 @@ object AtLeastOnceComplete {
 
     def send(): Unit = {
       val future = destination ? message
-      promise.tryCompleteWith(future)
+      promise.completeWith(future)
     }
 
     send()
