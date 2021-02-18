@@ -41,7 +41,7 @@ trait RaftActorBase extends PersistentActor with ActorLogging {
       _currentData = RaftMemberData(snapshot)
     case domainEvent: PersistEvent =>
       _currentData = updateState(domainEvent)
-    case RecoveryCompleted ⇒
+    case RecoveryCompleted =>
       onRecoveryCompleted()
   }
 

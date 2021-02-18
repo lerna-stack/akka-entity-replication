@@ -47,7 +47,7 @@ object ReplicationRegion {
     * Only messages that passed the [[ExtractEntityId]] will be used
     * as input to this function.
     */
-  type ExtractShardId = Msg ⇒ ShardId
+  type ExtractShardId = Msg => ShardId
 
   private[entityreplication] type ExtractNormalizedShardId = Msg => NormalizedShardId
 
