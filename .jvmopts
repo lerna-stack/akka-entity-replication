@@ -1,0 +1,5 @@
+# scalafix recommends reserving sufficient resources
+# see: https://scalacenter.github.io/scalafix/docs/users/installation.html#sbt
+-Xss8m
+-Xms1G
+-Xmx8G

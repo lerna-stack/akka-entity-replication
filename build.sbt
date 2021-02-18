@@ -17,8 +17,12 @@ lazy val lerna = (project in file("."))
             "-feature",
             "-unchecked",
             "-Xlint",
+            "-Yrangepos",
+            "-Ywarn-unused:imports",
           ),
         scalacOptions ++= sys.props.get("lerna.enable.discipline").map(_ => "-Xfatal-warnings").toSeq,
+        scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(scalaVersion.value),
+        addCompilerPlugin(scalafixSemanticdb),
       ),
     ),
     name := "akka-entity-replication",
@@ -45,5 +49,7 @@ lazy val lerna = (project in file("."))
         "com.github.dnvriend" %% "akka-persistence-inmemory" % "2.5.15.2" % Test,
       ),
     // multi-jvm ディレクトリをフォーマットするために必要
-    inConfig(MultiJvm)(scalafmtConfigSettings),
+    inConfig(MultiJvm)(
+      scalafmtConfigSettings ++ scalafixConfigSettings(MultiJvm),
+    ),
   )
