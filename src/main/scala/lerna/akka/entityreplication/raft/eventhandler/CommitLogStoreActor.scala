@@ -23,6 +23,7 @@ object CommitLogStoreActor {
       override def entityId(message: Any): String =
         message match {
           case save: Save => save.replicationId
+          case _          => throw new RuntimeException("unknown message: " + message)
         }
     }
 

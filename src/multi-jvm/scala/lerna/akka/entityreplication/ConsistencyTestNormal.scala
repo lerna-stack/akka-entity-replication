@@ -39,7 +39,7 @@ class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) wit
 
     Cluster(system).join(node(node1).address)
 
-    receiveN(nrOfNodes).map {
+    receiveN(nrOfNodes).collect {
       case MemberUp(member) => member.address
     }.toSet should be(roles.map(node(_).address).toSet)
 

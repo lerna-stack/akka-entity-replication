@@ -90,7 +90,7 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
 
       cluster.join(node(node1).address)
 
-      receiveN(roles.size).map {
+      receiveN(roles.size).collect {
         case MemberUp(member) => member.address
       }.toSet should be(roles.map(node(_).address).toSet)
 

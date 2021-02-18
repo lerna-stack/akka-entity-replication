@@ -207,7 +207,7 @@ object ReplicationActorSpec {
 
     var count = 0
 
-    def updateState(event: Any): Unit =
+    def updateState(event: IncrementCount): Unit =
       event match {
         case _: IncrementCount => count += 1
       }
@@ -233,7 +233,7 @@ class ReplicationActorSpec extends MultiNodeSpec(ReplicationActorSpecConfig) wit
 
       Cluster(system).join(node(node1).address)
 
-      receiveN(3).map {
+      receiveN(3).collect {
         case MemberUp(member) => member.address
       }.toSet should be(Set(node(node1).address, node(node2).address, node(node3).address))
 

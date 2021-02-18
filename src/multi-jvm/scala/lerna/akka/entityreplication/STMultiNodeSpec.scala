@@ -137,7 +137,7 @@ trait STMultiNodeSpec
 
     Cluster(system).join(node(roles.head).address)
 
-    receiveN(roles.size).map {
+    receiveN(roles.size).collect {
       case MemberUp(member) => member.address
     }.toSet should be(roles.map(node(_).address).toSet)
 
