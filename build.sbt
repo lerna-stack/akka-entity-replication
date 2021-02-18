@@ -13,7 +13,6 @@ lazy val lerna = (project in file("."))
       List(
         scalaVersion := "2.13.4",
         scalacOptions ++= Seq(
-            "-deprecation",
             "-feature",
             "-unchecked",
             "-Xlint",
