@@ -49,7 +49,7 @@ class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) wit
 
     clusterReplication = ClusterReplication(system).start(
       typeName = "sample",
-      entityProps = Props[ConsistencyTestReplicationActor],
+      entityProps = Props[ConsistencyTestReplicationActor](),
       settings = ClusterReplicationSettings(system),
       extractEntityId = ConsistencyTestReplicationActor.extractEntityId,
       extractShardId = ConsistencyTestReplicationActor.extractShardId,
