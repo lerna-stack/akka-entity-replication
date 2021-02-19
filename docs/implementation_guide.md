@@ -317,7 +317,7 @@ lerna.akka.entityreplication.raft.eventhandler.persistence {
 
 It requires explicit user configuration by overriding them in the application.conf.
 
-For an example configuration to use Cassandra as a data store with [akka-persistence-cassandra](https://doc.akka.io/docs/akka-persistence-cassandra/current/) see [akka-entity-replication-with-cassandra.conf](/src/main/resources/akka-entity-replication-with-cassandra.conf).
+For an example configuration to use Cassandra as a data store with [akka-persistence-cassandra](https://doc.akka.io/docs/akka-persistence-cassandra/current/) see [akka-entity-replication-with-cassandra.conf](/src/test/resources/akka-entity-replication-with-cassandra.conf).
 
 Persistence plugins to set can be selected.
 For more details see [Akka Persistence Plugins official document](https://doc.akka.io/docs/akka/current/persistence-plugins.html)
