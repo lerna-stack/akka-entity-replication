@@ -2,7 +2,7 @@ import org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings
 
 resolvers += "dnvriend" at "http://dl.bintray.com/dnvriend/maven"
 
-lazy val akkaVersion           = "2.6.9"
+lazy val akkaVersion           = "2.6.12"
 lazy val akkaProjectionVersion = "1.0.0"
 
 lazy val lerna = (project in file("."))
