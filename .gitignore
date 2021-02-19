@@ -5,3 +5,4 @@ target/
 *.pyc
 .env
 sbt-cache/
+.bsp/
