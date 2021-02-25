@@ -43,8 +43,6 @@ libraryDependencies += "io.github.lerna-stack" %% "akka-entity-replication" % "0
 
 This version of akka-entity-replication depends on **Akka 2.6.x**. It has been published for Scala 2.13.
 
-akka-entity-replication currently uses Apache Cassandra to store entity events. Other data stores may be available in future releases.
-
 For more information on how to implement an application using this libray, please refer to [this Implementation Guide](docs/implementation_guide.md).
 
 ## License

@@ -23,15 +23,9 @@ jobs:
       with:
         java-version: 1.8
 
-    # https://github.com/actions/cache/blob/main/examples.md#scala---sbt
-    - name: Cache sbt resources
-      uses: actions/cache@v2
-      with:
-        path: |
-          ~/.cache/coursier
-          ~/.ivy2/cache
-          ~/.sbt
-        key: ${{ runner.os }}-sbt-${{ hashFiles('**/build.sbt') }}
+    # https://www.scala-sbt.org/1.x/docs/GitHub-Actions-with-sbt.html#Caching
+    - name: Coursier cache
+      uses: coursier/cache-action@v5
 
     - name: Check code format
       run: sbt scalafmtCheckAll
@@ -41,3 +35,12 @@ jobs:
 
     - name: Run integration tests
       run: sh ./scripts/run-multijvm-test.sh 5
+
+      # https://www.scala-sbt.org/1.x/docs/GitHub-Actions-with-sbt.html#Caching
+    - name: Clean files for caching
+      run: |
+        rm -rf "$HOME/.ivy2/local" || true
+        find $HOME/Library/Caches/Coursier/v1        -name "ivydata-*.properties" -delete || true
+        find $HOME/.ivy2/cache                       -name "ivydata-*.properties" -delete || true
+        find $HOME/.cache/coursier/v1                -name "ivydata-*.properties" -delete || true
+        find $HOME/.sbt                              -name "*.lock"               -delete || true
