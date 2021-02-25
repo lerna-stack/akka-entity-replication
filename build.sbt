@@ -21,7 +21,9 @@ lazy val lerna = (project in file("."))
           ),
         scalacOptions ++= sys.props.get("lerna.enable.discipline").map(_ => "-Xfatal-warnings").toSeq,
         scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(scalaVersion.value),
-        addCompilerPlugin(scalafixSemanticdb),
+        // https://scalacenter.github.io/scalafix/docs/users/installation.html#sbt
+        semanticdbEnabled := true,
+        semanticdbVersion := scalafixSemanticdb.revision,
       ),
     ),
     name := "akka-entity-replication",
