@@ -184,6 +184,9 @@ trait Leader { this: RaftActor =>
 
       case succeeded: InstallSnapshotSucceeded if succeeded.term.isOlderThan(currentData.currentTerm) =>
       // ignore: Snapshot synchronization of Follower was too slow
+
+      case succeeded: InstallSnapshotSucceeded =>
+        unhandled(succeeded)
     }
 
   private[this] def handleCommand(req: Command): Unit =
