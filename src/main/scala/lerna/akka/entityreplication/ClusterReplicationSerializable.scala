@@ -1,0 +1,2 @@
+package lerna.akka.entityreplication
+trait ClusterReplicationSerializable extends Serializable

@@ -148,7 +148,7 @@ class ReplicationRegion(
     */
   private[this] var stickyRoutingRouter: Router = {
     val hashMapping: ConsistentHashingRouter.ConsistentHashMapping = {
-      case message => extractNormalizedShardIdInternal(message)
+      case message => extractNormalizedShardIdInternal(message).underlying
     }
     Router(
       ConsistentHashingRoutingLogic(context.system, virtualNodesFactor = 256, hashMapping),

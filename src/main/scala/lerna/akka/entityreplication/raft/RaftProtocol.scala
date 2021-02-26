@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.ActorRef
+import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.model.{ LogEntry, LogEntryIndex }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshot
@@ -10,8 +11,8 @@ object RaftProtocol {
   final case class RequestRecovery(entityId: NormalizedEntityId)
   final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot])
 
-  case class Command(command: Any)
-  case class ForwardedCommand(command: Command)
+  case class Command(command: Any)              extends ClusterReplicationSerializable
+  case class ForwardedCommand(command: Command) extends ClusterReplicationSerializable
   case class Replica(logEntry: LogEntry)
 
   object Replicate {
