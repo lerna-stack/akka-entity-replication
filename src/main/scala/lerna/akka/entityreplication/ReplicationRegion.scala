@@ -47,9 +47,9 @@ object ReplicationRegion {
     * Only messages that passed the [[ExtractEntityId]] will be used
     * as input to this function.
     */
-  type ExtractShardId = Msg ⇒ ShardId
+  type ExtractShardId = PartialFunction[Msg, ShardId]
 
-  private[entityreplication] type ExtractNormalizedShardId = Msg => NormalizedShardId
+  private[entityreplication] type ExtractNormalizedShardId = PartialFunction[Msg, NormalizedShardId]
 
   def props(
       typeName: String,
@@ -235,12 +235,16 @@ class ReplicationRegion(
   }
 
   def deliverMessage(message: Any): Unit = {
-    val shardId = extractShardId(message)
-    shardingRouters.values.foreach(
-      // Don't forward StartEntity to prevent leaking StartEntityAck
-      _.tell(ShardRegion.StartEntity(shardId), context.system.deadLetters),
-    )
-    handleRoutingCommand(DeliverSomewhere(Command(message)))
+    if (extractShardId.isDefinedAt(message)) {
+      val shardId = extractShardId(message)
+      shardingRouters.values.foreach(
+        // Don't forward StartEntity to prevent leaking StartEntityAck
+        _.tell(ShardRegion.StartEntity(shardId), context.system.deadLetters),
+      )
+      handleRoutingCommand(DeliverSomewhere(Command(message)))
+    } else {
+      log.warning("The message [{}] was dropped because its shard ID could not be extracted", message)
+    }
   }
 
   private[this] def updateState(): Unit = {
@@ -280,7 +284,7 @@ class ReplicationRegion(
     }
 
   private[this] def extractNormalizedShardId: ReplicationRegion.ExtractNormalizedShardId =
-    extractShardId.andThen(NormalizedShardId.from)
+    extractShardId.andThen(i => NormalizedShardId.from(i))
 
   private[this] def extractNormalizedShardIdInternal: ReplicationRegion.ExtractNormalizedShardId = {
     case shardRequest: ShardRequest     => shardRequest.shardId

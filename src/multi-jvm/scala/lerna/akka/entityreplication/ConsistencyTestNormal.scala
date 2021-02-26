@@ -39,7 +39,7 @@ class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) wit
 
     Cluster(system).join(node(node1).address)
 
-    receiveN(nrOfNodes).map {
+    receiveN(nrOfNodes).collect {
       case MemberUp(member) => member.address
     }.toSet should be(roles.map(node(_).address).toSet)
 
@@ -49,7 +49,7 @@ class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) wit
 
     clusterReplication = ClusterReplication(system).start(
       typeName = "sample",
-      entityProps = Props[ConsistencyTestReplicationActor],
+      entityProps = Props[ConsistencyTestReplicationActor](),
       settings = ClusterReplicationSettings(system),
       extractEntityId = ConsistencyTestReplicationActor.extractEntityId,
       extractShardId = ConsistencyTestReplicationActor.extractShardId,

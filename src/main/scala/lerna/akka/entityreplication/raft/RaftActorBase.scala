@@ -41,12 +41,15 @@ trait RaftActorBase extends PersistentActor with ActorLogging {
       _currentData = RaftMemberData(snapshot)
     case domainEvent: PersistEvent =>
       _currentData = updateState(domainEvent)
-    case RecoveryCompleted ⇒
+    case RecoveryCompleted =>
       onRecoveryCompleted()
   }
 
   final override def receiveCommand: Receive = stateBehaviors(currentState)
 
+  // Avoid false positive
+  // DomainEvent has only two subtypes: PersistEvent and NonPersistEvent
+  @annotation.nowarn("msg=match may not be exhaustive")
   protected def applyDomainEvent[T <: DomainEvent](domainEvent: T)(f: T => Unit): Unit =
     domainEvent match {
       case _: PersistEvent =>

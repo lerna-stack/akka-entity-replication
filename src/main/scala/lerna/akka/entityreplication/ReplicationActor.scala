@@ -158,7 +158,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
     )
   }
 
-  def ensureConsistency(handler: => Unit): Unit = replicate(NoOp)(_ => (handler _)())
+  def ensureConsistency(handler: => Unit): Unit = replicate(NoOp)(_ => handler)
 
   /**
     * 最後に適用されたイベントの [[LogEntryIndex]] を記録し、既に適用済みのイベントが再度連携された場合は無視する。

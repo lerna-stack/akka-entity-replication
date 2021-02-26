@@ -149,6 +149,9 @@ trait Leader { this: RaftActor =>
       case succeeded: AppendEntriesSucceeded if succeeded.term.isOlderThan(currentData.currentTerm) =>
       // ignore: Follower always synchronizes Term before replying, so it does not happen normally
 
+      case succeeded: AppendEntriesSucceeded =>
+        unhandled(succeeded)
+
       case failed: AppendEntriesFailed if failed.term == currentData.currentTerm =>
         applyDomainEvent(DeniedAppendEntries(failed.sender)) { _ =>
           // do nothing
@@ -161,6 +164,9 @@ trait Leader { this: RaftActor =>
         }
 
       case failed: AppendEntriesFailed if failed.term.isOlderThan(currentData.currentTerm) => // ignore
+
+      case failed: AppendEntriesFailed =>
+        unhandled(failed)
     }
 
   private[this] def handleCommand(req: Command): Unit =
@@ -191,7 +197,7 @@ trait Leader { this: RaftActor =>
     }
   }
 
-  private[this] def receiveReplicationResponse(event: Any): Unit =
+  private[this] def receiveReplicationResponse(event: ReplicationResponse): Unit =
     event match {
 
       case ReplicationSucceeded(NoOp, _, _) =>

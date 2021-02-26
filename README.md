@@ -39,9 +39,9 @@ resolvers += Resolver.sonatypeRepo("snapshots")  // If you use SNAPSHOT, you nee
 libraryDependencies += "io.github.lerna-stack" %% "akka-entity-replication" % "0.1.0-SNAPSHOT"
 ```
 
-[![Sonatype Nexus (Snapshots)](https://img.shields.io/nexus/s/io.github.lerna-stack/akka-entity-replication_2.12?color=%237B1FA2&label=master&server=https%3A%2F%2Foss.sonatype.org)](https://oss.sonatype.org/index.html#nexus-search;gav~io.github.lerna-stack~akka-entity-replication_*~~~)
+[![Sonatype Nexus (Snapshots)](https://img.shields.io/nexus/s/io.github.lerna-stack/akka-entity-replication_2.13?color=%237B1FA2&label=master&server=https%3A%2F%2Foss.sonatype.org)](https://oss.sonatype.org/index.html#nexus-search;gav~io.github.lerna-stack~akka-entity-replication_*~~~)
 
-This version of akka-entity-replication depends on **Akka 2.6.x**. It has been published for Scala 2.12.
+This version of akka-entity-replication depends on **Akka 2.6.x**. It has been published for Scala 2.13.
 
 For more information on how to implement an application using this libray, please refer to [this Implementation Guide](docs/implementation_guide.md).
 

@@ -11,7 +11,7 @@ import lerna.akka.entityreplication.ReplicationRegionSpec.DummyReplicationActor.
 import lerna.akka.entityreplication.raft.RaftProtocol.Command
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 import scala.concurrent.duration._
 
 object ReplicationRegionSpec {

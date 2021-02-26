@@ -11,14 +11,19 @@ lazy val lerna = (project in file("."))
   .settings(
     inThisBuild(
       List(
-        scalaVersion := "2.12.12",
+        scalaVersion := "2.13.4",
         scalacOptions ++= Seq(
-            "-deprecation",
             "-feature",
             "-unchecked",
             "-Xlint",
+            "-Yrangepos",
+            "-Ywarn-unused:imports",
           ),
         scalacOptions ++= sys.props.get("lerna.enable.discipline").map(_ => "-Xfatal-warnings").toSeq,
+        scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(scalaVersion.value),
+        // https://scalacenter.github.io/scalafix/docs/users/installation.html#sbt
+        semanticdbEnabled := true,
+        semanticdbVersion := scalafixSemanticdb.revision,
       ),
     ),
     name := "akka-entity-replication",
@@ -40,12 +45,14 @@ lazy val lerna = (project in file("."))
         "io.altoo"           %% "akka-kryo-serialization"      % "1.1.5",
         "com.typesafe.akka"  %% "akka-slf4j"                   % akkaVersion % Test,
         "ch.qos.logback"      % "logback-classic"              % "1.2.3"     % Test,
-        "org.scalatest"      %% "scalatest"                    % "3.0.5"     % Test,
+        "org.scalatest"      %% "scalatest"                    % "3.0.9"     % Test,
         "com.typesafe.akka"  %% "akka-multi-node-testkit"      % akkaVersion % Test,
         // akka-persistence-inmemory が 2.6.x 系に対応していない。
         // TODO 2.6.x 系に対応できる方法に変更する。
         "com.github.dnvriend" %% "akka-persistence-inmemory" % "2.5.15.2" % Test,
       ),
     // multi-jvm ディレクトリをフォーマットするために必要
-    inConfig(MultiJvm)(scalafmtConfigSettings),
+    inConfig(MultiJvm)(
+      scalafmtConfigSettings ++ scalafixConfigSettings(MultiJvm),
+    ),
   )

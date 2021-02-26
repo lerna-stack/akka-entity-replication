@@ -96,6 +96,9 @@ trait Candidate { this: RaftActor =>
       case accepted: RequestVoteAccepted if accepted.term.isOlderThan(currentData.currentTerm) =>
       // ignore
 
+      case accepted: RequestVoteAccepted =>
+        unhandled(accepted)
+
       case denied: RequestVoteDenied if denied.term.isNewerThan(currentData.currentTerm) =>
         cancelElectionTimeoutTimer()
         applyDomainEvent(DetectedNewTerm(denied.term)) { _ =>
@@ -107,6 +110,9 @@ trait Candidate { this: RaftActor =>
       case denied: RequestVoteDenied if denied.term.isOlderThan(currentData.currentTerm) =>
       // lastLogIndex が古かった場合、RequestVote が拒否される
       // 1つの Follower から拒否されたからといって Leader になれないとも限らないため単純に無視する
+
+      case denied: RequestVoteDenied =>
+        unhandled(denied)
     }
 
   private[this] def receiveAppendEntries(request: AppendEntries): Unit =
