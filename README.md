@@ -11,6 +11,10 @@ Each replicated entities are distributed across multiple nodes in the cluster li
 
 akka-entity-replication helps to implement *Event Sourcing* and *Command Query Responsibility Segregation* (CQRS). Entity state updates are represented as events, and based on the events, a read model is updated for queries.
 
+![](docs/images/demo.apng)
+
+*The Leader moves immediately from node2 to node3 when a failure(KILL) occurred*
+
 ## Technical background
 
 Entity status synchronization is archived by Raft consensus algorithm. This algorithm ensures that the replica states of the entities are synchronized, so that if some failure occurs and a replica becomes unavailable, the other replicas can immediately continue processing.
