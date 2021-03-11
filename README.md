@@ -15,7 +15,7 @@ akka-entity-replication helps to implement *Event Sourcing* and *Command Query R
 
 Entity status synchronization is archived by Raft consensus algorithm. This algorithm ensures that the replica states of the entities are synchronized, so that if some failure occurs and a replica becomes unavailable, the other replicas can immediately continue processing.
 
-The replicas of each entity are not started on every node in the Cluster, but are placed in such a way that the load is distributed by sharding based on Consistent Hash. As nodes are added or removed, they are automatically rebalanced.
+The replicas of each entity are not started on every node in the Cluster, but are placed in such a way that the load is distributed by sharding with `akka-cluster-sharding`. As nodes are added or removed, they are automatically rebalanced.
 
 Akka ensures that the order of arrival of messages between source and destination is maintained. Note that if you send multiple messages, it is possible for entities to receive messages in a different order than they were sent, since the replicas of the entities in akka-entity-replication may be replaced in the course of sending messages.
 
