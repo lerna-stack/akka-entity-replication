@@ -1,13 +1,12 @@
 package lerna.akka.entityreplication.testkit
 
 import akka.actor.Props
-import lerna.akka.entityreplication.ReplicationActor
 
 object TestReplicationActorProps {
 
-  type ReplicationActorProvider = (=> ReplicationActor[_])
-
-  def apply(replicationActorProvider: ReplicationActorProvider): Props = {
-    Props(new TestReplicationActor(replicationActorProvider))
+  def apply(replicationActorProps: Props): Props = {
+    // TODO: check Type
+    // if (replicationActorProps.actorClass().isInstance(classOf[ReplicationActor[_]])) {
+    Props(new TestReplicationActor(replicationActorProps))
   }
 }
