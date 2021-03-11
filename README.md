@@ -43,7 +43,10 @@ libraryDependencies += "io.github.lerna-stack" %% "akka-entity-replication" % "0
 
 This version of akka-entity-replication depends on **Akka 2.6.x**. It has been published for Scala 2.13.
 
-For more information on how to implement an application using this libray, please refer to [this Implementation Guide](docs/implementation_guide.md).
+For more information on how to implement an application using this library, please refer to the following documents.
+
+- [Implementation Guide](docs/implementation_guide.md)
+- [Testing Guide](docs/testing_guide.md)
 
 ## License
 
