@@ -7,7 +7,7 @@ akka-entity-replication
 
 If a node failure or network failure occurs, some entities in Cluster Sharding become unavailable and it will take more than 10 seconds to recover. akka-entity-replication provides fast recovery by creating replicas of entities in multiple locations and always synchronizing their status. 
 
-Each replicated entities are distributed across multiple nodes in the cluster like Cluster Sharding. This provides high scalability in addition to high availablity.
+Each replicated entity is distributed across multiple nodes in the cluster like Cluster Sharding. This provides high scalability in addition to high availability.
 
 akka-entity-replication helps to implement *Event Sourcing* and *Command Query Responsibility Segregation* (CQRS). Entity state updates are represented as events, and based on the events, a read model is updated for queries.
 
@@ -19,7 +19,7 @@ akka-entity-replication helps to implement *Event Sourcing* and *Command Query R
 
 Entity status synchronization is archived by Raft consensus algorithm. This algorithm ensures that the replica states of the entities are synchronized, so that if some failure occurs and a replica becomes unavailable, the other replicas can immediately continue processing.
 
-The replicas of each entity are not started on every node in the Cluster, but are placed in such a way that the load is distributed by sharding with `akka-cluster-sharding`. As nodes are added or removed, they are automatically rebalanced.
+The replicas of each entity are not started on every node in the Cluster but are placed in such a way that the load is distributed by sharding with `akka-cluster-sharding`. As nodes are added or removed, they are automatically rebalanced.
 
 Akka ensures that the order of arrival of messages between source and destination is maintained. Note that if you send multiple messages, it is possible for entities to receive messages in a different order than they were sent, since the replicas of the entities in akka-entity-replication may be replaced in the course of sending messages.
 
