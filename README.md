@@ -11,16 +11,6 @@ Each replicated entities are distributed across multiple nodes in the cluster li
 
 akka-entity-replication helps to implement *Event Sourcing* and *Command Query Responsibility Segregation* (CQRS). Entity state updates are represented as events, and based on the events, a read model is updated for queries.
 
-## Project Status
-
-⚠️⚠️⚠️
-
-**akka-entity-replication is currently under development. It is NOT recommended to be used in production. Use at your own risk.**
-
-⚠️⚠️⚠️
-
-We have decided to publish this library as early preview to be able to discuss improvements about this.
-
 ## Technical background
 
 Entity status synchronization is archived by Raft consensus algorithm. This algorithm ensures that the replica states of the entities are synchronized, so that if some failure occurs and a replica becomes unavailable, the other replicas can immediately continue processing.
