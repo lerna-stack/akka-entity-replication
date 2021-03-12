@@ -4,8 +4,8 @@ import akka.actor.ActorSystem
 import com.typesafe.config.Config
 import lerna.akka.entityreplication.raft.RaftSettings
 
+import scala.jdk.DurationConverters._
 import scala.concurrent.duration.FiniteDuration
-import lerna.akka.entityreplication.util.JavaDurationConverters._
 
 object ClusterReplicationSettings {
 
@@ -16,7 +16,7 @@ class ClusterReplicationSettings(root: Config) {
 
   val config: Config = root.getConfig("lerna.akka.entityreplication")
 
-  val recoveryEnittyTimeout: FiniteDuration = config.getDuration("recovery-entity-timeout").asScala
+  val recoveryEnittyTimeout: FiniteDuration = config.getDuration("recovery-entity-timeout").toScala
 
   val raftSettings: RaftSettings = RaftSettings(root)
 }

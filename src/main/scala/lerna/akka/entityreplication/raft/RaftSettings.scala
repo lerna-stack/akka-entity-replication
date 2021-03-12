@@ -3,9 +3,9 @@ package lerna.akka.entityreplication.raft
 import java.util.concurrent.TimeUnit.NANOSECONDS
 
 import com.typesafe.config.Config
-import lerna.akka.entityreplication.util.JavaDurationConverters._
 
 import scala.jdk.CollectionConverters._
+import scala.jdk.DurationConverters._
 import scala.concurrent.duration.{ Duration, FiniteDuration }
 import scala.util.Random
 
@@ -17,11 +17,11 @@ class RaftSettings(root: Config) {
 
   val config: Config = root.getConfig("lerna.akka.entityreplication.raft")
 
-  val electionTimeout: FiniteDuration = config.getDuration("election-timeout").asScala
+  val electionTimeout: FiniteDuration = config.getDuration("election-timeout").toScala
 
   def randomizedElectionTimeout(): FiniteDuration = randomized(electionTimeout)
 
-  val heartbeatInterval: FiniteDuration = config.getDuration("heartbeat-interval").asScala
+  val heartbeatInterval: FiniteDuration = config.getDuration("heartbeat-interval").toScala
 
   private[this] val randomizedMinFactor = 0.75
 
@@ -57,7 +57,7 @@ class RaftSettings(root: Config) {
   val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
 
   val compactionSnapshotCacheTimeToLive: FiniteDuration =
-    config.getDuration("compaction.snapshot-cache-time-to-live").asScala
+    config.getDuration("compaction.snapshot-cache-time-to-live").toScala
 
   val compactionLogSizeThreshold: Int = config.getInt("compaction.log-size-threshold")
 
@@ -73,7 +73,7 @@ class RaftSettings(root: Config) {
     s"preserve-log-size ($compactionPreserveLogSize) should be larger than 0",
   )
 
-  val compactionLogSizeCheckInterval: FiniteDuration = config.getDuration("compaction.log-size-check-interval").asScala
+  val compactionLogSizeCheckInterval: FiniteDuration = config.getDuration("compaction.log-size-check-interval").toScala
 
   def randomizedCompactionLogSizeCheckInterval(): FiniteDuration = randomized(compactionLogSizeCheckInterval)
 
