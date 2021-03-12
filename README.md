@@ -39,6 +39,12 @@ This version of akka-entity-replication depends on **Akka 2.6.x**. It has been p
 
 For more information on how to implement an application using this libray, please refer to [this Implementation Guide](docs/implementation_guide.md).
 
+## Examples
+
+You can see a sample application using this extension in the following project.
+
+[lerna-stack/akka-entity-replication-sample](https://github.com/lerna-stack/akka-entity-replication-sample)
+
 ## License
 
 akka-entity-replication is released under the terms of the [Apache License Version 2.0](./LICENSE).
