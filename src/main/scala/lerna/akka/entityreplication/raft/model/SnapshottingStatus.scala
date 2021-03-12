@@ -4,10 +4,20 @@ import lerna.akka.entityreplication.model.NormalizedEntityId
 
 object SnapshottingStatus {
   def empty: SnapshottingStatus =
-    SnapshottingStatus(snapshotLastLogIndex = LogEntryIndex.initial(), inProgressEntities = Set())
+    SnapshottingStatus(
+      snapshotLastLogTerm = Term.initial(),
+      snapshotLastLogIndex = LogEntryIndex.initial(),
+      inProgressEntities = Set(),
+      completedEntities = Set(),
+    )
 }
 
-case class SnapshottingStatus(snapshotLastLogIndex: LogEntryIndex, inProgressEntities: Set[NormalizedEntityId]) {
+case class SnapshottingStatus(
+    snapshotLastLogTerm: Term,
+    snapshotLastLogIndex: LogEntryIndex,
+    inProgressEntities: Set[NormalizedEntityId],
+    completedEntities: Set[NormalizedEntityId],
+) {
 
   def isInProgress: Boolean = inProgressEntities.nonEmpty
 
@@ -21,6 +31,6 @@ case class SnapshottingStatus(snapshotLastLogIndex: LogEntryIndex, inProgressEnt
       snapshotLastLogIndex == this.snapshotLastLogIndex,
       s"snapshotLastLogIndexes should be same (current: ${this.snapshotLastLogIndex}, got: ${snapshotLastLogIndex})",
     )
-    copy(inProgressEntities = inProgressEntities - entityId)
+    copy(inProgressEntities = inProgressEntities - entityId, completedEntities = completedEntities + entityId)
   }
 }

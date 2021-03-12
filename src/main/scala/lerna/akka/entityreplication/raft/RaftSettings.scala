@@ -56,6 +56,8 @@ class RaftSettings(root: Config) {
 
   val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
 
+  val maxAppendEntriesBatchSize: Int = config.getInt("max-append-entries-batch-size")
+
   val compactionSnapshotCacheTimeToLive: FiniteDuration =
     config.getDuration("compaction.snapshot-cache-time-to-live").asScala
 
@@ -77,9 +79,19 @@ class RaftSettings(root: Config) {
 
   def randomizedCompactionLogSizeCheckInterval(): FiniteDuration = randomized(compactionLogSizeCheckInterval)
 
+  val snapshotSyncCopyingParallelism: Int = config.getInt("snapshot-sync.snapshot-copying-parallelism")
+
+  val snapshotSyncPersistenceOperationTimeout: FiniteDuration =
+    config.getDuration("snapshot-sync.persistence-operation-timeout").asScala
+
   val clusterShardingConfig: Config = config.getConfig("sharding")
 
   val journalPluginId: String = config.getString("persistence.journal.plugin")
 
+  val journalPluginAdditionalConfig: Config =
+    config.withValue(journalPluginId, config.getObject("persistence.journal-plugin-additional"))
+
   val snapshotStorePluginId: String = config.getString("persistence.snapshot-store.plugin")
+
+  val queryPluginId: String = config.getString("persistence.query.plugin")
 }
