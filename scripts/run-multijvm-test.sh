@@ -16,7 +16,7 @@ fi
 code=0
 for i in `seq 1 $MAX_RETRY`; do
     echo "begin ($i/$MAX_RETRY)"
-    sbt multi-jvm:test
+    sbt coverage multi-jvm:test
     code=$?
     if [ $code -eq 0 ]; then
         break
