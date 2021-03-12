@@ -1,5 +1,8 @@
 package lerna.akka.entityreplication.util
 
+// CI may fail there is a warning such as unused import
+import scala.util.Either
+
 object ActorIds {
 
   private[this] val delimiter = ":"
