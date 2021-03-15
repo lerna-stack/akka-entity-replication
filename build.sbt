@@ -55,6 +55,10 @@ lazy val lerna = (project in file("."))
     inConfig(MultiJvm)(
       scalafmtConfigSettings ++ scalafixConfigSettings(MultiJvm),
     ),
+    scalatestOptions in MultiJvm ++= Seq(
+        "-u",
+        "target/multi-jvm-test-reports",
+      ),
     // test-coverage
     coverageMinimum := 80,
     coverageFailOnMinimum := true,
