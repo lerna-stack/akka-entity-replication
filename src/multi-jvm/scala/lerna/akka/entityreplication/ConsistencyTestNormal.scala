@@ -34,16 +34,7 @@ class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) wit
   var clusterReplication: ActorRef = null
 
   "準備" in {
-    Cluster(system).subscribe(testActor, classOf[MemberUp])
-    expectMsgType[CurrentClusterState]
-
-    Cluster(system).join(node(node1).address)
-
-    receiveN(nrOfNodes).collect {
-      case MemberUp(member) => member.address
-    }.toSet should be(roles.map(node(_).address).toSet)
-
-    Cluster(system).unsubscribe(testActor)
+    joinCluster(node1, node2, node3, node4, node5)
 
     enterBarrier("全nodeがClusterに参加した")
 
