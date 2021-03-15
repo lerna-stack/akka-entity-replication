@@ -31,10 +31,13 @@ jobs:
       run: sbt scalafmtCheckAll
 
     - name: Run tests
-      run: sbt clean test
+      run: sbt clean coverage test
 
     - name: Run integration tests
       run: sh ./scripts/run-multijvm-test.sh 5
+
+    - name: Check the test coverage is above the minimum criteria
+      run: sbt coverageAggregate
 
       # https://www.scala-sbt.org/1.x/docs/GitHub-Actions-with-sbt.html#Caching
     - name: Clean files for caching
