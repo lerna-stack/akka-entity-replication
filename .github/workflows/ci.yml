@@ -31,9 +31,11 @@ jobs:
       run: sbt scalafmtCheckAll
 
     - name: Run tests
+      continue-on-error: true # results are reported by action-junit-report
       run: sbt clean coverage test
 
     - name: Run integration tests
+      continue-on-error: true # results are reported by action-junit-report
       run: sh ./scripts/run-multijvm-test.sh 5
 
     - name: Publish test report
