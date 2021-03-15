@@ -36,6 +36,13 @@ jobs:
     - name: Run integration tests
       run: sh ./scripts/run-multijvm-test.sh 5
 
+    - name: Publish test report
+      uses: mikepenz/action-junit-report@v2
+      with:
+        check_name: ScalaTest Report
+        report_paths: 'target/**test-reports/TEST-*.xml'
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+
     - name: Check the test coverage is above the minimum criteria
       run: sbt coverageAggregate
 
