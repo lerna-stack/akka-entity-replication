@@ -3,11 +3,10 @@ package lerna.akka.entityreplication
 import java.util.concurrent.atomic.AtomicInteger
 
 import akka.actor.{ ActorRef, Props }
-import akka.cluster.Cluster
-import akka.cluster.ClusterEvent.{ CurrentClusterState, MemberUp }
 import akka.remote.testkit.MultiNodeSpec
 import lerna.akka.entityreplication.ConsistencyTestBase.{ ConsistencyTestBaseConfig, ConsistencyTestReplicationActor }
 import org.scalatest.Inside
+import scala.concurrent.duration._
 
 class ConsistencyTestNormalMultiJvmNode1 extends ConsistencyTestNormal
 class ConsistencyTestNormalMultiJvmNode2 extends ConsistencyTestNormal
@@ -27,8 +26,6 @@ class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) wit
     }
   }
 
-  private val nrOfNodes = roles.size
-
   override def initialParticipants: Int = roles.size
 
   var clusterReplication: ActorRef = null
@@ -45,6 +42,17 @@ class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) wit
       extractEntityId = ConsistencyTestReplicationActor.extractEntityId,
       extractShardId = ConsistencyTestReplicationActor.extractShardId,
     )
+
+    // check the ClusterReplication healthiness
+    val requestId = generateUniqueId()
+    awaitAssert {
+      clusterReplication ! GetStatus(id = "check-healthiness", requestId)
+      expectMsgType[Status](max = 1.seconds)
+    }
+    ignoreMsg {
+      // ignore Status messages that were sent for checking healthy
+      case Status(_, `requestId`) => true
+    }
   }
 
   "正常系（直列に処理した場合）" should {
