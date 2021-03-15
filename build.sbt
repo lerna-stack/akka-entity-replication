@@ -51,9 +51,16 @@ lazy val lerna = (project in file("."))
         // TODO 2.6.x 系に対応できる方法に変更する。
         "com.github.dnvriend" %% "akka-persistence-inmemory" % "2.5.15.2" % Test,
       ),
-    // multi-jvm ディレクトリをフォーマットするために必要
     inConfig(MultiJvm)(
-      scalafmtConfigSettings ++ scalafixConfigSettings(MultiJvm),
+      // multi-jvm ディレクトリをフォーマットするために必要
+      scalafmtConfigSettings
+      ++ scalafixConfigSettings(MultiJvm)
+      ++ Seq(
+        scalatestOptions ++= Seq(
+            "-u",
+            "target/multi-jvm-test-reports",
+          ),
+      ),
     ),
     // test-coverage
     coverageMinimum := 80,
