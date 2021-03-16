@@ -263,7 +263,8 @@ class ReplicationActorSpec extends MultiNodeSpec(ReplicationActorSpecConfig) wit
 
       runOn(node1) {
         clusterReplication ! Ping(entityId)
-        expectMsg(Pong(entityId, count = 1))
+        // inject error
+        expectMsg(Done)
         clusterReplication ! Ping(entityId)
         expectMsg(Pong(entityId, count = 2))
         clusterReplication ! Ping(entityId)

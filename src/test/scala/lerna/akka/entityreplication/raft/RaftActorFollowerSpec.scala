@@ -27,7 +27,8 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       val candidateMemberIndex = createUniqueMemberIndex()
       val term                 = Term.initial().next()
       follower ! RequestVote(shardId, term, candidateMemberIndex, LogEntryIndex.initial(), Term.initial())
-      expectMsg(RequestVoteAccepted(term, followerMemberIndex))
+      // inject error
+      expectMsg(RequestVoteDenied(term))
     }
 
     "同じ Term の二度目の RequestVote には Deny する" in {
