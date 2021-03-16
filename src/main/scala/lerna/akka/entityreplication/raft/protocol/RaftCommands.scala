@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.raft.protocol
 
 import lerna.akka.entityreplication.ClusterReplicationSerializable
-import lerna.akka.entityreplication.model.{ NormalizedShardId, TypeName }
+import lerna.akka.entityreplication.model.NormalizedShardId
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
@@ -56,7 +56,6 @@ object RaftCommands {
   final case class InstallSnapshot(
       shardId: NormalizedShardId,
       term: Term,
-      srcTypeName: TypeName,
       srcMemberIndex: MemberIndex,
       srcLatestSnapshotLastLogTerm: Term,
       srcLatestSnapshotLastLogLogIndex: LogEntryIndex,

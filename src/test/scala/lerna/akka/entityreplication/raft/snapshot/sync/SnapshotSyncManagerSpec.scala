@@ -72,19 +72,18 @@ class SnapshotSyncManagerSpec
 
   private[this] val shardId = NormalizedShardId("test-shard")
 
-  private[this] val srcTypeName    = TypeName.from("test-type-1")
+  private[this] val typeName       = TypeName.from("test-type-1")
   private[this] val srcMemberIndex = MemberIndex("test-member-index-1")
   private[this] val srcSnapshotStore =
     system.actorOf(
-      ShardSnapshotStore.props(srcTypeName.underlying, settings.raftSettings, srcMemberIndex),
+      ShardSnapshotStore.props(typeName.underlying, settings.raftSettings, srcMemberIndex),
       "srcSnapshotStore",
     )
 
-  private[this] val dstTypeName    = TypeName.from("test-type-2")
   private[this] val dstMemberIndex = MemberIndex("test-member-index-2")
   private[this] val dstSnapshotStore =
     system.actorOf(
-      ShardSnapshotStore.props(dstTypeName.underlying, settings.raftSettings, dstMemberIndex),
+      ShardSnapshotStore.props(typeName.underlying, settings.raftSettings, dstMemberIndex),
       "dstSnapshotStore",
     )
 
@@ -95,9 +94,8 @@ class SnapshotSyncManagerSpec
   private[this] def createSnapshotSyncManager(dstSnapshotStore: ActorRef = dstSnapshotStore): ActorRef =
     system.actorOf(
       SnapshotSyncManager.props(
-        srcTypeName,
+        typeName,
         srcMemberIndex,
-        dstTypeName,
         dstMemberIndex,
         dstSnapshotStore,
         shardId,

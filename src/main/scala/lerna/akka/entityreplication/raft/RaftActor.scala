@@ -95,7 +95,7 @@ object RaftActor {
 }
 
 class RaftActor(
-    val typeName: String,
+    typeName: String,
     val extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
     replicationActorProps: Props,
     _region: ActorRef,
@@ -438,16 +438,15 @@ class RaftActor(
   protected def startSyncSnapshot(installSnapshot: InstallSnapshot): Unit = {
     val snapshotSyncManagerName = ActorIds.actorName(
       snapshotSyncManagerNamePrefix,
-      installSnapshot.srcTypeName.underlying,
+      typeName,
       installSnapshot.srcMemberIndex.role,
     )
     val snapshotSyncManager =
       context.child(snapshotSyncManagerName).getOrElse {
         context.actorOf(
           SnapshotSyncManager.props(
-            srcTypeName = installSnapshot.srcTypeName,
+            typeName = TypeName(typeName),
             srcMemberIndex = installSnapshot.srcMemberIndex,
-            dstTypeName = TypeName(typeName),
             dstMemberIndex = selfMemberIndex,
             dstShardSnapshotStore = shardSnapshotStore,
             shardId,

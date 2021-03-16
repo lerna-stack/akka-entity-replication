@@ -24,9 +24,8 @@ import scala.concurrent.Future
 object SnapshotSyncManager {
 
   def props(
-      srcTypeName: TypeName,
+      typeName: TypeName,
       srcMemberIndex: MemberIndex,
-      dstTypeName: TypeName,
       dstMemberIndex: MemberIndex,
       dstShardSnapshotStore: ActorRef,
       shardId: NormalizedShardId,
@@ -34,9 +33,8 @@ object SnapshotSyncManager {
   ): Props =
     Props(
       new SnapshotSyncManager(
-        srcTypeName,
+        typeName,
         srcMemberIndex,
-        dstTypeName,
         dstMemberIndex,
         dstShardSnapshotStore,
         shardId,
@@ -82,39 +80,38 @@ object SnapshotSyncManager {
   final case class SynchronizationAbortException() extends RuntimeException with SyncFailures
 
   final case class SnapshotNotFoundException(
-      srcTypeName: TypeName,
+      typeName: TypeName,
       srcMemberIndex: MemberIndex,
       entityId: NormalizedEntityId,
   ) extends RuntimeException(
-        s"Snapshot not found for [entityId: $entityId, typeName: $srcTypeName, memberIndex: $srcMemberIndex]",
+        s"Snapshot not found for [entityId: $entityId, typeName: $typeName, memberIndex: $srcMemberIndex]",
       )
       with SyncFailures
 
   final case class SaveSnapshotFailureException(
-      dstTypeName: TypeName,
+      typeName: TypeName,
       dstMemberIndex: MemberIndex,
       metadata: EntitySnapshotMetadata,
   ) extends RuntimeException(
-        s"Save snapshot failure for entity (${metadata.entityId}) to [typeName: $dstTypeName, memberIndex: $dstMemberIndex]",
+        s"Save snapshot failure for entity (${metadata.entityId}) to [typeName: $typeName, memberIndex: $dstMemberIndex]",
       )
       with SyncFailures
 
   final case class SnapshotUpdateConflictException(
-      srcTypeName: TypeName,
+      typeName: TypeName,
       srcMemberIndex: MemberIndex,
       entityId: NormalizedEntityId,
       expectLogIndex: LogEntryIndex,
       actualLogIndex: LogEntryIndex,
   ) extends RuntimeException(
-        s"Newer (logEntryIndex: $actualLogIndex) snapshot found than expected (logEntryIndex: $expectLogIndex) in [typeName: $srcTypeName, memberIndex: $srcMemberIndex, entityId: $entityId]",
+        s"Newer (logEntryIndex: $actualLogIndex) snapshot found than expected (logEntryIndex: $expectLogIndex) in [typeName: $typeName, memberIndex: $srcMemberIndex, entityId: $entityId]",
       )
       with SyncFailures
 }
 
 class SnapshotSyncManager(
-    srcTypeName: TypeName,
+    typeName: TypeName,
     srcMemberIndex: MemberIndex,
-    dstTypeName: TypeName,
     dstMemberIndex: MemberIndex,
     dstShardSnapshotStore: ActorRef,
     shardId: NormalizedShardId,
@@ -129,9 +126,8 @@ class SnapshotSyncManager(
 
   override def persistenceId: String =
     ActorIds.persistenceId(
-      srcTypeName.underlying,
+      typeName.underlying,
       srcMemberIndex.role,
-      dstTypeName.underlying,
       dstMemberIndex.role,
       shardId.underlying,
     )
@@ -141,7 +137,7 @@ class SnapshotSyncManager(
       .readJournalFor[CurrentEventsByTagQuery](settings.queryPluginId)
 
   private[this] val sourceShardSnapshotStore =
-    context.actorOf(ShardSnapshotStore.props(srcTypeName.underlying, settings, srcMemberIndex))
+    context.actorOf(ShardSnapshotStore.props(typeName.underlying, settings, srcMemberIndex))
 
   override def receiveRecover: Receive = {
 
@@ -178,8 +174,8 @@ class SnapshotSyncManager(
       context.become(synchronizing(replyTo, dstLatestSnapshotLastLogTerm, dstLatestSnapshotLastLogIndex))
       log.info(
         "Snapshot synchronization started: " +
-        s"(typeName: $srcTypeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
-        s" -> (typeName: $dstTypeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+        s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
+        s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
       )
 
     case _: akka.persistence.SaveSnapshotSuccess =>
@@ -205,8 +201,8 @@ class SnapshotSyncManager(
         replyTo ! SyncSnapshotCompleted(syncStatus.snapshotLastLogTerm, syncStatus.snapshotLastLogIndex, srcMemberIndex)
         log.info(
           "Snapshot synchronization completed: " +
-          s"(typeName: $srcTypeName, memberIndex: $srcMemberIndex)" +
-          s" -> (typeName: $dstTypeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+          s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
+          s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
         )
         context.become(ready)
       }
@@ -216,8 +212,8 @@ class SnapshotSyncManager(
       replyTo ! SyncSnapshotCompleted(dstLatestSnapshotLastLogTerm, dstLatestSnapshotLastLogIndex, srcMemberIndex)
       log.warning(
         "Snapshot synchronization aborted: " +
-        s"(typeName: $srcTypeName, memberIndex: $srcMemberIndex)" +
-        s" -> (typeName: $dstTypeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)" +
+        s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
+        s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)" +
         s" cause: $e",
       )
       context.stop(self)
@@ -272,7 +268,7 @@ class SnapshotSyncManager(
                         if srcLatestSnapshotLastLogIndex < response.snapshot.metadata.logEntryIndex =>
                       Future.failed(
                         SnapshotUpdateConflictException(
-                          srcTypeName,
+                          typeName,
                           srcMemberIndex,
                           entityId,
                           expectLogIndex = srcLatestSnapshotLastLogIndex,
@@ -282,7 +278,7 @@ class SnapshotSyncManager(
                     case response: SnapshotProtocol.SnapshotFound =>
                       Future.successful(response)
                     case response: SnapshotProtocol.SnapshotNotFound =>
-                      Future.failed(SnapshotNotFoundException(srcTypeName, srcMemberIndex, response.entityId))
+                      Future.failed(SnapshotNotFoundException(typeName, srcMemberIndex, response.entityId))
                   }
               }
               saveSnapshotResult <- {
@@ -293,7 +289,7 @@ class SnapshotSyncManager(
                     case response: SnapshotProtocol.SaveSnapshotSuccess =>
                       Future.successful(response)
                     case response: SnapshotProtocol.SaveSnapshotFailure =>
-                      Future.failed(SaveSnapshotFailureException(dstTypeName, dstMemberIndex, response.metadata))
+                      Future.failed(SaveSnapshotFailureException(typeName, dstMemberIndex, response.metadata))
                   }
               }
             } yield saveSnapshotResult

@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.ActorPath
-import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
+import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
@@ -280,7 +280,6 @@ trait Leader { this: RaftActor =>
               InstallSnapshot(
                 shardId,
                 currentData.currentTerm,
-                TypeName(typeName),
                 selfMemberIndex,
                 srcLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
                 srcLatestSnapshotLastLogLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
