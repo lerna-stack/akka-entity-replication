@@ -30,9 +30,13 @@ jobs:
     - name: Check code format
       run: sbt scalafmtCheckAll
 
+    # Detect compilation errors early
+    - name: Compile
+      run: sbt clean compile test:compile multi-jvm:compile
+
     - name: Run tests
       continue-on-error: true # results are reported by action-junit-report
-      run: sbt clean coverage test
+      run: sbt coverage test
 
     - name: Run integration tests
       continue-on-error: true # results are reported by action-junit-report
