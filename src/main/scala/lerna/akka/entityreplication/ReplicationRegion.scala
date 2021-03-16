@@ -264,11 +264,12 @@ class ReplicationRegion(
   // protected[this]: for test purpose
   protected[this] def createRaftActorProps(): Props = {
     RaftActor.props(
-      typeName,
+      TypeName.from(typeName),
       extractNormalizedEntityId,
       entityProps,
       region = self,
-      shardSnapshotStoreProps = ShardSnapshotStore.props(typeName, settings.raftSettings, selfMemberIndex),
+      shardSnapshotStoreProps =
+        ShardSnapshotStore.props(TypeName.from(typeName), settings.raftSettings, selfMemberIndex),
       selfMemberIndex,
       otherMemberIndexes,
       settings = RaftSettings(context.system.settings.config),

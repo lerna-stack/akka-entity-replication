@@ -4,7 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import akka.actor.{ ActorRef, ActorSystem, PoisonPill }
 import akka.testkit.TestKit
-import lerna.akka.entityreplication.model.NormalizedEntityId
+import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
@@ -65,7 +65,7 @@ class ShardSnapshotStoreSuccessSpec extends TestKit(ActorSystem()) with ActorSpe
     planAutoKill {
       childActorOf(
         ShardSnapshotStore.props(
-          "test",
+          TypeName.from("test"),
           RaftSettings(system.settings.config),
           MemberIndex("test-role"),
         ),

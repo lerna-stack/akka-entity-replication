@@ -20,7 +20,7 @@ import lerna.akka.entityreplication.{ ClusterReplicationSerializable, Replicatio
 object RaftActor {
 
   def props(
-      typeName: String,
+      typeName: TypeName,
       extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
       replicationActorProps: Props,
       region: ActorRef,
@@ -95,7 +95,7 @@ object RaftActor {
 }
 
 class RaftActor(
-    typeName: String,
+    typeName: TypeName,
     val extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
     replicationActorProps: Props,
     _region: ActorRef,
@@ -158,7 +158,7 @@ class RaftActor(
     }
   }
 
-  override val persistenceId: String = s"raft-$typeName-${shardId.underlying}-${selfMemberIndex.role}"
+  override val persistenceId: String = s"raft-${typeName.underlying}-${shardId.underlying}-${selfMemberIndex.role}"
 
   override def journalPluginId: String = settings.journalPluginId
 
@@ -168,7 +168,7 @@ class RaftActor(
 
   override def snapshotPluginConfig: Config = ConfigFactory.empty()
 
-  private[this] def replicationId = s"$typeName-${shardId.underlying}"
+  private[this] def replicationId = s"${typeName.underlying}-${shardId.underlying}"
 
   val numberOfMembers: Int = settings.replicationFactor
 
@@ -438,14 +438,14 @@ class RaftActor(
   protected def startSyncSnapshot(installSnapshot: InstallSnapshot): Unit = {
     val snapshotSyncManagerName = ActorIds.actorName(
       snapshotSyncManagerNamePrefix,
-      typeName,
+      typeName.underlying,
       installSnapshot.srcMemberIndex.role,
     )
     val snapshotSyncManager =
       context.child(snapshotSyncManagerName).getOrElse {
         context.actorOf(
           SnapshotSyncManager.props(
-            typeName = TypeName(typeName),
+            typeName = typeName,
             srcMemberIndex = installSnapshot.srcMemberIndex,
             dstMemberIndex = selfMemberIndex,
             dstShardSnapshotStore = shardSnapshotStore,

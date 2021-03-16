@@ -4,15 +4,15 @@ import akka.actor.{ Actor, ActorRef, Props }
 import akka.cluster.ClusterEvent.{ InitialStateAsEvents, MemberUp }
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import com.typesafe.config.{ Config, ConfigFactory }
-import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId }
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftProtocol.{ ReplicationSucceeded, _ }
 import lerna.akka.entityreplication.raft.RaftTestProbe._
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion, STMultiNodeSpec }
 import org.scalatest.Inside.inside
-
 import java.util.concurrent.atomic.AtomicInteger
+
 import scala.concurrent.duration._
 
 object RaftActorSpecConfig extends MultiNodeConfig {
@@ -604,7 +604,7 @@ class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeS
           override def createRaftActorProps(): Props = {
             Props(
               new RaftActor(
-                typeName = "test",
+                typeName = TypeName.from("test"),
                 extractNormalizedEntityId,
                 replicationActorProps,
                 self,

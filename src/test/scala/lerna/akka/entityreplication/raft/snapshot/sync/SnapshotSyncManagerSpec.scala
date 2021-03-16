@@ -76,14 +76,14 @@ class SnapshotSyncManagerSpec
   private[this] val srcMemberIndex = MemberIndex("test-member-index-1")
   private[this] val srcSnapshotStore =
     system.actorOf(
-      ShardSnapshotStore.props(typeName.underlying, settings.raftSettings, srcMemberIndex),
+      ShardSnapshotStore.props(typeName, settings.raftSettings, srcMemberIndex),
       "srcSnapshotStore",
     )
 
   private[this] val dstMemberIndex = MemberIndex("test-member-index-2")
   private[this] val dstSnapshotStore =
     system.actorOf(
-      ShardSnapshotStore.props(typeName.underlying, settings.raftSettings, dstMemberIndex),
+      ShardSnapshotStore.props(typeName, settings.raftSettings, dstMemberIndex),
       "dstSnapshotStore",
     )
 

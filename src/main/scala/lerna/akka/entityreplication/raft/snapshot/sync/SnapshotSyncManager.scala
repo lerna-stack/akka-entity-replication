@@ -137,7 +137,7 @@ class SnapshotSyncManager(
       .readJournalFor[CurrentEventsByTagQuery](settings.queryPluginId)
 
   private[this] val sourceShardSnapshotStore =
-    context.actorOf(ShardSnapshotStore.props(typeName.underlying, settings, srcMemberIndex))
+    context.actorOf(ShardSnapshotStore.props(typeName, settings, srcMemberIndex))
 
   override def receiveRecover: Receive = {
 

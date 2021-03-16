@@ -6,6 +6,6 @@ object TypeName {
   def from(typeName: String): TypeName = new TypeName(URLEncoder.encode(typeName, "utf-8"))
 }
 
-final case class TypeName private (underlying: String) extends AnyVal {
+final class TypeName private (val underlying: String) extends AnyVal {
   override def toString: String = underlying
 }
