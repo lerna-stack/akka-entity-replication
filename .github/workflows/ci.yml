@@ -14,7 +14,7 @@ jobs:
 
     runs-on: ubuntu-latest
 
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
 
@@ -31,10 +31,19 @@ jobs:
       run: sbt scalafmtCheckAll
 
     - name: Run tests
+      continue-on-error: true # results are reported by action-junit-report
       run: sbt clean coverage test
 
     - name: Run integration tests
+      continue-on-error: true # results are reported by action-junit-report
       run: sh ./scripts/run-multijvm-test.sh 5
+
+    - name: Publish test report
+      uses: mikepenz/action-junit-report@v2
+      with:
+        check_name: ScalaTest Report
+        report_paths: 'target/**test-reports/TEST-*.xml'
+        github_token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Check the test coverage is above the minimum criteria
       run: sbt coverageAggregate
