@@ -1,8 +1,7 @@
 package lerna.akka.entityreplication.raft
 
 import java.util.concurrent.TimeUnit.NANOSECONDS
-
-import com.typesafe.config.Config
+import com.typesafe.config.{ Config, ConfigFactory }
 
 import scala.jdk.CollectionConverters._
 import scala.jdk.DurationConverters._
@@ -89,7 +88,11 @@ class RaftSettings(root: Config) {
   val journalPluginId: String = config.getString("persistence.journal.plugin")
 
   val journalPluginAdditionalConfig: Config =
-    config.withValue(journalPluginId, config.getObject("persistence.journal-plugin-additional"))
+    ConfigFactory.parseMap {
+      Map(
+        journalPluginId -> config.getObject("persistence.journal-plugin-additional"),
+      ).asJava
+    }
 
   val snapshotStorePluginId: String = config.getString("persistence.snapshot-store.plugin")
 
