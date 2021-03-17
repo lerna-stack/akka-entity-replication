@@ -72,20 +72,12 @@ class SnapshotSyncManagerSpec
 
   private[this] val shardId = NormalizedShardId("test-shard")
 
-  private[this] val typeName       = TypeName.from("test-type-1")
-  private[this] val srcMemberIndex = MemberIndex("test-member-index-1")
-  private[this] val srcSnapshotStore =
-    system.actorOf(
-      ShardSnapshotStore.props(typeName, settings.raftSettings, srcMemberIndex),
-      "srcSnapshotStore",
-    )
+  private[this] val typeName                   = TypeName.from("test-type-1")
+  private[this] val srcMemberIndex             = MemberIndex("test-member-index-1")
+  private[this] var srcSnapshotStore: ActorRef = null
 
-  private[this] val dstMemberIndex = MemberIndex("test-member-index-2")
-  private[this] val dstSnapshotStore =
-    system.actorOf(
-      ShardSnapshotStore.props(typeName, settings.raftSettings, dstMemberIndex),
-      "dstSnapshotStore",
-    )
+  private[this] val dstMemberIndex             = MemberIndex("test-member-index-2")
+  private[this] var dstSnapshotStore: ActorRef = null
 
   private[this] val eventStore = system.actorOf(EventStore.props(settings), "eventStore")
 
@@ -113,6 +105,27 @@ class SnapshotSyncManagerSpec
     receiveWhile(messages = 2) {
       case _: Status.Success => Done
     }
+    // reset SnapshotStore
+    if (srcSnapshotStore != null) {
+      system.stop(srcSnapshotStore)
+      expectTerminated(srcSnapshotStore)
+    }
+    srcSnapshotStore = watch(
+      system.actorOf(
+        ShardSnapshotStore.props(typeName, settings.raftSettings, srcMemberIndex),
+        "srcSnapshotStore",
+      ),
+    )
+    if (dstSnapshotStore != null) {
+      system.stop(dstSnapshotStore)
+      expectTerminated(dstSnapshotStore)
+    }
+    dstSnapshotStore = watch(
+      system.actorOf(
+        ShardSnapshotStore.props(typeName, settings.raftSettings, dstMemberIndex),
+        "dstSnapshotStore",
+      ),
+    )
   }
 
   "SnapshotSyncManager" should {
