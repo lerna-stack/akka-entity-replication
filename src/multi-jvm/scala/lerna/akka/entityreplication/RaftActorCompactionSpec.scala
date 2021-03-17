@@ -59,8 +59,8 @@ object RaftActorCompactionSpec {
       def id: String
     }
 
-    final case class Cmd(id: String)      extends Command
-    final case class GetState(id: String) extends Command
+    final case class Increment(id: String, amount: Int) extends Command
+    final case class GetState(id: String)               extends Command
 
     val extractEntityId: ReplicationRegion.ExtractEntityId = {
       case c: Command => (c.id, c)
@@ -70,10 +70,10 @@ object RaftActorCompactionSpec {
       case c: Command => (Math.abs(c.id.hashCode) % 256).toString
     }
 
-    final case object ReceivedEvent extends STMultiNodeSerializable
+    final case class Incremented(amount: Int) extends STMultiNodeSerializable
 
     final case class State(count: Int) extends STMultiNodeSerializable {
-      def increment: State = copy(count = count + 1)
+      def increment(amount: Int): State = copy(count = count + amount)
     }
   }
 
@@ -87,21 +87,21 @@ object RaftActorCompactionSpec {
 
     override def receiveReplica: Receive = {
       case SnapshotOffer(snapshot: State) => state = snapshot
-      case ReceivedEvent                  => updateState()
+      case event: Incremented             => updateState(event)
     }
 
     override def receiveCommand: Receive = {
-      case _: Cmd =>
-        replicate(ReceivedEvent) { _ =>
-          updateState()
+      case increment: Increment =>
+        replicate(Incremented(increment.amount)) { event =>
+          updateState(event)
           sender() ! state
         }
       case _: GetState =>
         sender() ! state
     }
 
-    private[this] def updateState(): Unit = {
-      state = state.increment
+    private[this] def updateState(event: Incremented): Unit = {
+      state = state.increment(event.amount)
       println(s"state updated: $state")
     }
   }
@@ -129,8 +129,12 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
       }
 
       val entityId = "test"
-      def replicationActor =
-        system.actorSelection(s"/system/sharding/raft-shard-$typeName-*/*/*/$entityId").resolveOne().await
+      def replicationActor(role: RoleName) = {
+        system
+          .actorSelection(
+            s"${node(role).address}/system/sharding/raft-shard-$typeName-*/*/*/$entityId",
+          ).resolveOne().await
+      }
 
       runOn(node1) {
         // checks normality
@@ -139,14 +143,14 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
           expectMsgType[DummyReplicationActor.State](max = 5.seconds)
         }
         // updates state
-        clusterReplication ! DummyReplicationActor.Cmd(entityId)
+        clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 1)
         expectMsg(DummyReplicationActor.State(1))
       }
       enterBarrier("a command sent")
 
       runOn(node1, node2, node3) {
         awaitAssert {
-          replicationActor ! DummyReplicationActor.GetState(entityId)
+          replicationActor(myself) ! DummyReplicationActor.GetState(entityId)
           expectMsg(DummyReplicationActor.State(1))
         }
       }
@@ -161,9 +165,9 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
           expectMsgType[DummyReplicationActor.State](max = 5.seconds)
         }
         // updates state
-        clusterReplication ! DummyReplicationActor.Cmd(entityId)
-        clusterReplication ! DummyReplicationActor.Cmd(entityId)
-        clusterReplication ! DummyReplicationActor.Cmd(entityId)
+        clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 1)
+        clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 1)
+        clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 1)
         receiveN(3)
       }
       enterBarrier("additional commands sent")
@@ -171,14 +175,14 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
       runOn(node1, node2) {
         // ReplicationActor which has not been isolated applied all events
         awaitAssert {
-          replicationActor ! DummyReplicationActor.GetState(entityId)
+          replicationActor(myself) ! DummyReplicationActor.GetState(entityId)
           expectMsg(DummyReplicationActor.State(4))
         }
       }
       runOn(node3) {
         // ReplicationActor which has been isolated did not apply any events
         awaitAssert {
-          replicationActor ! DummyReplicationActor.GetState(entityId)
+          replicationActor(myself) ! DummyReplicationActor.GetState(entityId)
           expectMsg(DummyReplicationActor.State(1))
         }
       }
@@ -187,17 +191,17 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
       releaseIsolation(node3)
 
       runOn(node1) {
-        // ensures that entities exist on all nodes
-        clusterReplication ! DummyReplicationActor.Cmd(entityId)
-        expectMsg(DummyReplicationActor.State(5))
-      }
-      enterBarrier("a command sent")
-
-      runOn(node1, node2, node3) {
-        // All ReplicationActor states will eventually be the same as any other after the isolation is resolved
         awaitAssert {
-          replicationActor ! DummyReplicationActor.GetState(entityId)
-          expectMsg(DummyReplicationActor.State(5))
+          // attempt to create entities on all nodes
+          clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 0)
+          expectMsg(max = 3.seconds, DummyReplicationActor.State(4))
+
+          import org.scalatest.Inspectors._
+          // All ReplicationActor states will eventually be the same as any other after the isolation is resolved
+          forAll(Set(node1, node2, node3)) { role =>
+            replicationActor(role) ! DummyReplicationActor.GetState(entityId)
+            expectMsg(max = 3.seconds, DummyReplicationActor.State(4))
+          }
         }
       }
     }
