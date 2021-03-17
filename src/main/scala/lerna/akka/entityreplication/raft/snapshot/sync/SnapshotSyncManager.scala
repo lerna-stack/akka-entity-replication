@@ -127,6 +127,7 @@ class SnapshotSyncManager(
 
   override def persistenceId: String =
     ActorIds.persistenceId(
+      "SnapshotSyncManager",
       typeName.underlying,
       srcMemberIndex.role,
       dstMemberIndex.role,
