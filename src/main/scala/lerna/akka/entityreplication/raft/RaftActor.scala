@@ -421,19 +421,22 @@ class RaftActor(
         }
     }
 
-  protected def receiveSyncSnapshotResponse(response: SnapshotSyncManager.SyncSnapshotCompleted): Unit = {
-    applyDomainEvent(SnapshotSyncCompleted(response.snapshotLastLogTerm, response.snapshotLastLogIndex)) { _ =>
-      region ! ReplicationRegion.DeliverTo(
-        response.srcMemberIndex,
-        InstallSnapshotSucceeded(
-          shardId,
-          currentData.currentTerm,
-          currentData.replicatedLog.lastLogIndex,
-          selfMemberIndex,
-        ),
-      )
+  protected def receiveSyncSnapshotResponse(response: SnapshotSyncManager.Response): Unit =
+    response match {
+      case response: SnapshotSyncManager.SyncSnapshotSucceeded =>
+        applyDomainEvent(SnapshotSyncCompleted(response.snapshotLastLogTerm, response.snapshotLastLogIndex)) { _ =>
+          region ! ReplicationRegion.DeliverTo(
+            response.srcMemberIndex,
+            InstallSnapshotSucceeded(
+              shardId,
+              currentData.currentTerm,
+              currentData.replicatedLog.lastLogIndex,
+              selfMemberIndex,
+            ),
+          )
+        }
+      case _: SnapshotSyncManager.SyncSnapshotFailed => // ignore
     }
-  }
 
   protected def startSyncSnapshot(installSnapshot: InstallSnapshot): Unit = {
     val snapshotSyncManagerName = ActorIds.actorName(

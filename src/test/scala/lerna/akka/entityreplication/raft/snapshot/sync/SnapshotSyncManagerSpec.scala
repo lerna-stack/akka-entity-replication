@@ -149,7 +149,7 @@ class SnapshotSyncManagerSpec
           dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
           replyTo = testActor,
         )
-        expectMsg(SnapshotSyncManager.SyncSnapshotCompleted(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex))
+        expectMsg(SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex))
         fetchSnapshots(entityIds, dstSnapshotStore) should be(srcSnapshots)
       }
     }
@@ -191,7 +191,7 @@ class SnapshotSyncManagerSpec
           dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
           replyTo = testActor,
         )
-        expectMsg(SnapshotSyncManager.SyncSnapshotCompleted(srcSnapshotTerm, srcSnapshotLogIndex2, srcMemberIndex))
+        expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
         forAtLeast(min = 1, fetchSnapshots(entityIds, dstSnapshotStore)) { snapshot =>
           snapshot.state.underlying should be("state-1-1")
         }
@@ -230,7 +230,7 @@ class SnapshotSyncManagerSpec
         dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
         replyTo = testActor,
       )
-      expectMsgType[SnapshotSyncManager.SyncSnapshotCompleted]
+      expectMsgType[SnapshotSyncManager.SyncSnapshotSucceeded]
       expectTerminated(snapshotSyncManager)
     }
 
@@ -268,8 +268,7 @@ class SnapshotSyncManagerSpec
         dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
         replyTo = testActor,
       )
-      // returns the same LogIndex and Term as dst ones in the command
-      expectMsg(SnapshotSyncManager.SyncSnapshotCompleted(dstSnapshotTerm, dstSnapshotLogIndex, srcMemberIndex))
+      expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
       // SnapshotStore is in an inconsistent state which is updated partially
     }
 
@@ -304,8 +303,7 @@ class SnapshotSyncManagerSpec
         dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
         replyTo = testActor,
       )
-      // returns the same LogIndex and Term as dst ones in the command
-      expectMsg(SnapshotSyncManager.SyncSnapshotCompleted(dstSnapshotTerm, dstSnapshotLogIndex, srcMemberIndex))
+      expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
       // SnapshotStore is in an inconsistent state which is updated partially
     }
 
@@ -346,8 +344,7 @@ class SnapshotSyncManagerSpec
         case command: SnapshotProtocol.SaveSnapshot =>
           brokenSnapshotStore.send(command.replyTo, SnapshotProtocol.SaveSnapshotFailure(command.snapshot.metadata))
       }
-      // returns the same LogIndex and Term as dst ones in the command
-      expectMsg(SnapshotSyncManager.SyncSnapshotCompleted(dstSnapshotTerm, dstSnapshotLogIndex, srcMemberIndex))
+      expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
       // SnapshotStore is in an inconsistent state which is updated partially
     }
 
@@ -376,7 +373,7 @@ class SnapshotSyncManagerSpec
         dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
         replyTo = testActor,
       )
-      expectMsgType[SnapshotSyncManager.SyncSnapshotCompleted]
+      expectMsgType[SnapshotSyncManager.SyncSnapshotFailed]
       expectTerminated(snapshotSyncManager)
     }
   }

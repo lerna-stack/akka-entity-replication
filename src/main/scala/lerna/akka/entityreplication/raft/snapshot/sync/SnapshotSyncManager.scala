@@ -55,11 +55,13 @@ object SnapshotSyncManager {
 
   sealed trait Response
 
-  final case class SyncSnapshotCompleted(
+  final case class SyncSnapshotSucceeded(
       snapshotLastLogTerm: Term,
       snapshotLastLogIndex: LogEntryIndex,
       srcMemberIndex: MemberIndex,
   ) extends Response
+
+  final case class SyncSnapshotFailed() extends Response
 
   sealed trait Event
 
@@ -75,6 +77,7 @@ object SnapshotSyncManager {
 
   final case class SyncCompleteAll(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex, offset: Offset)
       extends SyncStatus
+  final case class SyncIncomplete() extends SyncStatus
 
   sealed trait SyncFailures
 
@@ -195,22 +198,36 @@ class SnapshotSyncManager(
 
     case _: SyncSnapshot => // ignore
 
-    case syncStatus: SyncCompleteAll =>
-      this.killSwitch = None
-      persist(SyncCompleted(syncStatus.offset)) { event =>
-        updateState(event)
-        saveSnapshot(this.state)
-        replyTo ! SyncSnapshotCompleted(syncStatus.snapshotLastLogTerm, syncStatus.snapshotLastLogIndex, srcMemberIndex)
-        log.info(
-          "Snapshot synchronization completed: " +
-          s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
-          s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
-        )
+    case syncStatus: SyncStatus =>
+      syncStatus match {
+        case completeAll: SyncCompleteAll =>
+          this.killSwitch = None
+          persist(SyncCompleted(completeAll.offset)) { event =>
+            updateState(event)
+            saveSnapshot(this.state)
+            replyTo ! SyncSnapshotSucceeded(
+              completeAll.snapshotLastLogTerm,
+              completeAll.snapshotLastLogIndex,
+              srcMemberIndex,
+            )
+            log.info(
+              "Snapshot synchronization completed: " +
+              s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
+              s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+            )
+          }
+        case _: SyncIncomplete =>
+          replyTo ! SyncSnapshotFailed()
+          log.info(
+            "Snapshot synchronization is incomplete: " +
+            s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
+            s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+          )
       }
 
     case Status.Failure(e) =>
       this.killSwitch = None
-      replyTo ! SyncSnapshotCompleted(dstLatestSnapshotLastLogTerm, dstLatestSnapshotLastLogIndex, srcMemberIndex)
+      replyTo ! SyncSnapshotFailed()
       log.warning(
         "Snapshot synchronization aborted: " +
         s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
@@ -243,7 +260,7 @@ class SnapshotSyncManager(
       dstLatestSnapshotLastLogTerm: Term,
       dstLatestSnapshotLastLogIndex: LogEntryIndex,
       offset: Offset,
-  ): (UniqueKillSwitch, Future[SyncCompleteAll]) = {
+  ): (UniqueKillSwitch, Future[SyncStatus]) = {
 
     import context.system
     import context.dispatcher
@@ -306,7 +323,7 @@ class SnapshotSyncManager(
               case Some(e) =>
                 SyncCompleteAll(e.event.snapshotLastLogTerm, e.event.snapshotLastLogIndex, e.offset)
               case None =>
-                SyncCompleteAll(dstLatestSnapshotLastLogTerm, dstLatestSnapshotLastLogIndex, offset)
+                SyncIncomplete()
             },
           )
       }
