@@ -55,7 +55,7 @@ object RaftActorCompactionSpec {
 
     def props(): Props = Props(new DummyReplicationActor())
 
-    sealed trait Command {
+    sealed trait Command extends STMultiNodeSerializable {
       def id: String
     }
 
@@ -70,9 +70,9 @@ object RaftActorCompactionSpec {
       case c: Command => (Math.abs(c.id.hashCode) % 256).toString
     }
 
-    final case object ReceivedEvent
+    final case object ReceivedEvent extends STMultiNodeSerializable
 
-    final case class State(count: Int) {
+    final case class State(count: Int) extends STMultiNodeSerializable {
       def increment: State = copy(count = count + 1)
     }
   }
