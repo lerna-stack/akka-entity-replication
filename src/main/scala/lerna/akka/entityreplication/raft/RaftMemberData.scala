@@ -38,12 +38,12 @@ trait PersistentStateData[T <: PersistentStateData[T]] {
 trait VolatileStateData[T <: VolatileStateData[T]] {
   def commitIndex: LogEntryIndex
   def lastApplied: LogEntryIndex
-  def snapshottingStatus: SnapshottingStatus
+  def snapshottingProgress: SnapshottingProgress
 
   protected def updateVolatileState(
       commitIndex: LogEntryIndex = commitIndex,
       lastApplied: LogEntryIndex = lastApplied,
-      snapshottingStatus: SnapshottingStatus = snapshottingStatus,
+      snapshottingProgress: SnapshottingProgress = snapshottingProgress,
   ): T
 }
 
@@ -231,7 +231,7 @@ object RaftMemberData {
       nextIndex: Option[NextIndex] = None,
       matchIndex: MatchIndex = MatchIndex(),
       clients: Map[LogEntryIndex, ClientContext] = Map(),
-      snapshottingStatus: SnapshottingStatus = SnapshottingStatus.empty,
+      snapshottingProgress: SnapshottingProgress = SnapshottingProgress.empty,
       lastSnapshotStatus: SnapshotStatus = SnapshotStatus.empty,
   ) =
     RaftMemberDataImpl(
@@ -245,7 +245,7 @@ object RaftMemberData {
       nextIndex = nextIndex,
       matchIndex = matchIndex,
       clients = clients,
-      snapshottingStatus = snapshottingStatus,
+      snapshottingProgress = snapshottingProgress,
       lastSnapshotStatus = lastSnapshotStatus,
     )
 }
@@ -309,25 +309,27 @@ trait RaftMemberData
       logEntryIndex: LogEntryIndex,
       entityIds: Set[NormalizedEntityId],
   ): RaftMemberData = {
-    updateVolatileState(snapshottingStatus =
-      SnapshottingStatus(term, logEntryIndex, inProgressEntities = entityIds, completedEntities = Set()),
+    updateVolatileState(snapshottingProgress =
+      SnapshottingProgress(term, logEntryIndex, inProgressEntities = entityIds, completedEntities = Set()),
     )
   }
 
   def recordSavedSnapshot(snapshotMetadata: EntitySnapshotMetadata, preserveLogSize: Int)(
-      onComplete: SnapshottingStatus => Unit,
+      onComplete: SnapshottingProgress => Unit,
   ): RaftMemberData = {
-    if (snapshottingStatus.isInProgress && snapshottingStatus.snapshotLastLogIndex == snapshotMetadata.logEntryIndex) {
-      val newStatus =
-        snapshottingStatus.recordSnapshottingComplete(snapshotMetadata.logEntryIndex, snapshotMetadata.entityId)
-      if (newStatus.isCompleted) {
-        onComplete(newStatus)
-        updateVolatileState(snapshottingStatus = newStatus)
+    if (
+      snapshottingProgress.isInProgress && snapshottingProgress.snapshotLastLogIndex == snapshotMetadata.logEntryIndex
+    ) {
+      val newProgress =
+        snapshottingProgress.recordSnapshottingComplete(snapshotMetadata.logEntryIndex, snapshotMetadata.entityId)
+      if (newProgress.isCompleted) {
+        onComplete(newProgress)
+        updateVolatileState(snapshottingProgress = newProgress)
           .updatePersistentState(replicatedLog =
-            replicatedLog.deleteOldEntries(snapshottingStatus.snapshotLastLogIndex, preserveLogSize),
+            replicatedLog.deleteOldEntries(snapshottingProgress.snapshotLastLogIndex, preserveLogSize),
           )
       } else {
-        updateVolatileState(snapshottingStatus = newStatus)
+        updateVolatileState(snapshottingProgress = newProgress)
       }
     } else {
       this
@@ -358,7 +360,7 @@ final case class RaftMemberDataImpl(
     nextIndex: Option[NextIndex],
     matchIndex: MatchIndex,
     clients: Map[LogEntryIndex, ClientContext],
-    snapshottingStatus: SnapshottingStatus,
+    snapshottingProgress: SnapshottingProgress,
     lastSnapshotStatus: SnapshotStatus,
 ) extends RaftMemberData {
 
@@ -378,13 +380,13 @@ final case class RaftMemberDataImpl(
   override protected def updateVolatileState(
       commitIndex: LogEntryIndex,
       lastApplied: LogEntryIndex,
-      snapshottingStatus: SnapshottingStatus,
+      snapshottingProgress: SnapshottingProgress,
   ): RaftMemberData =
     copy(
       commitIndex = commitIndex,
       votedFor = votedFor,
       lastApplied = lastApplied,
-      snapshottingStatus = snapshottingStatus,
+      snapshottingProgress = snapshottingProgress,
     )
 
   override protected def updateFollowerVolatileState(leaderMember: Option[MemberIndex]): RaftMemberData =

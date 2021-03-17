@@ -2,9 +2,9 @@ package lerna.akka.entityreplication.raft.model
 
 import lerna.akka.entityreplication.model.NormalizedEntityId
 
-object SnapshottingStatus {
-  def empty: SnapshottingStatus =
-    SnapshottingStatus(
+object SnapshottingProgress {
+  def empty: SnapshottingProgress =
+    SnapshottingProgress(
       snapshotLastLogTerm = Term.initial(),
       snapshotLastLogIndex = LogEntryIndex.initial(),
       inProgressEntities = Set(),
@@ -12,7 +12,7 @@ object SnapshottingStatus {
     )
 }
 
-case class SnapshottingStatus(
+case class SnapshottingProgress(
     snapshotLastLogTerm: Term,
     snapshotLastLogIndex: LogEntryIndex,
     inProgressEntities: Set[NormalizedEntityId],
@@ -26,7 +26,7 @@ case class SnapshottingStatus(
   def recordSnapshottingComplete(
       snapshotLastLogIndex: LogEntryIndex,
       entityId: NormalizedEntityId,
-  ): SnapshottingStatus = {
+  ): SnapshottingProgress = {
     require(
       snapshotLastLogIndex == this.snapshotLastLogIndex,
       s"snapshotLastLogIndexes should be same (current: ${this.snapshotLastLogIndex}, got: ${snapshotLastLogIndex})",
