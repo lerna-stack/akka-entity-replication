@@ -193,7 +193,7 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
       }
       enterBarrier("a command sent")
 
-      runOn(node1, node2) {
+      runOn(node1, node2, node3) {
         // All ReplicationActor states will eventually be the same as any other after the isolation is resolved
         awaitAssert {
           replicationActor ! DummyReplicationActor.GetState(entityId)
