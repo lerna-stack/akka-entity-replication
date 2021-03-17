@@ -72,6 +72,7 @@ object RaftActor {
       snapshotLastLogIndex: LogEntryIndex,
       entityIds: Set[NormalizedEntityId],
   ) extends PersistEvent
+      with ClusterReplicationSerializable
   final case class SnapshotSyncCompleted(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex)
       extends PersistEvent
       with ClusterReplicationSerializable
@@ -240,23 +241,22 @@ class RaftActor(
       case SnapshottingStarted(term, logEntryIndex, entityIds) =>
         currentData.startSnapshotting(term, logEntryIndex, entityIds)
       case EntitySnapshotSaved(metadata) =>
-        currentData.recordSavedSnapshot(metadata, settings.compactionPreserveLogSize)(onComplete = () => {
-          val status = currentData.snapshottingStatus
+        currentData.recordSavedSnapshot(metadata, settings.compactionPreserveLogSize)(onComplete = { progress =>
           applyDomainEvent(
             CompactionCompleted(
               selfMemberIndex,
               shardId,
-              status.snapshotLastLogTerm,
-              status.snapshotLastLogIndex,
-              status.completedEntities,
+              progress.snapshotLastLogTerm,
+              progress.snapshotLastLogIndex,
+              progress.completedEntities,
             ),
           ) { _ =>
             saveSnapshot(currentData.persistentState) // Note that this persistence can fail
             log.info(
               "[{}] compaction completed (term: {}, logEntryIndex: {})",
               currentState,
-              status.snapshotLastLogTerm,
-              status.snapshotLastLogIndex,
+              progress.snapshotLastLogTerm,
+              progress.snapshotLastLogIndex,
             )
           }
         })

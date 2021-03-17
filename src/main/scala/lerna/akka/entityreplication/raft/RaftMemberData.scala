@@ -315,13 +315,13 @@ trait RaftMemberData
   }
 
   def recordSavedSnapshot(snapshotMetadata: EntitySnapshotMetadata, preserveLogSize: Int)(
-      onComplete: () => Unit,
+      onComplete: SnapshottingStatus => Unit,
   ): RaftMemberData = {
     if (snapshottingStatus.isInProgress && snapshottingStatus.snapshotLastLogIndex == snapshotMetadata.logEntryIndex) {
       val newStatus =
         snapshottingStatus.recordSnapshottingComplete(snapshotMetadata.logEntryIndex, snapshotMetadata.entityId)
       if (newStatus.isCompleted) {
-        onComplete()
+        onComplete(newStatus)
         updateVolatileState(snapshottingStatus = newStatus)
           .updatePersistentState(replicatedLog =
             replicatedLog.deleteOldEntries(snapshottingStatus.snapshotLastLogIndex, preserveLogSize),
