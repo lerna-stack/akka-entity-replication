@@ -206,7 +206,6 @@ class SnapshotSyncManager(
           s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
           s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
         )
-        context.become(ready)
       }
 
     case Status.Failure(e) =>
