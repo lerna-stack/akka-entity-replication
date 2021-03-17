@@ -9,6 +9,7 @@ import akka.persistence.query.scaladsl.CurrentEventsByTagQuery
 import akka.stream.{ KillSwitches, UniqueKillSwitch }
 import akka.stream.scaladsl.{ Keep, Sink, Source }
 import akka.util.Timeout
+import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftActor.CompactionCompleted
 import lerna.akka.entityreplication.raft.RaftSettings
@@ -62,11 +63,11 @@ object SnapshotSyncManager {
 
   sealed trait Event
 
-  final case class SyncCompleted(offset: Offset) extends Event
+  final case class SyncCompleted(offset: Offset) extends Event with ClusterReplicationSerializable
 
   sealed trait State
 
-  final case class SyncProgress(offset: Offset) extends State
+  final case class SyncProgress(offset: Offset) extends State with ClusterReplicationSerializable
 
   final case class CompactionEnvelope(event: CompactionCompleted, offset: Offset)
 
