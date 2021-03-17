@@ -182,11 +182,9 @@ trait Leader { this: RaftActor =>
       case succeeded: InstallSnapshotSucceeded if succeeded.term.isNewerThan(currentData.currentTerm) =>
         log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
 
-      case succeeded: InstallSnapshotSucceeded if succeeded.term.isOlderThan(currentData.currentTerm) =>
-      // ignore: Snapshot synchronization of Follower was too slow
-
       case succeeded: InstallSnapshotSucceeded =>
-        unhandled(succeeded)
+        assert(succeeded.term.isOlderThan(currentData.currentTerm))
+      // ignore: Snapshot synchronization of Follower was too slow
     }
 
   private[this] def handleCommand(req: Command): Unit =
