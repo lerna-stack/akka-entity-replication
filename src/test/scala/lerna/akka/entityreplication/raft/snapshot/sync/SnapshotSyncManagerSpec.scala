@@ -5,10 +5,11 @@ import akka.actor.Status
 import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
 import akka.persistence.{ PersistentActor, RuntimePluginConfig }
 import akka.persistence.inmemory.extension.{ InMemoryJournalStorage, InMemorySnapshotStorage, StorageExtension }
-import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
+import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ClusterReplicationSettings
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
+import lerna.akka.entityreplication.raft.ActorSpec
 import lerna.akka.entityreplication.raft.RaftActor.CompactionCompleted
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, Term }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -19,7 +20,7 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
 }
 import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, SnapshotProtocol }
 import org.scalatest.Inspectors._
-import org.scalatest.{ BeforeAndAfterEach, Matchers, WordSpecLike }
+import org.scalatest.BeforeAndAfterEach
 
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -60,12 +61,7 @@ object SnapshotSyncManagerSpec {
   }
 }
 
-class SnapshotSyncManagerSpec
-    extends TestKit(ActorSystem())
-    with ImplicitSender
-    with WordSpecLike
-    with Matchers
-    with BeforeAndAfterEach {
+class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with BeforeAndAfterEach {
   import SnapshotSyncManagerSpec._
 
   private[this] val settings = ClusterReplicationSettings(system)
@@ -96,7 +92,7 @@ class SnapshotSyncManagerSpec
       s"snapshotSyncManager:${snapshotSyncManagerUniqueId.getAndIncrement()}",
     )
 
-  override protected def beforeEach(): Unit = {
+  override def beforeEach(): Unit = {
     super.beforeEach()
     // clear storage
     val storage = StorageExtension(system)
@@ -106,21 +102,13 @@ class SnapshotSyncManagerSpec
       case _: Status.Success => Done
     }
     // reset SnapshotStore
-    if (srcSnapshotStore != null) {
-      system.stop(srcSnapshotStore)
-      expectTerminated(srcSnapshotStore)
-    }
-    srcSnapshotStore = watch(
+    srcSnapshotStore = planAutoKill(
       system.actorOf(
         ShardSnapshotStore.props(typeName, settings.raftSettings, srcMemberIndex),
         "srcSnapshotStore",
       ),
     )
-    if (dstSnapshotStore != null) {
-      system.stop(dstSnapshotStore)
-      expectTerminated(dstSnapshotStore)
-    }
-    dstSnapshotStore = watch(
+    dstSnapshotStore = planAutoKill(
       system.actorOf(
         ShardSnapshotStore.props(typeName, settings.raftSettings, dstMemberIndex),
         "dstSnapshotStore",
