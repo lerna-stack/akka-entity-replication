@@ -1,21 +1,26 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.{ ActorRef, Cancellable, Props, Stash }
+import akka.persistence.RuntimePluginConfig
+import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ReplicationActor.Snapshot
 import lerna.akka.entityreplication.ReplicationRegion.Msg
-import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId }
+import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, _ }
 import lerna.akka.entityreplication.raft.eventhandler.CommitLogStore
 import lerna.akka.entityreplication.raft.model._
+import lerna.akka.entityreplication.raft.protocol.RaftCommands.{ InstallSnapshot, InstallSnapshotSucceeded }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshotMetadata
+import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
+import lerna.akka.entityreplication.util.ActorIds
 import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ReplicationActor, ReplicationRegion }
 
 object RaftActor {
 
   def props(
-      typeName: String,
+      typeName: TypeName,
       extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
       replicationActorProps: Props,
       region: ActorRef,
@@ -60,6 +65,17 @@ object RaftActor {
       extends PersistEvent
       with ClusterReplicationSerializable
   final case class AppendedEvent(event: EntityEvent) extends PersistEvent with ClusterReplicationSerializable
+  final case class CompactionCompleted(
+      memberIndex: MemberIndex,
+      shardId: NormalizedShardId,
+      snapshotLastLogTerm: Term,
+      snapshotLastLogIndex: LogEntryIndex,
+      entityIds: Set[NormalizedEntityId],
+  ) extends PersistEvent
+      with ClusterReplicationSerializable
+  final case class SnapshotSyncCompleted(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex)
+      extends PersistEvent
+      with ClusterReplicationSerializable
 
   sealed trait NonPersistEvent                                                                  extends DomainEvent
   final case class BecameFollower()                                                             extends NonPersistEvent
@@ -72,7 +88,7 @@ object RaftActor {
   final case class DeniedAppendEntries(follower: MemberIndex)                                   extends NonPersistEvent
   final case class FollowedLeaderCommit(leaderMember: MemberIndex, leaderCommit: LogEntryIndex) extends NonPersistEvent
   final case class Committed(logEntryIndex: LogEntryIndex)                                      extends NonPersistEvent
-  final case class SnapshottingStarted(logEntryIndex: LogEntryIndex, entityIds: Set[NormalizedEntityId])
+  final case class SnapshottingStarted(term: Term, logEntryIndex: LogEntryIndex, entityIds: Set[NormalizedEntityId])
       extends NonPersistEvent
   final case class EntitySnapshotSaved(metadata: EntitySnapshotMetadata) extends NonPersistEvent
 
@@ -80,7 +96,7 @@ object RaftActor {
 }
 
 class RaftActor(
-    typeName: String,
+    typeName: TypeName,
     val extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
     replicationActorProps: Props,
     _region: ActorRef,
@@ -90,6 +106,7 @@ class RaftActor(
     val settings: RaftSettings,
     maybeCommitLogStore: Option[CommitLogStore],
 ) extends RaftActorBase
+    with RuntimePluginConfig
     with Stash
     with Follower
     with Candidate
@@ -101,8 +118,12 @@ class RaftActor(
 
   protected[this] def region: ActorRef = _region
 
+  private[this] val shardSnapshotStoreNamePrefix = "ShardSnapshotStore"
+
+  private[this] val snapshotSyncManagerNamePrefix = "SnapshotSyncManager"
+
   private[this] val shardSnapshotStore: ActorRef =
-    context.actorOf(shardSnapshotStoreProps)
+    context.actorOf(shardSnapshotStoreProps, ActorIds.actorName(shardSnapshotStoreNamePrefix, shardId.underlying))
 
   protected[this] def selfMemberIndex: MemberIndex = _selfMemberIndex
 
@@ -128,16 +149,27 @@ class RaftActor(
     }
 
   protected[this] def replicationActor(entityId: NormalizedEntityId): ActorRef = {
-    context.child(entityId.underlying).getOrElse(context.actorOf(replicationActorProps, entityId.underlying))
+    context.child(entityId.underlying).getOrElse {
+      log.debug(
+        "=== [{}] created an entity ({}) ===",
+        currentState,
+        entityId,
+      )
+      context.actorOf(replicationActorProps, entityId.underlying)
+    }
   }
 
-  override val persistenceId: String = s"raft-$typeName-${shardId.underlying}-${selfMemberIndex.role}"
+  override val persistenceId: String = s"raft-${typeName.underlying}-${shardId.underlying}-${selfMemberIndex.role}"
 
   override def journalPluginId: String = settings.journalPluginId
 
+  override def journalPluginConfig: Config = settings.journalPluginAdditionalConfig
+
   override def snapshotPluginId: String = settings.snapshotStorePluginId
 
-  private[this] def replicationId = s"$typeName-${shardId.underlying}"
+  override def snapshotPluginConfig: Config = ConfigFactory.empty()
+
+  private[this] def replicationId = s"${typeName.underlying}-${shardId.underlying}"
 
   val numberOfMembers: Int = settings.replicationFactor
 
@@ -206,14 +238,33 @@ class RaftActor(
                 applyToReplicationActor(logEntry)
             }
           }
-      case SnapshottingStarted(logEntryIndex, entityIds) =>
-        currentData.startSnapshotting(logEntryIndex, entityIds)
+      case SnapshottingStarted(term, logEntryIndex, entityIds) =>
+        currentData.startSnapshotting(term, logEntryIndex, entityIds)
       case EntitySnapshotSaved(metadata) =>
-        currentData.recordSavedSnapshot(metadata, settings.compactionPreserveLogSize)(onComplete = () => {
-          // 失敗する可能性があることに注意
-          saveSnapshot(currentData.persistentState)
-          log.info("[{}] compaction completed (logEntryIndex: {})", currentState, metadata.logEntryIndex)
+        currentData.recordSavedSnapshot(metadata, settings.compactionPreserveLogSize)(onComplete = { progress =>
+          applyDomainEvent(
+            CompactionCompleted(
+              selfMemberIndex,
+              shardId,
+              progress.snapshotLastLogTerm,
+              progress.snapshotLastLogIndex,
+              progress.completedEntities,
+            ),
+          ) { _ =>
+            saveSnapshot(currentData.persistentState) // Note that this persistence can fail
+            log.info(
+              "[{}] compaction completed (term: {}, logEntryIndex: {})",
+              currentState,
+              progress.snapshotLastLogTerm,
+              progress.snapshotLastLogIndex,
+            )
+          }
         })
+      case CompactionCompleted(_, _, snapshotLastTerm, snapshotLastIndex, _) =>
+        currentData.updateLastSnapshotStatus(snapshotLastTerm, snapshotLastIndex)
+      case SnapshotSyncCompleted(snapshotLastLogTerm, snapshotLastLogIndex) =>
+        stopAllEntities()
+        currentData.syncSnapshot(snapshotLastLogTerm, snapshotLastLogIndex)
       // TODO: Remove when test code is modified
       case _: NonPersistEventLike =>
         log.error("must not use NonPersistEventLike in production code")
@@ -325,9 +376,12 @@ class RaftActor(
     }
 
   def handleSnapshotTick(): Unit = {
-    if (currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold) {
-      val (logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
-      applyDomainEvent(SnapshottingStarted(logEntryIndex, entityIds)) { _ =>
+    if (
+      currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold
+      && currentData.hasLogEntriesThatCanBeCompacted
+    ) {
+      val (term, logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
+      applyDomainEvent(SnapshottingStarted(term, logEntryIndex, entityIds)) { _ =>
         log.info(
           "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
           currentState,
@@ -345,6 +399,85 @@ class RaftActor(
       val metadata = EntitySnapshotMetadata(entityId, logEntryIndex)
       replicationActor(entityId) ! ReplicationActor.TakeSnapshot(metadata, self)
     }
+  }
+
+  protected def receiveInstallSnapshot(request: InstallSnapshot): Unit =
+    request match {
+      case installSnapshot if installSnapshot.term.isOlderThan(currentData.currentTerm) =>
+      // ignore the message because this member knows another newer leader
+      case installSnapshot =>
+        if (installSnapshot.term == currentData.currentTerm) {
+          applyDomainEvent(DetectedLeaderMember(installSnapshot.srcMemberIndex)) { _ =>
+            startSyncSnapshot(installSnapshot)
+            become(Follower)
+          }
+        } else {
+          applyDomainEvent(DetectedNewTerm(installSnapshot.term)) { _ =>
+            applyDomainEvent(DetectedLeaderMember(installSnapshot.srcMemberIndex)) { _ =>
+              startSyncSnapshot(installSnapshot)
+              become(Follower)
+            }
+          }
+        }
+    }
+
+  protected def receiveSyncSnapshotResponse(response: SnapshotSyncManager.Response): Unit =
+    response match {
+      case response: SnapshotSyncManager.SyncSnapshotSucceeded =>
+        applyDomainEvent(SnapshotSyncCompleted(response.snapshotLastLogTerm, response.snapshotLastLogIndex)) { _ =>
+          region ! ReplicationRegion.DeliverTo(
+            response.srcMemberIndex,
+            InstallSnapshotSucceeded(
+              shardId,
+              currentData.currentTerm,
+              currentData.replicatedLog.lastLogIndex,
+              selfMemberIndex,
+            ),
+          )
+        }
+      case _: SnapshotSyncManager.SyncSnapshotFailed => // ignore
+    }
+
+  protected def startSyncSnapshot(installSnapshot: InstallSnapshot): Unit = {
+    val snapshotSyncManagerName = ActorIds.actorName(
+      snapshotSyncManagerNamePrefix,
+      typeName.underlying,
+      installSnapshot.srcMemberIndex.role,
+    )
+    val snapshotSyncManager =
+      context.child(snapshotSyncManagerName).getOrElse {
+        context.actorOf(
+          SnapshotSyncManager.props(
+            typeName = typeName,
+            srcMemberIndex = installSnapshot.srcMemberIndex,
+            dstMemberIndex = selfMemberIndex,
+            dstShardSnapshotStore = shardSnapshotStore,
+            shardId,
+            settings,
+          ),
+          snapshotSyncManagerName,
+        )
+      }
+    snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
+      srcLatestSnapshotLastLogTerm = installSnapshot.srcLatestSnapshotLastLogTerm,
+      srcLatestSnapshotLastLogIndex = installSnapshot.srcLatestSnapshotLastLogLogIndex,
+      dstLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
+      dstLatestSnapshotLastLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
+      replyTo = self,
+    )
+  }
+
+  private[this] def stopAllEntities(): Unit = {
+    // FIXME: Make it possible to stop only entities by using Actor hierarchy
+    val excludes: Set[String] =
+      Set(ActorIds.actorName(shardSnapshotStoreNamePrefix, ""), ActorIds.actorName(snapshotSyncManagerNamePrefix, ""))
+    context.children.filterNot(c => excludes.exists(c.path.name.startsWith)).foreach { child =>
+      context.stop(child)
+    }
+    log.debug(
+      "=== [{}] stopped all entities ===",
+      currentState,
+    )
   }
 
   override def postStop(): Unit = {

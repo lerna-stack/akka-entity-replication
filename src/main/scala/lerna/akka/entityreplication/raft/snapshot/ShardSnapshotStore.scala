@@ -7,8 +7,8 @@ import lerna.akka.entityreplication.raft.routing.MemberIndex
 
 object ShardSnapshotStore {
 
-  def props(typeName: String, settings: RaftSettings, selfMemberIndex: MemberIndex): Props =
-    Props(new ShardSnapshotStore(TypeName.from(typeName), settings, selfMemberIndex))
+  def props(typeName: TypeName, settings: RaftSettings, selfMemberIndex: MemberIndex): Props =
+    Props(new ShardSnapshotStore(typeName, settings, selfMemberIndex))
 
 }
 

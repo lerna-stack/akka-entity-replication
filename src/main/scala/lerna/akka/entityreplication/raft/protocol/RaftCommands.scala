@@ -52,4 +52,23 @@ object RaftCommands {
   case class AppendEntriesFailed(term: Term, sender: MemberIndex)
       extends AppendEntriesResponse
       with ClusterReplicationSerializable
+
+  final case class InstallSnapshot(
+      shardId: NormalizedShardId,
+      term: Term,
+      srcMemberIndex: MemberIndex,
+      srcLatestSnapshotLastLogTerm: Term,
+      srcLatestSnapshotLastLogLogIndex: LogEntryIndex,
+  ) extends RaftRequest
+      with ClusterReplicationSerializable
+
+  sealed trait InstallSnapshotResponse extends ShardRequest
+
+  final case class InstallSnapshotSucceeded(
+      shardId: NormalizedShardId,
+      term: Term,
+      dstLatestSnapshotLastLogLogIndex: LogEntryIndex,
+      sender: MemberIndex,
+  ) extends InstallSnapshotResponse
+      with ClusterReplicationSerializable
 }

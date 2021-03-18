@@ -179,6 +179,13 @@ lerna.akka.entityreplication {
         // The number of roles is the number of replicas. It is recommended to set up at least three roles.
         multi-raft-roles = ["replica-group-1", "replica-group-2", "replica-group-3"]
 
+        // Maximum number of entries which AppendEntries contains.
+        // The too large size will cause message serialization failure.
+        max-append-entries-size = 16
+  
+        // The maximum number of AppendEnteis that will be sent at once at every heartbeat-interval.
+        max-append-entries-batch-size = 10
+      
         // log compaction settings
         compaction {
 
@@ -199,15 +206,29 @@ lerna.akka.entityreplication {
           snapshot-cache-time-to-live = 10s
         }
 
+        // snapshot synchronization settings
+        snapshot-sync {
+  
+          // Number of snapshots of entities that are copied in parallel
+          snapshot-copying-parallelism = 10
+  
+          // Time to abort operations related to persistence
+          persistence-operation-timeout = 10s
+        }
+
         // data persistent settings
         persistence {
           // Absolute path to the journal plugin configuration entry.
           // The journal will be stored events which related to Raft.
           journal.plugin = ""
-    
+
           // Absolute path to the snapshot store plugin configuration entry.
           // The snapshot store will be stored state which related to Raft.
           snapshot-store.plugin = ""
+
+          // Absolute path to the query plugin configuration entry.
+          // Snapshot synchronization reads events that related to Raft.
+          query.plugin = ""
         }
     }
 }

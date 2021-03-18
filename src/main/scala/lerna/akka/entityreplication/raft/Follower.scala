@@ -4,6 +4,7 @@ import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.protocol.{ SuspendEntity, TryCreateEntity }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
+import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 import lerna.akka.entityreplication.{ ReplicationActor, ReplicationRegion }
 
 trait Follower { this: RaftActor =>
@@ -21,6 +22,9 @@ trait Follower { this: RaftActor =>
 
     case request: RequestVote                             => receiveRequestVote(request)
     case request: AppendEntries                           => receiveAppendEntries(request)
+    case request: InstallSnapshot                         => receiveInstallSnapshot(request)
+    case _: InstallSnapshotResponse                       => // ignore, because I'm not a leader
+    case response: SnapshotSyncManager.Response           => receiveSyncSnapshotResponse(response)
     case command: Command                                 => handleCommand(command)
     case _: ForwardedCommand                              => // ignore, because I'm not a leader
     case TryCreateEntity(_, entityId)                     => createEntityIfNotExists(entityId)
@@ -30,6 +34,8 @@ trait Follower { this: RaftActor =>
     case SnapshotTick                                     => handleSnapshotTick()
     case response: ReplicationActor.Snapshot              => receiveEntitySnapshotResponse(response)
     case response: SnapshotProtocol.SaveSnapshotResponse  => receiveSaveSnapshotResponse(response)
+    case _: akka.persistence.SaveSnapshotSuccess          => // ignore
+    case _: akka.persistence.SaveSnapshotFailure          => // ignore: no problem because events exist even if snapshot saving failed
   }
 
   private[this] def receiveRequestVote(request: RequestVote): Unit =

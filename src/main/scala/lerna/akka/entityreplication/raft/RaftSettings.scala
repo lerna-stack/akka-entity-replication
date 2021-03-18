@@ -1,8 +1,7 @@
 package lerna.akka.entityreplication.raft
 
 import java.util.concurrent.TimeUnit.NANOSECONDS
-
-import com.typesafe.config.Config
+import com.typesafe.config.{ Config, ConfigFactory }
 
 import scala.jdk.CollectionConverters._
 import scala.jdk.DurationConverters._
@@ -56,6 +55,8 @@ class RaftSettings(root: Config) {
 
   val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
 
+  val maxAppendEntriesBatchSize: Int = config.getInt("max-append-entries-batch-size")
+
   val compactionSnapshotCacheTimeToLive: FiniteDuration =
     config.getDuration("compaction.snapshot-cache-time-to-live").toScala
 
@@ -77,9 +78,23 @@ class RaftSettings(root: Config) {
 
   def randomizedCompactionLogSizeCheckInterval(): FiniteDuration = randomized(compactionLogSizeCheckInterval)
 
+  val snapshotSyncCopyingParallelism: Int = config.getInt("snapshot-sync.snapshot-copying-parallelism")
+
+  val snapshotSyncPersistenceOperationTimeout: FiniteDuration =
+    config.getDuration("snapshot-sync.persistence-operation-timeout").toScala
+
   val clusterShardingConfig: Config = config.getConfig("sharding")
 
   val journalPluginId: String = config.getString("persistence.journal.plugin")
 
+  val journalPluginAdditionalConfig: Config =
+    ConfigFactory.parseMap {
+      Map(
+        journalPluginId -> config.getObject("persistence.journal-plugin-additional"),
+      ).asJava
+    }
+
   val snapshotStorePluginId: String = config.getString("persistence.snapshot-store.plugin")
+
+  val queryPluginId: String = config.getString("persistence.query.plugin")
 }

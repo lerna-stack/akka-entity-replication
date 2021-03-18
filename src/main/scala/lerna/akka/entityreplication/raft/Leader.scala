@@ -7,6 +7,7 @@ import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.protocol.{ SuspendEntity, TryCreateEntity }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
+import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 import lerna.akka.entityreplication.{ ReplicationActor, ReplicationRegion }
 
 trait Leader { this: RaftActor =>
@@ -21,6 +22,9 @@ trait Leader { this: RaftActor =>
     case response: RequestVoteResponse                        => ignoreRequestVoteResponse(response)
     case request: AppendEntries                               => receiveAppendEntries(request)
     case response: AppendEntriesResponse                      => receiveAppendEntriesResponse(response)
+    case request: InstallSnapshot                             => receiveInstallSnapshot(request)
+    case response: InstallSnapshotResponse                    => receiveInstallSnapshotResponse(response)
+    case response: SnapshotSyncManager.Response               => receiveSyncSnapshotResponse(response)
     case request: Command                                     => handleCommand(request)
     case ForwardedCommand(request)                            => handleCommand(request)
     case request: Replicate                                   => replicate(request)
@@ -33,6 +37,8 @@ trait Leader { this: RaftActor =>
     case SnapshotTick                                         => handleSnapshotTick()
     case response: ReplicationActor.Snapshot                  => receiveEntitySnapshotResponse(response)
     case response: SnapshotProtocol.SaveSnapshotResponse      => receiveSaveSnapshotResponse(response)
+    case _: akka.persistence.SaveSnapshotSuccess              => // ignore
+    case _: akka.persistence.SaveSnapshotFailure              => // ignore: no problem because events exist even if snapshot saving failed
   }
 
   private[this] def receiveRequestVote(res: RequestVote): Unit =
@@ -169,6 +175,20 @@ trait Leader { this: RaftActor =>
         unhandled(failed)
     }
 
+  private[this] def receiveInstallSnapshotResponse(response: InstallSnapshotResponse): Unit =
+    response match {
+      case succeeded: InstallSnapshotSucceeded if succeeded.term == currentData.currentTerm =>
+        val follower = succeeded.sender
+        applyDomainEvent(SucceededAppendEntries(follower, succeeded.dstLatestSnapshotLastLogLogIndex)) { _ => }
+
+      case succeeded: InstallSnapshotSucceeded if succeeded.term.isNewerThan(currentData.currentTerm) =>
+        log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
+
+      case succeeded: InstallSnapshotSucceeded =>
+        assert(succeeded.term.isOlderThan(currentData.currentTerm))
+      // ignore: Snapshot synchronization of Follower was too slow
+    }
+
   private[this] def handleCommand(req: Command): Unit =
     req match {
 
@@ -219,19 +239,55 @@ trait Leader { this: RaftActor =>
     otherMemberIndexes.foreach { memberIndex =>
       val nextIndex    = currentData.nextIndexFor(memberIndex)
       val prevLogIndex = nextIndex.prev()
-      val prevLogTerm  = currentData.replicatedLog.get(prevLogIndex).map(_.term).getOrElse(Term.initial())
-      val entries      = currentData.replicatedLog.getFrom(nextIndex, settings.maxAppendEntriesSize)
-      val message = AppendEntries(
-        shardId,
-        currentData.currentTerm,
-        selfMemberIndex,
-        prevLogIndex,
-        prevLogTerm,
-        entries,
-        currentData.commitIndex,
-      )
-      log.debug(s"=== [Leader] publish $message to $memberIndex ===")
-      region ! ReplicationRegion.DeliverTo(memberIndex, message)
+      val prevLogTerm  = currentData.replicatedLog.termAt(prevLogIndex)
+      val messages =
+        prevLogTerm match {
+          case Some(prevLogTerm) =>
+            val batchEntries = currentData.replicatedLog.getFrom(
+              nextIndex,
+              settings.maxAppendEntriesSize,
+              settings.maxAppendEntriesBatchSize,
+            )
+            batchEntries match {
+              case batchEntries if batchEntries.isEmpty =>
+                Seq(
+                  AppendEntries(
+                    shardId,
+                    currentData.currentTerm,
+                    selfMemberIndex,
+                    prevLogIndex,
+                    prevLogTerm,
+                    entries = Seq.empty,
+                    currentData.commitIndex,
+                  ),
+                )
+              case batchEntries =>
+                batchEntries.map { entries =>
+                  AppendEntries(
+                    shardId,
+                    currentData.currentTerm,
+                    selfMemberIndex,
+                    prevLogIndex,
+                    prevLogTerm,
+                    entries,
+                    currentData.commitIndex,
+                  )
+                }
+            }
+          case None =>
+            // prevLogTerm not found: the log entries have been removed by compaction
+            Seq(
+              InstallSnapshot(
+                shardId,
+                currentData.currentTerm,
+                selfMemberIndex,
+                srcLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
+                srcLatestSnapshotLastLogLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
+              ),
+            )
+        }
+      log.debug(s"=== [Leader] publish ${messages.mkString(",")} to $memberIndex ===")
+      messages.foreach(region ! ReplicationRegion.DeliverTo(memberIndex, _))
     }
   }
 }

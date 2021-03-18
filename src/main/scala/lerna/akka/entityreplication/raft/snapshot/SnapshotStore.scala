@@ -72,8 +72,13 @@ class SnapshotStore(
   }
 
   def handleSaveSnapshot(command: SaveSnapshot, prevSnapshot: Option[EntitySnapshot]): Unit = {
-    saveSnapshot(command.snapshot)
-    context.become(savingSnapshot(command.replyTo, command.snapshot, prevSnapshot))
+    if (prevSnapshot.exists(_.metadata == command.snapshot.metadata)) {
+      // reduce IO: don't save if same as cached snapshot
+      command.replyTo ! SaveSnapshotSuccess(command.snapshot.metadata)
+    } else {
+      saveSnapshot(command.snapshot)
+      context.become(savingSnapshot(command.replyTo, command.snapshot, prevSnapshot))
+    }
   }
 
   def savingSnapshot(replyTo: ActorRef, snapshot: EntitySnapshot, prevSnapshot: Option[EntitySnapshot]): Receive = {

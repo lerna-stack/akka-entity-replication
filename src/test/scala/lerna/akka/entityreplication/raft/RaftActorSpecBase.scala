@@ -6,7 +6,7 @@ import akka.actor.{ Actor, ActorRef, Props }
 import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ReplicationRegion
-import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId }
+import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftTestProbe._
 import lerna.akka.entityreplication.raft.model.{ LogEntry, LogEntryIndex, Term }
 import lerna.akka.entityreplication.raft.protocol.RaftCommands.AppendEntries
@@ -52,7 +52,7 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
     val ref = system.actorOf(
       Props(
         new RaftActor(
-          typeName = "dummy",
+          typeName = TypeName.from("dummy"),
           extractEntityId = extractEntityId,
           replicationActorProps,
           region,
