@@ -34,6 +34,8 @@ trait Follower { this: RaftActor =>
     case SnapshotTick                                     => handleSnapshotTick()
     case response: ReplicationActor.Snapshot              => receiveEntitySnapshotResponse(response)
     case response: SnapshotProtocol.SaveSnapshotResponse  => receiveSaveSnapshotResponse(response)
+    case _: akka.persistence.SaveSnapshotSuccess          => // ignore
+    case _: akka.persistence.SaveSnapshotFailure          => // ignore: no problem because events exist even if snapshot saving failed
   }
 
   private[this] def receiveRequestVote(request: RequestVote): Unit =
