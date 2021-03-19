@@ -6,3 +6,7 @@ target/
 .env
 sbt-cache/
 .bsp/
+
+# For Windows
+# protobridge are installed below directory
+/null/
