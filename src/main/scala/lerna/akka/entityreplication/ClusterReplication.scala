@@ -33,6 +33,4 @@ class ClusterReplication(system: ActorSystem) {
       s"$actorNamePrefix-$typeName",
     )
   }
-
-  def replicationRegion(typeName: String): ActorRef = ???
 }
