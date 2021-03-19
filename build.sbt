@@ -42,7 +42,7 @@ lazy val lerna = (project in file("."))
         "com.typesafe.akka"  %% "akka-persistence-query"       % akkaVersion,
         "com.lightbend.akka" %% "akka-projection-core"         % akkaProjectionVersion,
         "com.lightbend.akka" %% "akka-projection-eventsourced" % akkaProjectionVersion,
-        "io.altoo"           %% "akka-kryo-serialization"      % "1.1.5",
+        "io.altoo"           %% "akka-kryo-serialization"      % "1.1.5"     % Test,
         "com.typesafe.akka"  %% "akka-slf4j"                   % akkaVersion % Test,
         "ch.qos.logback"      % "logback-classic"              % "1.2.3"     % Test,
         "org.scalatest"      %% "scalatest"                    % "3.0.9"     % Test,

@@ -8,7 +8,7 @@ import akka.persistence.{ PersistentActor, RecoveryCompleted }
 import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
 
-private[eventhandler] final case class Save(
+private[entityreplication] final case class Save(
     replicationId: CommitLogStore.ReplicationId,
     index: LogEntryIndex,
     committedEvent: Any,

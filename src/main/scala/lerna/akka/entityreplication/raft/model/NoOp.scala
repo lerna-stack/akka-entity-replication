@@ -1,3 +1,5 @@
 package lerna.akka.entityreplication.raft.model
 
-case object NoOp
+import lerna.akka.entityreplication.ClusterReplicationSerializable
+
+case object NoOp extends ClusterReplicationSerializable
