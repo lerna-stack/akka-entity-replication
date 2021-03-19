@@ -34,7 +34,7 @@ trait RaftActorBase extends PersistentActor with ActorLogging {
 
   protected val onTransition: TransitionHandler
 
-  protected def onRecoveryCompleted(): Unit = {}
+  protected def onRecoveryCompleted(): Unit
 
   final override def receiveRecover: Receive = {
     case SnapshotOffer(_, snapshot: PersistentState) =>
