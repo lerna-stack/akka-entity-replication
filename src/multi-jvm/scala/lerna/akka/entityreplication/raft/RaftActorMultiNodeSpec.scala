@@ -43,12 +43,12 @@ object RaftActorSpecConfig extends MultiNodeConfig {
   """))
 }
 
-class RaftActorSpecMultiJvmController extends RaftActorSpec
-class RaftActorSpecMultiJvmNode1      extends RaftActorSpec
-class RaftActorSpecMultiJvmNode2      extends RaftActorSpec
-class RaftActorSpecMultiJvmNode3      extends RaftActorSpec
+class RaftActorMultiNodeSpecMultiJvmController extends RaftActorMultiNodeSpec
+class RaftActorMultiNodeSpecMultiJvmNode1      extends RaftActorMultiNodeSpec
+class RaftActorMultiNodeSpecMultiJvmNode2      extends RaftActorMultiNodeSpec
+class RaftActorMultiNodeSpecMultiJvmNode3      extends RaftActorMultiNodeSpec
 
-object RaftActorSpec {
+object RaftActorMultiNodeSpec {
   import scala.jdk.CollectionConverters._
   import scala.jdk.DurationConverters._
   class RaftSettingsForTest(root: Config)(
@@ -65,10 +65,10 @@ object RaftActorSpec {
       )
 }
 
-class RaftActorSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeSpec {
+class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeSpec {
 
   import RaftActor._
-  import RaftActorSpec._
+  import RaftActorMultiNodeSpec._
   import RaftActorSpecConfig._
 
   private[this] val config = system.settings.config

@@ -52,7 +52,7 @@ object ReplicationActorSpecConfig extends MultiNodeConfig {
   """))
 }
 
-object ReplicationActorSpec {
+object ReplicationActorMultiNodeSpec {
 
   object PingPongReplicationActor {
 
@@ -216,12 +216,12 @@ object ReplicationActorSpec {
   }
 }
 
-class ReplicationActorSpecMultiJvmNode1 extends ReplicationActorSpec
-class ReplicationActorSpecMultiJvmNode2 extends ReplicationActorSpec
-class ReplicationActorSpecMultiJvmNode3 extends ReplicationActorSpec
+class ReplicationActorMultiNodeSpecMultiJvmNode1 extends ReplicationActorMultiNodeSpec
+class ReplicationActorMultiNodeSpecMultiJvmNode2 extends ReplicationActorMultiNodeSpec
+class ReplicationActorMultiNodeSpecMultiJvmNode3 extends ReplicationActorMultiNodeSpec
 
-class ReplicationActorSpec extends MultiNodeSpec(ReplicationActorSpecConfig) with STMultiNodeSpec {
-  import ReplicationActorSpec._
+class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecConfig) with STMultiNodeSpec {
+  import ReplicationActorMultiNodeSpec._
   import ReplicationActorSpecConfig._
 
   "ReplicationActor" should {
