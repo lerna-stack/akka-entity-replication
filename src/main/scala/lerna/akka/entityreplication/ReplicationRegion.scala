@@ -291,7 +291,6 @@ class ReplicationRegion(
     case shardRequest: ShardRequest     => shardRequest.shardId
     case Command(cmd)                   => extractNormalizedShardId(cmd)
     case ForwardedCommand(Command(cmd)) => extractNormalizedShardId(cmd)
-    case cmd                            => extractNormalizedShardId(cmd)
   }
 
   private[this] def memberIndexOf(member: Member): Option[MemberIndex] = {
