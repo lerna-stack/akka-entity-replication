@@ -2,11 +2,9 @@ package lerna.akka.entityreplication.raft.snapshot.sync
 
 import akka.Done
 import akka.actor.Status
-import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
-import akka.persistence.{ PersistentActor, RuntimePluginConfig }
+import akka.actor.{ ActorRef, ActorSystem }
 import akka.persistence.inmemory.extension.{ InMemoryJournalStorage, InMemorySnapshotStorage, StorageExtension }
 import akka.testkit.{ TestKit, TestProbe }
-import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ClusterReplicationSettings
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.ActorSpec
@@ -19,50 +17,13 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
   EntityState,
 }
 import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, SnapshotProtocol }
+import lerna.akka.entityreplication.util.EventStore
 import org.scalatest.Inspectors._
 import org.scalatest.BeforeAndAfterEach
 
 import java.util.concurrent.atomic.AtomicInteger
 
-object SnapshotSyncManagerSpec {
-
-  object EventStore {
-    def props(settings: ClusterReplicationSettings): Props = Props(new EventStore(settings))
-    final case class PersistEvents(events: Seq[Any])
-  }
-
-  class EventStore(settings: ClusterReplicationSettings) extends PersistentActor with RuntimePluginConfig {
-    import EventStore._
-
-    override def journalPluginId: String = settings.raftSettings.journalPluginId
-
-    override def journalPluginConfig: Config = settings.raftSettings.journalPluginAdditionalConfig
-
-    override def snapshotPluginId: String = settings.raftSettings.snapshotStorePluginId
-
-    override def snapshotPluginConfig: Config = ConfigFactory.empty()
-
-    override def persistenceId: String = getClass.getCanonicalName
-
-    override def receiveRecover: Receive = Actor.emptyBehavior
-
-    private[this] var persisting: Int = 0
-
-    override def receiveCommand: Receive = {
-      case cmd: PersistEvents =>
-        persisting = cmd.events.size
-        persistAll(cmd.events.toVector) { _ =>
-          persisting -= 1
-          if (persisting == 0) {
-            sender() ! Done
-          }
-        }
-    }
-  }
-}
-
 class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with BeforeAndAfterEach {
-  import SnapshotSyncManagerSpec._
 
   private[this] val settings = ClusterReplicationSettings(system)
 
