@@ -5,7 +5,6 @@ object Term {
 }
 
 case class Term(term: Long) extends Ordered[Term] {
-  def prev(): Term                      = this.copy(term = term - 1)
   def next(): Term                      = this.copy(term = term + 1)
   def isOlderThan(other: Term): Boolean = this.term < other.term
   def isNewerThan(other: Term): Boolean = this.term > other.term

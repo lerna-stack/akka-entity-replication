@@ -8,12 +8,12 @@ import akka.cluster.{ Cluster, Member, MemberStatus }
 import akka.routing.{ ActorRefRoutee, ConsistentHashingRouter, ConsistentHashingRoutingLogic, Router }
 import lerna.akka.entityreplication.ReplicationRegion.{ ExtractEntityId, ExtractShardId }
 import lerna.akka.entityreplication.model._
+import lerna.akka.entityreplication.raft.RaftActor
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand }
 import lerna.akka.entityreplication.raft.eventhandler.CommitLogStore
 import lerna.akka.entityreplication.raft.protocol.ShardRequest
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.ShardSnapshotStore
-import lerna.akka.entityreplication.raft.{ RaftActor, RaftSettings }
 
 import scala.collection.mutable
 
@@ -103,22 +103,10 @@ class ReplicationRegion(
       decide
   }
 
-  private[this] val allMemberIndexes: Set[MemberIndex] = settings.raftSettings.multiRaftRoles.map(MemberIndex.apply)
+  private[this] val allMemberIndexes: Set[MemberIndex] = settings.allMemberIndexes
 
   // protected[this]: for test purpose
-  protected[this] val selfMemberIndex: MemberIndex =
-    Cluster(context.system).settings.Roles
-      .filter(allMemberIndexes.map(_.role)).map(MemberIndex.apply).toSeq match {
-      case Seq(memberIndex) => memberIndex
-      case Seq() =>
-        throw new IllegalStateException(
-          s"requires one of ${settings.raftSettings.multiRaftRoles} role",
-        )
-      case indexes =>
-        throw new IllegalStateException(
-          s"requires one of ${settings.raftSettings.multiRaftRoles} role, should not have multiply roles: [${indexes.mkString(",")}]",
-        )
-    }
+  protected[this] val selfMemberIndex: MemberIndex = settings.selfMemberIndex
 
   // protected[this]: for test purpose
   protected[this] val otherMemberIndexes: Set[MemberIndex] = allMemberIndexes.filterNot(_ == selfMemberIndex)
@@ -184,7 +172,6 @@ class ReplicationRegion(
   }
 
   def open: Receive = {
-    case snapshot: CurrentClusterState  => handleClusterState(snapshot)
     case event: ClusterDomainEvent      => handleClusterDomainEvent(event)
     case routingCommand: RoutingCommand => handleRoutingCommand(routingCommand)
     case message                        => deliverMessage(message)
@@ -272,7 +259,7 @@ class ReplicationRegion(
         ShardSnapshotStore.props(TypeName.from(typeName), settings.raftSettings, selfMemberIndex),
       selfMemberIndex,
       otherMemberIndexes,
-      settings = RaftSettings(context.system.settings.config),
+      settings = settings.raftSettings,
       maybeCommitLogStore = maybeCommitLogStore,
     )
   }
@@ -291,7 +278,6 @@ class ReplicationRegion(
     case shardRequest: ShardRequest     => shardRequest.shardId
     case Command(cmd)                   => extractNormalizedShardId(cmd)
     case ForwardedCommand(Command(cmd)) => extractNormalizedShardId(cmd)
-    case cmd                            => extractNormalizedShardId(cmd)
   }
 
   private[this] def memberIndexOf(member: Member): Option[MemberIndex] = {

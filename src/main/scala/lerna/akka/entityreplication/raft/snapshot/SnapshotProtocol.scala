@@ -21,12 +21,8 @@ object SnapshotProtocol {
   sealed trait SaveSnapshotResponse                                      extends Response
   final case class SaveSnapshotSuccess(metadata: EntitySnapshotMetadata) extends SaveSnapshotResponse
   final case class SaveSnapshotFailure(metadata: EntitySnapshotMetadata) extends SaveSnapshotResponse
-  sealed trait FetchSnapshotResponse {
-    def entityId: NormalizedEntityId
-  }
-  final case class SnapshotFound(snapshot: EntitySnapshot) extends FetchSnapshotResponse {
-    override def entityId: NormalizedEntityId = snapshot.metadata.entityId
-  }
+  sealed trait FetchSnapshotResponse
+  final case class SnapshotFound(snapshot: EntitySnapshot)        extends FetchSnapshotResponse
   final case class SnapshotNotFound(entityId: NormalizedEntityId) extends FetchSnapshotResponse
 
   final case class EntityState(underlying: Any)

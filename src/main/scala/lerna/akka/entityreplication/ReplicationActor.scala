@@ -59,7 +59,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
   private[this] val recovering: State = new State {
 
     private[this] val recoveryTimeoutTimer: Cancellable =
-      context.system.scheduler.scheduleOnce(settings.recoveryEnittyTimeout, self, RecoveryTimeout)
+      context.system.scheduler.scheduleOnce(settings.recoveryEntityTimeout, self, RecoveryTimeout)
 
     override def stateReceive(receive: Receive, message: Any): Unit =
       message match {
@@ -126,9 +126,6 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
             lastAppliedLogEntryIndex = logEntryIndex
           case _: ReplicationSucceeded =>
           // ignore ReplicationSucceeded which is produced by replicate command of old ReplicationActor instance
-          case msg: ReplicationFailed =>
-            // TODO: 実装
-            log.warning("ReplicationFailed: {}", msg)
           case TakeSnapshot(metadata, replyTo) =>
             replyTo ! Snapshot(metadata, EntityState(currentState))
           case _ => internalStash.stash()
