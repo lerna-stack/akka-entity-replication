@@ -217,12 +217,14 @@ class SnapshotSyncManager(
             )
           }
         case _: SyncIncomplete =>
+          this.killSwitch = None
           replyTo ! SyncSnapshotFailed()
           log.info(
             "Snapshot synchronization is incomplete: " +
             s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
             s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
           )
+          context.stop(self)
       }
 
     case Status.Failure(e) =>
