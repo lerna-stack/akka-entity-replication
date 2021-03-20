@@ -89,43 +89,24 @@ trait Leader { this: RaftActor =>
         if (currentData.hasMatchLogEntry(appendEntries.prevLogIndex, appendEntries.prevLogTerm)) {
           cancelHeartbeatTimeoutTimer()
           log.debug(s"=== [Leader] append $appendEntries ===")
-          if (appendEntries.entries.isEmpty && appendEntries.term == currentData.currentTerm) {
-            // do not persist event when no need
-            applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
-              sender() ! AppendEntriesSucceeded(
-                appendEntries.term,
-                currentData.replicatedLog.lastLogIndex,
-                selfMemberIndex,
-              )
-              become(Follower)
-            }
-          } else {
-            applyDomainEvent(AppendedEntries(appendEntries.term, appendEntries.entries, appendEntries.prevLogIndex)) {
-              domainEvent =>
-                applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
-                  sender() ! AppendEntriesSucceeded(
-                    domainEvent.term,
-                    currentData.replicatedLog.lastLogIndex,
-                    selfMemberIndex,
-                  )
-                  become(Follower)
-                }
-            }
+          applyDomainEvent(AppendedEntries(appendEntries.term, appendEntries.entries, appendEntries.prevLogIndex)) {
+            domainEvent =>
+              applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
+                sender() ! AppendEntriesSucceeded(
+                  domainEvent.term,
+                  currentData.replicatedLog.lastLogIndex,
+                  selfMemberIndex,
+                )
+                become(Follower)
+              }
           }
         } else { // prevLogIndex と prevLogTerm がマッチするエントリが無かった
           log.debug(s"=== [Leader] could not append $appendEntries ===")
           cancelHeartbeatTimeoutTimer()
-          if (appendEntries.term == currentData.currentTerm) {
+          applyDomainEvent(DetectedNewTerm(appendEntries.term)) { domainEvent =>
             applyDomainEvent(DetectedLeaderMember(appendEntries.leader)) { _ =>
-              sender() ! AppendEntriesFailed(currentData.currentTerm, selfMemberIndex)
+              sender() ! AppendEntriesFailed(domainEvent.term, selfMemberIndex)
               become(Follower)
-            }
-          } else {
-            applyDomainEvent(DetectedNewTerm(appendEntries.term)) { domainEvent =>
-              applyDomainEvent(DetectedLeaderMember(appendEntries.leader)) { _ =>
-                sender() ! AppendEntriesFailed(domainEvent.term, selfMemberIndex)
-                become(Follower)
-              }
             }
           }
         }
