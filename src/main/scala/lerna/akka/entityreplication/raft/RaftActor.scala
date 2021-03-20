@@ -183,7 +183,8 @@ class RaftActor(
         currentData.syncTerm(term)
       case AppendedEntries(term, logEntries, prevLogIndex) =>
         currentData
-          .appendEntries(term, logEntries, prevLogIndex)
+          .syncTerm(term)
+          .appendEntries(logEntries, prevLogIndex)
       case AppendedEvent(event) =>
         currentData
           .appendEvent(event)

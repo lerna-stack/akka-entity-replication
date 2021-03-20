@@ -72,10 +72,8 @@ trait FollowerData { self: RaftMemberData =>
     updatePersistentState(currentTerm = term, votedFor = Some(candidate))
   }
 
-  def appendEntries(term: Term, logEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): RaftMemberData = {
-    require(term >= currentTerm, s"should be term:$term >= currentTerm:$currentTerm")
+  def appendEntries(logEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): RaftMemberData = {
     updatePersistentState(
-      currentTerm = term,
       replicatedLog = replicatedLog.merge(logEntries, prevLogIndex),
     )
   }
