@@ -184,7 +184,6 @@ class ReplicationRegion(
   }
 
   def open: Receive = {
-    case snapshot: CurrentClusterState  => handleClusterState(snapshot)
     case event: ClusterDomainEvent      => handleClusterDomainEvent(event)
     case routingCommand: RoutingCommand => handleRoutingCommand(routingCommand)
     case message                        => deliverMessage(message)
