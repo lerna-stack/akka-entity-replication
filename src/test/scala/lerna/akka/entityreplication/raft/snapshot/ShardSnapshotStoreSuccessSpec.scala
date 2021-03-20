@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 import akka.actor.{ ActorRef, ActorSystem, PoisonPill }
 import akka.testkit.TestKit
+import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -59,14 +60,32 @@ class ShardSnapshotStoreSuccessSpec extends TestKit(ActorSystem()) with ActorSpe
       shardSnapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
       expectMsg(SnapshotNotFound(entityId))
     }
+
+    "処理が完了したら SnapshotStore Actor が停止する" in {
+      val additionalConfig = ConfigFactory.parseString("""
+                                                         |lerna.akka.entityreplication.raft.compaction.snapshot-cache-time-to-live = 1s // < test timeout 3s
+                                                         |""".stripMargin)
+
+      val entityId           = generateUniqueEntityId()
+      val shardSnapshotStore = createShardSnapshotStore(additionalConfig)
+      val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val snapshot           = EntitySnapshot(metadata, dummyEntityState)
+
+      shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+      expectMsgType[SaveSnapshotSuccess]
+
+      val snapshotStore = lastSender
+      watch(snapshotStore)
+      expectTerminated(snapshotStore)
+    }
   }
 
-  def createShardSnapshotStore(): ActorRef =
+  def createShardSnapshotStore(additionalConfig: Config = ConfigFactory.empty()): ActorRef =
     planAutoKill {
       childActorOf(
         ShardSnapshotStore.props(
           TypeName.from("test"),
-          RaftSettings(system.settings.config),
+          RaftSettings(additionalConfig.withFallback(system.settings.config)),
           MemberIndex("test-role"),
         ),
       )
