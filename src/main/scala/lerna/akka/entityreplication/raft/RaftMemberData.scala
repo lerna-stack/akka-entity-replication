@@ -275,7 +275,7 @@ trait RaftMemberData
     replicatedLog.sliceEntries(from, to = lastApplied).filter(_.event.entityId.contains(entityId))
   }
 
-  def alreadyVotedOthers(candidate: MemberIndex): Boolean = votedFor.fold(ifEmpty = false)(candidate != _)
+  def alreadyVotedOthers(candidate: MemberIndex): Boolean = votedFor.exists(candidate != _)
 
   def hasMatchLogEntry(prevLogIndex: LogEntryIndex, prevLogTerm: Term): Boolean = {
     // リーダーにログが無い場合は LogEntryIndex.initial が送られてくる。
