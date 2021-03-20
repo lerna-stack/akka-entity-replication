@@ -22,41 +22,41 @@ class ShardSnapshotStoreSuccessSpec extends TestKit(ActorSystem()) with ActorSpe
   "ShardSnapshotStore（正常系）" should {
 
     "SaveSnapshot に成功した場合は SaveSnapshotSuccess が返信される" in {
-      val entityId      = generateUniqueEntityId()
-      val snapshotStore = createShardSnapshotStore()
-      val metadata      = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
-      val snapshot      = EntitySnapshot(metadata, dummyEntityState)
+      val entityId           = generateUniqueEntityId()
+      val shardSnapshotStore = createShardSnapshotStore()
+      val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val snapshot           = EntitySnapshot(metadata, dummyEntityState)
 
-      snapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+      shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
       expectMsg(SaveSnapshotSuccess(metadata))
     }
 
     "FetchSnapshot に成功した場合は一度停止しても SnapshotFound でスナップショットが返信される" in {
-      val entityId      = generateUniqueEntityId()
-      val snapshotStore = createShardSnapshotStore()
-      val metadata      = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
-      val snapshot      = EntitySnapshot(metadata, dummyEntityState)
+      val entityId           = generateUniqueEntityId()
+      val shardSnapshotStore = createShardSnapshotStore()
+      val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val snapshot           = EntitySnapshot(metadata, dummyEntityState)
 
-      snapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+      shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
       expectMsg(SaveSnapshotSuccess(metadata))
 
       // terminate SnapshotStore
-      snapshotStore ! PoisonPill
-      watch(snapshotStore)
-      expectTerminated(snapshotStore)
+      shardSnapshotStore ! PoisonPill
+      watch(shardSnapshotStore)
+      expectTerminated(shardSnapshotStore)
 
-      val newSnapshotStore = createShardSnapshotStore()
+      val newShardSnapshotStore = createShardSnapshotStore()
 
-      newSnapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
+      newShardSnapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
       expectMsg(SnapshotFound(snapshot))
     }
 
     "スナップショットが無い場合は FetchSnapshot で SnapshotNotFound が返信される" in {
-      val entityId      = generateUniqueEntityId()
-      val snapshotStore = createShardSnapshotStore()
+      val entityId           = generateUniqueEntityId()
+      val shardSnapshotStore = createShardSnapshotStore()
 
       // SaveSnapshot してないので、スナップショットが無い状態
-      snapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
+      shardSnapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
       expectMsg(SnapshotNotFound(entityId))
     }
   }
