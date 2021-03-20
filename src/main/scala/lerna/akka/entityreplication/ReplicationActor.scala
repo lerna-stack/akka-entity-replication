@@ -59,7 +59,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
   private[this] val recovering: State = new State {
 
     private[this] val recoveryTimeoutTimer: Cancellable =
-      context.system.scheduler.scheduleOnce(settings.recoveryEnittyTimeout, self, RecoveryTimeout)
+      context.system.scheduler.scheduleOnce(settings.recoveryEntityTimeout, self, RecoveryTimeout)
 
     override def stateReceive(receive: Receive, message: Any): Unit =
       message match {

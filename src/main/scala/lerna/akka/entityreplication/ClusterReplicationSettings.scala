@@ -16,7 +16,7 @@ class ClusterReplicationSettings(root: Config) {
 
   val config: Config = root.getConfig("lerna.akka.entityreplication")
 
-  val recoveryEnittyTimeout: FiniteDuration = config.getDuration("recovery-entity-timeout").toScala
+  val recoveryEntityTimeout: FiniteDuration = config.getDuration("recovery-entity-timeout").toScala
 
   val raftSettings: RaftSettings = RaftSettings(root)
 }
