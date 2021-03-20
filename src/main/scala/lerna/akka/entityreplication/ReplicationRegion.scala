@@ -8,12 +8,12 @@ import akka.cluster.{ Cluster, Member, MemberStatus }
 import akka.routing.{ ActorRefRoutee, ConsistentHashingRouter, ConsistentHashingRoutingLogic, Router }
 import lerna.akka.entityreplication.ReplicationRegion.{ ExtractEntityId, ExtractShardId }
 import lerna.akka.entityreplication.model._
+import lerna.akka.entityreplication.raft.RaftActor
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand }
 import lerna.akka.entityreplication.raft.eventhandler.CommitLogStore
 import lerna.akka.entityreplication.raft.protocol.ShardRequest
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.ShardSnapshotStore
-import lerna.akka.entityreplication.raft.{ RaftActor, RaftSettings }
 
 import scala.collection.mutable
 
@@ -271,7 +271,7 @@ class ReplicationRegion(
         ShardSnapshotStore.props(TypeName.from(typeName), settings.raftSettings, selfMemberIndex),
       selfMemberIndex,
       otherMemberIndexes,
-      settings = RaftSettings(context.system.settings.config),
+      settings = settings.raftSettings,
       maybeCommitLogStore = maybeCommitLogStore,
     )
   }
