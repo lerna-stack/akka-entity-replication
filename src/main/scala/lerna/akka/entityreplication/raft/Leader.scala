@@ -225,9 +225,6 @@ trait Leader { this: RaftActor =>
 
       case ReplicationSucceeded(unknownEvent, _, _) =>
         log.warning("unknown event: {}", unknownEvent)
-
-      case ReplicationFailed(cause) =>
-        log.warning("replication failure", cause)
     }
 
   private[this] def startEntityPassivationProcess(entityPath: ActorPath, stopMessage: Any): Unit = {

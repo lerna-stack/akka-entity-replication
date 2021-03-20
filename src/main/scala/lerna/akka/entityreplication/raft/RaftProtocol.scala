@@ -43,6 +43,4 @@ object RaftProtocol {
 
   case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex, instanceId: Option[EntityInstanceId])
       extends ReplicationResponse
-
-  case class ReplicationFailed(cause: Throwable) extends ReplicationResponse
 }

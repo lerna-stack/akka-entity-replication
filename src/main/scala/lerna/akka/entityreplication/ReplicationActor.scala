@@ -126,9 +126,6 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
             lastAppliedLogEntryIndex = logEntryIndex
           case _: ReplicationSucceeded =>
           // ignore ReplicationSucceeded which is produced by replicate command of old ReplicationActor instance
-          case msg: ReplicationFailed =>
-            // TODO: 実装
-            log.warning("ReplicationFailed: {}", msg)
           case TakeSnapshot(metadata, replyTo) =>
             replyTo ! Snapshot(metadata, EntityState(currentState))
           case _ => internalStash.stash()
