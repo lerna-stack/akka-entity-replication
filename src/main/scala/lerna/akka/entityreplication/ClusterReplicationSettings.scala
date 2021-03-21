@@ -17,7 +17,8 @@ object ClusterReplicationSettings {
   }
 }
 
-class ClusterReplicationSettings private (root: Config, clusterRoles: Set[String]) {
+// [entityreplication]: for test purpose
+class ClusterReplicationSettings private[entityreplication] (root: Config, clusterRoles: Set[String]) {
 
   val config: Config = root.getConfig("lerna.akka.entityreplication")
 

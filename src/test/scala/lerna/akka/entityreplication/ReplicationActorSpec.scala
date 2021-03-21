@@ -3,14 +3,20 @@ package lerna.akka.entityreplication
 import akka.actor.SupervisorStrategy.Restart
 import akka.actor.{ ActorRef, ActorSystem, OneForOneStrategy, Props }
 import akka.testkit.{ TestKit, TestProbe }
-import lerna.akka.entityreplication.ReplicationActorSpec.ExampleReplicationActor
+import com.typesafe.config.ConfigFactory
+import lerna.akka.entityreplication.ReplicationActorSpec.{ config, ExampleReplicationActor }
 import lerna.akka.entityreplication.model.EntityInstanceId
 import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, Term }
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftProtocol }
-
 import java.util.concurrent.atomic.AtomicInteger
 
 object ReplicationActorSpec {
+
+  private val config = ConfigFactory
+    .parseString("""
+      |lerna.akka.entityreplication.recovery-entity-timeout = 2s // < test timeout 3s
+      |""".stripMargin)
+    .withFallback(ConfigFactory.load())
 
   object ExampleReplicationActor {
     def props: Props = Props(new ExampleReplicationActor)
@@ -51,7 +57,7 @@ object ReplicationActorSpec {
   }
 }
 
-class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec")) with ActorSpec {
+class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec", config)) with ActorSpec {
   import RaftProtocol._
   import ExampleReplicationActor._
 
@@ -125,6 +131,25 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec")) 
       raftActorProbe.expectNoMessage() // the command is stashed
       r.replyTo ! createReplicationSucceeded(Counted(), r.instanceId)
       raftActorProbe.expectMsgType[Replicate]
+    }
+
+    "reboot and request Recovery again after RecoveryTimeout" in {
+      val testProbe      = TestProbe()
+      val raftActorProbe = TestProbe()
+      planAutoKill {
+        raftActorProbe.childActorOf(
+          ExampleReplicationActor.props,
+          OneForOneStrategy() {
+            case runtimeException: RuntimeException =>
+              testProbe.ref ! runtimeException
+              Restart
+          },
+        )
+      }
+      // Do not send RecoveryState to replicationActor
+      raftActorProbe.expectMsgType[RequestRecovery]
+      testProbe.expectMsgType[ReplicationActor.EntityRecoveryTimeoutException]
+      raftActorProbe.expectMsgType[RequestRecovery]
     }
   }
 
