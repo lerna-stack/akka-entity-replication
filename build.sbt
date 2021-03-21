@@ -65,6 +65,9 @@ lazy val lerna = (project in file("."))
     // test-coverage
     coverageMinimum := 80,
     coverageFailOnMinimum := true,
+    coverageExcludedPackages := Seq(
+        "lerna\\.akka\\.entityreplication\\.protobuf\\.msg\\..*",
+      ).mkString(";"),
     // scalapb
     Compile / PB.targets := Seq(
         scalapb.gen(flatPackage = true, lenses = false, grpc = false) -> (sourceManaged in Compile).value / "scalapb",
