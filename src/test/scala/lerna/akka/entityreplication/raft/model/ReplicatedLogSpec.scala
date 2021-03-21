@@ -64,6 +64,35 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       log.getFrom(target, maxEntryCount = 2, maxBatchCount = 2) should be(expected)
     }
 
+    "return part of logEntries by sliceEntriesFromHead(to: LogEntryIndex) when entries are nonEmpty" in {
+      val logEntries = Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, "b"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, "c"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, "d"), Term(1)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, "e"), Term(1)),
+        LogEntry(LogEntryIndex(6), EntityEvent(None, "f"), Term(1)),
+      )
+
+      val to       = LogEntryIndex(5)
+      val expected = Seq(1, 2, 3, 4, 5)
+
+      val log = new ReplicatedLog(logEntries)
+
+      log.sliceEntriesFromHead(to = to).map(_.index.underlying) should be(expected)
+    }
+
+    "return Seq() by sliceEntriesFromHead(to: LogEntryIndex) when entries are empty" in {
+      val logEntries = Seq()
+
+      val to       = LogEntryIndex(5)
+      val expected = Seq()
+
+      val log = new ReplicatedLog(logEntries)
+
+      log.sliceEntriesFromHead(to = to) should be(expected)
+    }
+
     "sliceEntries(from, to)でログを切り出せる" in {
       val logEntries = Seq(
         LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),

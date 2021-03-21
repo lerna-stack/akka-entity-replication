@@ -21,10 +21,10 @@ class ShardSnapshotStoreLoadingFailureSpec
   "ShardSnapshotStore（読み込みの異常）" should {
 
     "FetchSnapshot に失敗した場合は応答無し（クライアント側でタイムアウトの実装が必要）" in {
-      val entityId      = generateUniqueEntityId()
-      val snapshotStore = createShardSnapshotStore()
+      val entityId           = generateUniqueEntityId()
+      val shardSnapshotStore = createShardSnapshotStore()
 
-      snapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
+      shardSnapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
       expectNoMessage()
     }
   }
@@ -41,12 +41,12 @@ class ShardSnapshotStoreSavingFailureSpec
   "ShardSnapshotStore（書き込みの異常）" should {
 
     "SaveSnapshot に失敗した場合は SaveSnapshotFailure が返信される" in {
-      val entityId      = generateUniqueEntityId()
-      val snapshotStore = createShardSnapshotStore()
-      val metadata      = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
-      val snapshot      = EntitySnapshot(metadata, dummyEntityState)
+      val entityId           = generateUniqueEntityId()
+      val shardSnapshotStore = createShardSnapshotStore()
+      val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val snapshot           = EntitySnapshot(metadata, dummyEntityState)
 
-      snapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+      shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
       expectMsg(SaveSnapshotFailure(metadata))
     }
   }
