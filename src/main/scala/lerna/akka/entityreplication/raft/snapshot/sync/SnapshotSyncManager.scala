@@ -61,6 +61,12 @@ object SnapshotSyncManager {
       srcMemberIndex: MemberIndex,
   ) extends Response
 
+  final case class SyncSnapshotAlreadySucceeded(
+      snapshotLastLogTerm: Term,
+      snapshotLastLogIndex: LogEntryIndex,
+      srcMemberIndex: MemberIndex,
+  ) extends Response
+
   final case class SyncSnapshotFailed() extends Response
 
   sealed trait Event
@@ -159,6 +165,27 @@ class SnapshotSyncManager(
   override def receiveCommand: Receive = ready
 
   def ready: Receive = {
+
+    case SyncSnapshot(
+          srcLatestSnapshotLastLogTerm,
+          srcLatestSnapshotLastLogIndex,
+          dstLatestSnapshotLastLogTerm,
+          dstLatestSnapshotLastLogIndex,
+          replyTo,
+        )
+        if srcLatestSnapshotLastLogTerm == dstLatestSnapshotLastLogTerm
+        && srcLatestSnapshotLastLogIndex == dstLatestSnapshotLastLogIndex =>
+      replyTo ! SyncSnapshotAlreadySucceeded(
+        dstLatestSnapshotLastLogTerm,
+        dstLatestSnapshotLastLogIndex,
+        srcMemberIndex,
+      )
+      log.info(
+        "Snapshot synchronization already completed: " +
+        s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
+        s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+      )
+      context.stop(self)
 
     case SyncSnapshot(
           srcLatestSnapshotLastLogTerm,

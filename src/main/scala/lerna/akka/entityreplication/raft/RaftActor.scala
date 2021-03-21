@@ -436,6 +436,18 @@ class RaftActor(
             ),
           )
         }
+
+      case response: SnapshotSyncManager.SyncSnapshotAlreadySucceeded =>
+        region ! ReplicationRegion.DeliverTo(
+          response.srcMemberIndex,
+          InstallSnapshotSucceeded(
+            shardId,
+            currentData.currentTerm,
+            currentData.replicatedLog.lastLogIndex,
+            selfMemberIndex,
+          ),
+        )
+
       case _: SnapshotSyncManager.SyncSnapshotFailed => // ignore
     }
 
