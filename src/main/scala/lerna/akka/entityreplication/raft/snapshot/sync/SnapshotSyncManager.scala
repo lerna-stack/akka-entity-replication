@@ -61,6 +61,12 @@ object SnapshotSyncManager {
       srcMemberIndex: MemberIndex,
   ) extends Response
 
+  final case class SyncSnapshotAlreadySucceeded(
+      snapshotLastLogTerm: Term,
+      snapshotLastLogIndex: LogEntryIndex,
+      srcMemberIndex: MemberIndex,
+  ) extends Response
+
   final case class SyncSnapshotFailed() extends Response
 
   sealed trait Event
@@ -166,6 +172,27 @@ class SnapshotSyncManager(
           dstLatestSnapshotLastLogTerm,
           dstLatestSnapshotLastLogIndex,
           replyTo,
+        )
+        if srcLatestSnapshotLastLogTerm == dstLatestSnapshotLastLogTerm
+        && srcLatestSnapshotLastLogIndex == dstLatestSnapshotLastLogIndex =>
+      replyTo ! SyncSnapshotAlreadySucceeded(
+        dstLatestSnapshotLastLogTerm,
+        dstLatestSnapshotLastLogIndex,
+        srcMemberIndex,
+      )
+      log.info(
+        "Snapshot synchronization already completed: " +
+        s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
+        s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+      )
+      context.stop(self)
+
+    case SyncSnapshot(
+          srcLatestSnapshotLastLogTerm,
+          srcLatestSnapshotLastLogIndex,
+          dstLatestSnapshotLastLogTerm,
+          dstLatestSnapshotLastLogIndex,
+          replyTo,
         ) =>
       import context.dispatcher
       val (killSwitch, result) = synchronizeSnapshots(
@@ -217,12 +244,14 @@ class SnapshotSyncManager(
             )
           }
         case _: SyncIncomplete =>
+          this.killSwitch = None
           replyTo ! SyncSnapshotFailed()
           log.info(
             "Snapshot synchronization is incomplete: " +
             s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
             s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
           )
+          context.stop(self)
       }
 
     case Status.Failure(e) =>

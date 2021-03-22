@@ -9,6 +9,7 @@ import akka.util.Timeout
 import com.typesafe.config.{ ConfigFactory, ConfigValueFactory }
 import lerna.akka.entityreplication.ReplicationRegionSpec.DummyReplicationActor.CheckRouting
 import lerna.akka.entityreplication.raft.RaftProtocol.Command
+import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
 import scala.jdk.CollectionConverters._
@@ -54,7 +55,8 @@ object ReplicationRegionSpec {
     }
 
     override def receiveReplica: Receive = {
-      case "received" => updateState()
+      case SnapshotOffer(snapshot: Int) => count = snapshot
+      case "received"                   => updateState()
     }
 
     override def receiveCommand: Receive = {
@@ -109,6 +111,10 @@ object ReplicationRegionSpecConfig extends MultiNodeConfig {
       .withFallback(ConfigFactory.parseString(s"""
       akka.actor.provider = cluster
       akka.test.single-expect-default = 15s
+      
+      lerna.akka.entityreplication.raft.compaction.log-size-threshold = 2
+      lerna.akka.entityreplication.raft.compaction.preserve-log-size = 1
+      lerna.akka.entityreplication.raft.compaction.log-size-check-interval = 0.1s
       """))
       .withValue(
         "lerna.akka.entityreplication.raft.multi-raft-roles",

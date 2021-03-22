@@ -86,7 +86,54 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       expectMsg(RequestVoteAccepted(term, followerMemberIndex))
     }
 
-    "deny RequestVote if lastLogIndex is older than own even if the request has same lastLogTerm" in {
+    "deny RequestVote if the term is older than own" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val candidateMemberIndex = createUniqueMemberIndex()
+      val term1                = Term(1)
+      val term2                = Term(2)
+      val term4                = Term(4)
+      val index1               = LogEntryIndex(1)
+      val index2               = LogEntryIndex(2)
+      val logEntries = Seq(
+        LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
+        LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
+      )
+      val log = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
+      setState(follower, Follower, createFollowerData(term4, log))
+
+      follower ! RequestVote(shardId, term2, candidateMemberIndex, lastLogIndex = index2, lastLogTerm = term1)
+      expectMsg(RequestVoteDenied(term4))
+    }
+
+    "deny RequestVote from a Candidate which has the same term if lastLogIndex is older than own even if the request has the same lastLogTerm" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val candidateMemberIndex = createUniqueMemberIndex()
+      val term1                = Term(1)
+      val index1               = LogEntryIndex(1)
+      val index2               = LogEntryIndex(2)
+      val logEntries = Seq(
+        LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
+        LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
+      )
+      val log = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
+      setState(follower, Follower, createFollowerData(term1, log))
+
+      follower ! RequestVote(shardId, term1, candidateMemberIndex, lastLogIndex = index1, lastLogTerm = term1)
+      expectMsg(RequestVoteDenied(term1))
+      getState(follower).stateData.currentTerm should be(term1)
+    }
+
+    "deny RequestVote from a Candidate which has the newer term if lastLogIndex is older than own even if the request has the same lastLogTerm" in {
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val follower = createRaftActor(
@@ -107,6 +154,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
 
       follower ! RequestVote(shardId, term2, candidateMemberIndex, lastLogIndex = index1, lastLogTerm = term1)
       expectMsg(RequestVoteDenied(term2))
+      getState(follower).stateData.currentTerm should be(term2)
     }
 
     "deny RequestVote if lastLogTerm is older than own even if the request has newer lastLogIndex than own" in {
@@ -438,6 +486,40 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
         logEntries,
       )
       expectMsg(AppendEntriesFailed(term1, followerMemberIndex))
+    }
+
+    "agree to a term if it receives AppendEntries which includes log entries that cannot be merged and newer Term" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val index1            = LogEntryIndex(1)
+      val index2            = LogEntryIndex(2)
+      val index3            = LogEntryIndex(3)
+      val index4            = LogEntryIndex(4)
+      val selfTerm          = Term(1)
+      val leaderTerm        = selfTerm.next()
+      val followerLogEntries = Seq(
+        LogEntry(index1, EntityEvent(Option(entityId), "a"), selfTerm),
+        LogEntry(index2, EntityEvent(Option(entityId), "b"), selfTerm),
+        LogEntry(index3, EntityEvent(Option(entityId), "c"), selfTerm),
+      )
+      val appendLogEntries = Seq(
+        LogEntry(index4, EntityEvent(Option(entityId), "e"), leaderTerm),
+      )
+      val log = ReplicatedLog().merge(followerLogEntries, LogEntryIndex.initial())
+      setState(follower, Follower, createFollowerData(selfTerm, log))
+
+      follower ! createAppendEntries(shardId, leaderTerm, leaderMemberIndex, index3, leaderTerm, appendLogEntries)
+      expectMsg(AppendEntriesFailed(leaderTerm, followerMemberIndex))
+
+      val state = getState(follower)
+      state.stateName should be(Follower)
+      state.stateData.currentTerm should be(leaderTerm)
+      state.stateData.leaderMember should contain(leaderMemberIndex)
     }
 
     "leaderCommit > commitIndex となる場合、 commitIndex に min(leaderCommit, 新規エントリの最後のインデックス) を設定" in {

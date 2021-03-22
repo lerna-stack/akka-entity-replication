@@ -72,10 +72,8 @@ trait FollowerData { self: RaftMemberData =>
     updatePersistentState(currentTerm = term, votedFor = Some(candidate))
   }
 
-  def appendEntries(term: Term, logEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): RaftMemberData = {
-    require(term >= currentTerm, s"should be term:$term >= currentTerm:$currentTerm")
+  def appendEntries(logEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): RaftMemberData = {
     updatePersistentState(
-      currentTerm = term,
       replicatedLog = replicatedLog.merge(logEntries, prevLogIndex),
     )
   }
@@ -277,7 +275,7 @@ trait RaftMemberData
     replicatedLog.sliceEntries(from, to = lastApplied).filter(_.event.entityId.contains(entityId))
   }
 
-  def alreadyVotedOthers(candidate: MemberIndex): Boolean = votedFor.fold(ifEmpty = false)(candidate != _)
+  def alreadyVotedOthers(candidate: MemberIndex): Boolean = votedFor.exists(candidate != _)
 
   def hasMatchLogEntry(prevLogIndex: LogEntryIndex, prevLogTerm: Term): Boolean = {
     // リーダーにログが無い場合は LogEntryIndex.initial が送られてくる。

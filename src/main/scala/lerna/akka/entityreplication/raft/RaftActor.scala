@@ -183,7 +183,8 @@ class RaftActor(
         currentData.syncTerm(term)
       case AppendedEntries(term, logEntries, prevLogIndex) =>
         currentData
-          .appendEntries(term, logEntries, prevLogIndex)
+          .syncTerm(term)
+          .appendEntries(logEntries, prevLogIndex)
       case AppendedEvent(event) =>
         currentData
           .appendEvent(event)
@@ -435,6 +436,18 @@ class RaftActor(
             ),
           )
         }
+
+      case response: SnapshotSyncManager.SyncSnapshotAlreadySucceeded =>
+        region ! ReplicationRegion.DeliverTo(
+          response.srcMemberIndex,
+          InstallSnapshotSucceeded(
+            shardId,
+            currentData.currentTerm,
+            currentData.replicatedLog.lastLogIndex,
+            selfMemberIndex,
+          ),
+        )
+
       case _: SnapshotSyncManager.SyncSnapshotFailed => // ignore
     }
 

@@ -2,11 +2,9 @@ package lerna.akka.entityreplication.raft.snapshot.sync
 
 import akka.Done
 import akka.actor.Status
-import akka.actor.{ Actor, ActorRef, ActorSystem, Props }
-import akka.persistence.{ PersistentActor, RuntimePluginConfig }
+import akka.actor.{ ActorRef, ActorSystem }
 import akka.persistence.inmemory.extension.{ InMemoryJournalStorage, InMemorySnapshotStorage, StorageExtension }
 import akka.testkit.{ TestKit, TestProbe }
-import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ClusterReplicationSettings
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.ActorSpec
@@ -19,50 +17,13 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
   EntityState,
 }
 import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, SnapshotProtocol }
+import lerna.akka.entityreplication.util.EventStore
 import org.scalatest.Inspectors._
 import org.scalatest.BeforeAndAfterEach
 
 import java.util.concurrent.atomic.AtomicInteger
 
-object SnapshotSyncManagerSpec {
-
-  object EventStore {
-    def props(settings: ClusterReplicationSettings): Props = Props(new EventStore(settings))
-    final case class PersistEvents(events: Seq[Any])
-  }
-
-  class EventStore(settings: ClusterReplicationSettings) extends PersistentActor with RuntimePluginConfig {
-    import EventStore._
-
-    override def journalPluginId: String = settings.raftSettings.journalPluginId
-
-    override def journalPluginConfig: Config = settings.raftSettings.journalPluginAdditionalConfig
-
-    override def snapshotPluginId: String = settings.raftSettings.snapshotStorePluginId
-
-    override def snapshotPluginConfig: Config = ConfigFactory.empty()
-
-    override def persistenceId: String = getClass.getCanonicalName
-
-    override def receiveRecover: Receive = Actor.emptyBehavior
-
-    private[this] var persisting: Int = 0
-
-    override def receiveCommand: Receive = {
-      case cmd: PersistEvents =>
-        persisting = cmd.events.size
-        persistAll(cmd.events.toVector) { _ =>
-          persisting -= 1
-          if (persisting == 0) {
-            sender() ! Done
-          }
-        }
-    }
-  }
-}
-
 class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with BeforeAndAfterEach {
-  import SnapshotSyncManagerSpec._
 
   private[this] val settings = ClusterReplicationSettings(system)
 
@@ -192,11 +153,62 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
           dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
           replyTo = testActor,
         )
-        expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
+        expectMsg(SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex2, srcMemberIndex))
         forAtLeast(min = 1, fetchSnapshots(entityIds, dstSnapshotStore)) { snapshot =>
           snapshot.state.underlying should be("state-1-1")
         }
       }
+    }
+
+    "respond SyncSnapshotAlreadySucceeded if the dst snapshot has already synchronized to src snapshot" in {
+      /* prepare */
+      val dstSnapshotTerm     = Term(1)
+      val dstSnapshotLogIndex = LogEntryIndex(1)
+      val dstSnapshots = Set(
+        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
+      )
+      saveSnapshots(dstSnapshots, dstSnapshotStore)
+
+      val srcSnapshotTerm     = Term(1)
+      val srcSnapshotLogIndex = LogEntryIndex(3)
+      val srcSnapshots = Set(
+        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), srcSnapshotLogIndex), EntityState("state-1-3")),
+        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("2"), srcSnapshotLogIndex), EntityState("state-2-3")),
+        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex), EntityState("state-3-3")),
+      )
+      val entityIds = srcSnapshots.map(_.metadata.entityId)
+      saveSnapshots(srcSnapshots, srcSnapshotStore)
+      persistEvents(
+        CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, LogEntryIndex(1), entityIds),
+        CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex, entityIds),
+      )
+
+      /* check */
+      awaitAssert { // Persistent events may not be retrieved immediately
+        createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
+          srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
+          srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
+          dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
+          dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
+          replyTo = testActor,
+        )
+        expectMsgType[SnapshotSyncManager.Response] should be(
+          SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex),
+        )
+      }
+      val snapshotSyncManager = watch(createSnapshotSyncManager())
+      snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
+        // dst snapshot status will be synchronized to src status
+        srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
+        srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
+        dstLatestSnapshotLastLogTerm = srcSnapshotTerm,
+        dstLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
+        replyTo = testActor,
+      )
+      expectMsgType[SnapshotSyncManager.Response] should be(
+        SnapshotSyncManager.SyncSnapshotAlreadySucceeded(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex),
+      )
+      expectTerminated(snapshotSyncManager)
     }
 
     "stop after snapshot synchronization is succeeded" in {
