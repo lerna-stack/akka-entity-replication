@@ -1,10 +1,19 @@
 package lerna.akka.entityreplication.raft
 
-import akka.actor.ActorSystem
-import akka.testkit.TestKit
-import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId }
+import akka.Done
+import akka.actor.{ ActorRef, ActorSystem }
+import akka.testkit.{ TestKit, TestProbe }
+import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion }
+import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
+import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
+  EntitySnapshot,
+  EntitySnapshotMetadata,
+  EntityState,
+}
+import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, SnapshotProtocol }
+import lerna.akka.entityreplication.util.EventStore
 
 class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
 
@@ -264,6 +273,80 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val lastLogIndex       = LogEntryIndex.initial()
       leader ! RequestVote(shardId, term2, anotherMemberIndex, lastLogIndex, lastLogTerm = term1)
       expectMsg(RequestVoteDenied(term2))
+    }
+
+    "become a follower and synchronize snapshots if it receives InstallSnapshot" in {
+      val typeName       = TypeName.from("test")
+      val shardId        = createUniqueShardId()
+      val term1          = Term(1)
+      val term2          = term1.next()
+      val lastLogIndex   = LogEntryIndex(1)
+      val srcMemberIndex = createUniqueMemberIndex()
+      val dstMemberIndex = createUniqueMemberIndex()
+      val region         = TestProbe()
+      val snapshotStore = planAutoKill {
+        system.actorOf(
+          ShardSnapshotStore.props(typeName, settings.raftSettings, srcMemberIndex),
+          "srcSnapshotStore",
+        )
+      }
+      val leader = createRaftActor(
+        typeName = typeName,
+        shardId = shardId,
+        selfMemberIndex = dstMemberIndex,
+        shardSnapshotStore = snapshotStore,
+        region = region.ref,
+      )
+      setState(leader, Leader, createLeaderData(term1, log = ReplicatedLog()))
+
+      persistEvents(
+        CompactionCompleted(
+          srcMemberIndex,
+          shardId,
+          snapshotLastLogTerm = term2,
+          snapshotLastLogIndex = lastLogIndex,
+          entityIds = Set(NormalizedEntityId("entity-1")),
+        ),
+      )
+
+      val snapshots = Set(
+        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("entity-1"), lastLogIndex), EntityState("dummy")),
+      )
+      saveSnapshots(snapshots, snapshotStore)
+
+      val installSnapshotCommand     = InstallSnapshot(shardId, term2, srcMemberIndex, term2, lastLogIndex)
+      val expectedSuccessfulResponse = InstallSnapshotSucceeded(shardId, term2, lastLogIndex, dstMemberIndex)
+
+      awaitAssert {
+        leader ! installSnapshotCommand
+        region.expectMsgType[ReplicationRegion.DeliverTo].message should be(expectedSuccessfulResponse)
+        val state = getState(leader)
+        state.stateName should be(Follower)
+        state.stateData.currentTerm should be(term2)
+        state.stateData.lastSnapshotStatus.snapshotLastTerm should be(term2)
+        state.stateData.lastSnapshotStatus.snapshotLastLogIndex should be(lastLogIndex)
+      }
+      // InstallSnapshot is idempotent: InstallSnapshot will succeed again if it has already succeeded
+      leader ! installSnapshotCommand
+      region.expectMsgType[ReplicationRegion.DeliverTo].message should be(expectedSuccessfulResponse)
+    }
+  }
+
+  private[this] val settings = ClusterReplicationSettings(system)
+
+  private[this] val eventStore = system.actorOf(EventStore.props(settings), "eventStore")
+
+  private[this] def persistEvents(events: CompactionCompleted*): Unit = {
+    eventStore ! EventStore.PersistEvents(events)
+    expectMsg(Done)
+  }
+
+  private[this] def saveSnapshots(snapshots: Set[EntitySnapshot], snapshotStore: ActorRef): Unit = {
+    snapshots.foreach { snapshot =>
+      snapshotStore ! SnapshotProtocol.SaveSnapshot(snapshot, testActor)
+    }
+    receiveWhile(messages = snapshots.size) {
+      case _: SnapshotProtocol.SaveSnapshotSuccess => Done
     }
   }
 

@@ -35,6 +35,7 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
       otherMemberIndexes: Set[MemberIndex] = Set(),
       settings: RaftSettings = defaultRaftSettings,
       replicationActor: ActorRef = Actor.noSender,
+      typeName: TypeName = TypeName.from("dummy"),
   ): RaftTestFSMRef = {
     val replicationActorProps = Props(new Actor() {
       override def receive: Receive = {
@@ -52,7 +53,7 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
     val ref = system.actorOf(
       Props(
         new RaftActor(
-          typeName = TypeName.from("dummy"),
+          typeName,
           extractEntityId = extractEntityId,
           replicationActorProps,
           region,
@@ -63,6 +64,7 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
           maybeCommitLogStore = None,
         ) with RaftTestProbeSupport,
       ),
+      name = shardId.underlying,
     )
     awaitCond(getState(ref).stateName == Follower)
     planAutoKill(ref)
