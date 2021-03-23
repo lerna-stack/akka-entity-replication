@@ -122,6 +122,8 @@ final class ClusterReplicationSerializerSpec
               Term(8265),
             ),
           ),
+          Term(2781),
+          LogEntryIndex(12305),
         ),
         SnapshotStatus(Term(820), LogEntryIndex(9751)),
       ),

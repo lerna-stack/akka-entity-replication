@@ -785,12 +785,16 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   private def replicatedLogToProto(message: raft.model.ReplicatedLog): msg.ReplicatedLog = {
     msg.ReplicatedLog.of(
       entries = message.entries.map(logEntryToProto),
+      ancestorLastTerm = termToProto(message.ancestorLastTerm),
+      ancestorLastIndex = logEntryIndexToProto(message.ancestorLastIndex),
     )
   }
 
   private def replicatedLogFromProto(proto: msg.ReplicatedLog): raft.model.ReplicatedLog = {
     raft.model.ReplicatedLog(
       entries = proto.entries.map(logEntryFromProto),
+      ancestorLastTerm = termFromProto(proto.ancestorLastTerm),
+      ancestorLastIndex = logEntryIndexFromProto(proto.ancestorLastIndex),
     )
   }
 

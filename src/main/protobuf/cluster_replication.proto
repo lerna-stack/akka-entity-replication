@@ -224,6 +224,8 @@ message NoOp {
 
 message ReplicatedLog {
   repeated LogEntry entries = 1;
+  required Term ancestor_last_term = 2;
+  required LogEntryIndex ancestor_last_index = 3;
 }
 
 message SnapshotStatus {
