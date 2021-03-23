@@ -7,3 +7,5 @@ addSbtPlugin("com.typesafe.sbt" % "sbt-multi-jvm" % "0.4.0")
 addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.9.25")
 
 addSbtPlugin("org.scoverage" % "sbt-scoverage" % "1.6.1")
+
+addSbtPlugin("com.typesafe.sbt" % "sbt-site" % "1.4.1")

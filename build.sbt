@@ -6,7 +6,10 @@ lazy val akkaVersion           = "2.6.12"
 lazy val akkaProjectionVersion = "1.0.0"
 
 lazy val lerna = (project in file("."))
-  .enablePlugins(MultiJvmPlugin)
+  .enablePlugins(
+    MultiJvmPlugin,
+    SiteScaladocPlugin,
+  )
   .configs(MultiJvm)
   .settings(
     inThisBuild(
