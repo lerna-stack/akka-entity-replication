@@ -48,6 +48,10 @@ For more information on how to implement an application using this library, plea
 - [Implementation Guide](docs/implementation_guide.md)
 - [Testing Guide](docs/testing_guide.md)
 
+## For Contributors
+
+[CONTRIBUTING](CONTRIBUTING.md) may help us.
+
 ## License
 
 akka-entity-replication is released under the terms of the [Apache License Version 2.0](./LICENSE).
