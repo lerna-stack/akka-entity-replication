@@ -9,6 +9,7 @@ lazy val lerna = (project in file("."))
   .enablePlugins(
     MultiJvmPlugin,
     SiteScaladocPlugin,
+    GhpagesPlugin,
   )
   .configs(MultiJvm)
   .settings(
@@ -67,6 +68,7 @@ lazy val lerna = (project in file("."))
     ),
     // doc
     Compile / doc / autoAPIMappings := true,
+    git.remoteRepo := "git@github.com:lerna-stack/akka-entity-replication.git",
     // test-coverage
     coverageMinimum := 80,
     coverageFailOnMinimum := true,
