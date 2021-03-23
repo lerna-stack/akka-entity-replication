@@ -62,6 +62,8 @@ lazy val lerna = (project in file("."))
           ),
       ),
     ),
+    // doc
+    Compile / doc / autoAPIMappings := true,
     // test-coverage
     coverageMinimum := 80,
     coverageFailOnMinimum := true,
