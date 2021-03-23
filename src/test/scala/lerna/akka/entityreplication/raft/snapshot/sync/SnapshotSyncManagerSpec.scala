@@ -431,7 +431,9 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       snapshotStore ! SnapshotProtocol.FetchSnapshot(entityId, testActor)
     }
     receiveWhile(messages = entityIds.size) {
-      case resp: SnapshotProtocol.SnapshotFound => resp.snapshot
+      case resp: SnapshotProtocol.FetchSnapshotResponse => resp
+    }.collect {
+      case res: SnapshotProtocol.SnapshotFound => res.snapshot
     }.toSet
   }
 }
