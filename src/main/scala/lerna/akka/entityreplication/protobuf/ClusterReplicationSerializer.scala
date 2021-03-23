@@ -707,22 +707,26 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
 
   private def normalizedEntityIdToProto(message: model.NormalizedEntityId): msg.NormalizedEntityId = {
     msg.NormalizedEntityId.of(
-      underlying = message.raw,
+      underlying = message.underlying,
     )
   }
 
   private def normalizedEntityIdFromProto(proto: msg.NormalizedEntityId): model.NormalizedEntityId = {
-    model.NormalizedEntityId.from(proto.underlying)
+    model.NormalizedEntityId.fromEncodedValue(
+      encodedEntityId = proto.underlying,
+    )
   }
 
   private def normalizedShardIdToProto(message: model.NormalizedShardId): msg.NormalizedShardId = {
     msg.NormalizedShardId.of(
-      underlying = message.raw,
+      underlying = message.underlying,
     )
   }
 
   private def normalizedShardIdFromProto(proto: msg.NormalizedShardId): model.NormalizedShardId = {
-    model.NormalizedShardId.from(proto.underlying)
+    model.NormalizedShardId.fromEncodedValue(
+      encodedShardId = proto.underlying,
+    )
   }
 
   // ===
@@ -830,13 +834,13 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
 
   private def memberIndexToProto(message: raft.routing.MemberIndex): msg.MemberIndex = {
     msg.MemberIndex.of(
-      role = message.rawRole,
+      role = message.role,
     )
   }
 
   private def memberIndexFromProto(proto: msg.MemberIndex): raft.routing.MemberIndex = {
-    raft.routing.MemberIndex(
-      role = proto.role,
+    raft.routing.MemberIndex.fromEncodedValue(
+      encodedRole = proto.role,
     )
   }
 
