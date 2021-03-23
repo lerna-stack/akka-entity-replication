@@ -6,7 +6,11 @@ lazy val akkaVersion           = "2.6.12"
 lazy val akkaProjectionVersion = "1.0.0"
 
 lazy val lerna = (project in file("."))
-  .enablePlugins(MultiJvmPlugin)
+  .enablePlugins(
+    MultiJvmPlugin,
+    SiteScaladocPlugin,
+    GhpagesPlugin,
+  )
   .configs(MultiJvm)
   .settings(
     inThisBuild(
@@ -62,6 +66,9 @@ lazy val lerna = (project in file("."))
           ),
       ),
     ),
+    // doc
+    Compile / doc / autoAPIMappings := true,
+    git.remoteRepo := "git@github.com:lerna-stack/akka-entity-replication.git",
     // test-coverage
     coverageMinimum := 80,
     coverageFailOnMinimum := true,
