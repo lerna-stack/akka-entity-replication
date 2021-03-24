@@ -185,6 +185,19 @@ message Offset {
   required Payload underlying = 1;
 }
 
+message NoOffset {
+  // empty
+}
+
+message Sequence {
+  required int64 value = 1;
+}
+
+message TimeBasedUUID {
+  required int64 most_sig_bits = 1;
+  required int64 least_sig_bits = 2;
+}
+
 
 // ===
 // model

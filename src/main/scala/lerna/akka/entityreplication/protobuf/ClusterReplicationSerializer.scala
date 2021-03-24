@@ -1,14 +1,13 @@
 package lerna.akka.entityreplication.protobuf
 
 import akka.actor.ExtendedActorSystem
-import akka.persistence.query.Offset
+import akka.persistence.query.{ NoOffset, Offset, Sequence, TimeBasedUUID }
 import akka.serialization.{ BaseSerializer, SerializationExtension, SerializerWithStringManifest, Serializers }
 import com.google.protobuf.ByteString
-import lerna.akka.entityreplication.ClusterReplicationSerializable
-import lerna.akka.entityreplication.model
-import lerna.akka.entityreplication.raft
+import lerna.akka.entityreplication.{ model, raft, ClusterReplicationSerializable }
 
 import java.io.NotSerializableException
+import java.util.UUID
 import scala.collection.immutable.HashMap
 
 private[entityreplication] final class ClusterReplicationSerializer(val system: ExtendedActorSystem)
@@ -48,6 +47,9 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   // raft.snapshot.sync
   private val SyncCompletedManifest = "EA"
   private val SyncProgressManifest  = "EB"
+  private val NoOffsetManifest      = "EC"
+  private val SequenceManifest      = "ED"
+  private val TimeBasedUUIDManifest = "EE"
   // raft.model
   private val NoOpManifest = "FA"
 
@@ -83,6 +85,9 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     // raft.snapshot.sync
     SyncCompletedManifest -> syncCompletedFromBinary,
     SyncProgressManifest  -> syncProgressFromBinary,
+    NoOffsetManifest      -> noOffsetEnvelopeFromBinary,
+    SequenceManifest      -> sequenceEnvelopeFromBinary,
+    TimeBasedUUIDManifest -> timeBasedUUIDEnvelopeFromBinary,
     // raft.model
     NoOpManifest -> noOpFromBinary,
   )
@@ -146,6 +151,9 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     // raft.snapshot.sync
     case _: raft.snapshot.sync.SnapshotSyncManager.SyncCompleted => SyncCompletedManifest
     case _: raft.snapshot.sync.SnapshotSyncManager.SyncProgress  => SyncProgressManifest
+    case _: NoOffsetEnvelope.type                                => NoOffsetManifest
+    case _: SequenceEnvelope                                     => SequenceManifest
+    case _: TimeBasedUUIDEnvelope                                => TimeBasedUUIDManifest
     // raft.model
     case _: raft.model.NoOp.type => NoOpManifest
   }
@@ -181,6 +189,9 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     // raft.snapshot.sync
     case m: raft.snapshot.sync.SnapshotSyncManager.SyncCompleted => syncCompletedToBinary(m)
     case m: raft.snapshot.sync.SnapshotSyncManager.SyncProgress  => syncProgressToBinary(m)
+    case m: NoOffsetEnvelope.type                                => noOffsetEnvelopeToBinary(m)
+    case m: SequenceEnvelope                                     => sequenceEnvelopeToBinary(m)
+    case m: TimeBasedUUIDEnvelope                                => timeBasedUUIDEnvelopeToBinary(m)
     // raft.model
     case m: raft.model.NoOp.type => noOpToBinary(m)
   }
@@ -684,21 +695,83 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   }
 
   private def offsetToProto(message: Offset): msg.Offset = {
-    // Use a serializer defined in akka.persistence.query
-    msg.Offset.of(
-      underlying = payloadToProto(message),
-    )
+    val payload = message match {
+      case NoOffset =>
+        payloadToProto(NoOffsetEnvelope)
+      case m: Sequence =>
+        payloadToProto(SequenceEnvelope(m))
+      case m: TimeBasedUUID =>
+        payloadToProto(TimeBasedUUIDEnvelope(m))
+      case _ =>
+        throw new IllegalArgumentException(
+          s"Can't serialize object of type ${message.getClass} in [${getClass.getName}]",
+        )
+    }
+    msg.Offset.of(payload)
   }
 
   private def offsetFromProto(proto: msg.Offset): Offset = {
-    // Use a serializer defined in akka.persistence.query
     payloadFromProto(proto.underlying) match {
-      case offset: Offset => offset
+      case NoOffsetEnvelope =>
+        NoOffset
+      case m: SequenceEnvelope =>
+        m.underlying
+      case m: TimeBasedUUIDEnvelope =>
+        m.underlying
       case _ =>
         throw new NotSerializableException(
           s"Unexpected deserialization of Offset in [${getClass.getName}]",
         )
     }
+  }
+
+  private def noOffsetEnvelopeToBinary(message: NoOffsetEnvelope.type): Array[Byte] = {
+    // Use a consistent style for the future even if the NoOffsetEnvelope has no fields.
+    msg.NoOffset.of().toByteArray
+  }
+
+  private def noOffsetEnvelopeFromBinary(bytes: Array[Byte]): NoOffsetEnvelope.type = {
+    // Use a consistent style for the future even if the NoOffsetEnvelope has no fields.
+    val _ = msg.NoOffset.parseFrom(bytes)
+    NoOffsetEnvelope
+  }
+
+  private def sequenceEnvelopeToBinary(message: SequenceEnvelope): Array[Byte] = {
+    msg.Sequence
+      .of(
+        value = message.underlying.value,
+      ).toByteArray
+  }
+
+  private def sequenceEnvelopeFromBinary(bytes: Array[Byte]): SequenceEnvelope = {
+    val proto = msg.Sequence.parseFrom(bytes)
+    SequenceEnvelope(
+      underlying = Sequence(value = proto.value),
+    )
+  }
+
+  private def timeBasedUUIDEnvelopeToBinary(message: TimeBasedUUIDEnvelope): Array[Byte] = {
+    msg.TimeBasedUUID
+      .of(
+        mostSigBits = message.underlying.value.getMostSignificantBits,
+        leastSigBits = message.underlying.value.getLeastSignificantBits,
+      ).toByteArray
+  }
+
+  private def timeBasedUUIDEnvelopeFromBinary(bytes: Array[Byte]): TimeBasedUUIDEnvelope = {
+    val proto = msg.TimeBasedUUID.parseFrom(bytes)
+    val uuid =
+      try {
+        new UUID(proto.mostSigBits, proto.leastSigBits)
+      } catch {
+        case e: IllegalArgumentException =>
+          throw new NotSerializableException(
+            s"Unexpected deserialization of ${proto.getClass.getName} UUID(msb=${proto.mostSigBits},lsb=${proto.leastSigBits}) in [${getClass.getName}]",
+          )
+      }
+    TimeBasedUUIDEnvelope(
+      underlying = TimeBasedUUID(value = uuid),
+    )
   }
 
   // ===
