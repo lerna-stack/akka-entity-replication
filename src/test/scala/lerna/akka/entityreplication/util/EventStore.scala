@@ -29,6 +29,8 @@ class EventStore(settings: ClusterReplicationSettings) extends PersistentActor w
   private[this] var persisting: Int = 0
 
   override def receiveCommand: Receive = {
+    case cmd: PersistEvents if cmd.events.isEmpty =>
+      sender() ! Done
     case cmd: PersistEvents =>
       persisting = cmd.events.size
       persistAll(cmd.events.toVector) { _ =>
