@@ -1,5 +1,7 @@
 package lerna.akka.entityreplication
 
+import akka.Done
+
 import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ Actor, ActorRef, ActorSelection, DiagnosticActorLogging, Props, RootActorPath, Terminated }
 import akka.remote.testconductor.RoleName
@@ -12,6 +14,7 @@ import lerna.akka.entityreplication.raft.RaftProtocol.Command
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
+import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 import scala.concurrent.duration._
 
@@ -296,6 +299,8 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
         clusterReplication ! Cmd(entityId)
         clusterReplication ! GetStatusWithEnsuringConsistency(entityId)
         expectMsg(Status(3))
+        // wait for the compaction to finish
+        akka.pattern.after(3.second)(Future.successful(Done)).await
       }
       enterBarrier("status replicated")
       runOn(node1, node2, node3) {

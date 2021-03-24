@@ -124,6 +124,39 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       updatedLog.last should be(LogEntry(LogEntryIndex(1), EntityEvent(Some(entityId), SomeEvent), term))
     }
 
+    "return the term corresponding to the LogEntryIndex if termAt is called" in {
+      val logEntries = Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, "b"), Term(2)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, "c"), Term(3)),
+      )
+      val log = new ReplicatedLog(logEntries)
+
+      log.termAt(LogEntryIndex(3)) should contain(Term(3))
+    }
+
+    "return the initial term if termAt is passed the initial LogEntryIndex" in {
+      val logEntries = Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, "b"), Term(2)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, "c"), Term(3)),
+      )
+      val log = new ReplicatedLog(logEntries)
+
+      log.termAt(LogEntryIndex.initial()) should contain(Term.initial())
+    }
+
+    "return the ancestorLastTerm if termAt is passed ancestorLastIndex after reset" in {
+      val logEntries = Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, "b"), Term(2)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, "c"), Term(3)),
+      )
+      val log = new ReplicatedLog(logEntries).reset(ancestorLastTerm = Term(4), ancestorLastIndex = LogEntryIndex(10))
+
+      log.termAt(LogEntryIndex(10)) should contain(Term(4))
+    }
+
     "イベントログの prevLogIndex が一致する部分以降がマージされる（単純追加）" in {
 
       val followerLog = Seq(

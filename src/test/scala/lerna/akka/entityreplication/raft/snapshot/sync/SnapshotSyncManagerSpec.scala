@@ -1,8 +1,7 @@
 package lerna.akka.entityreplication.raft.snapshot.sync
 
 import akka.Done
-import akka.actor.Status
-import akka.actor.{ ActorRef, ActorSystem }
+import akka.actor.{ ActorRef, ActorSystem, Status }
 import akka.persistence.inmemory.extension.{ InMemoryJournalStorage, InMemorySnapshotStorage, StorageExtension }
 import akka.testkit.{ TestKit, TestProbe }
 import lerna.akka.entityreplication.ClusterReplicationSettings
@@ -247,6 +246,28 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       expectTerminated(snapshotSyncManager)
     }
 
+    "abort synchronizing if it couldn't fetch CompactionCompleted events" in {
+      /* prepare */
+      val dstSnapshotTerm     = Term(1)
+      val dstSnapshotLogIndex = LogEntryIndex(1)
+      val srcSnapshotTerm     = Term(1)
+      val srcSnapshotLogIndex = LogEntryIndex(3)
+      persistEvents(
+        // no events
+      )
+      /* check */
+      awaitAssert { // Persistent events may not be retrieved immediately
+        createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
+          srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
+          srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
+          dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
+          dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
+          replyTo = testActor,
+        )
+        expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
+      }
+    }
+
     "abort synchronizing if it founds newer than an expected snapshot" in {
       /* prepare */
       val dstSnapshotTerm     = Term(1)
@@ -410,7 +431,9 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       snapshotStore ! SnapshotProtocol.FetchSnapshot(entityId, testActor)
     }
     receiveWhile(messages = entityIds.size) {
-      case resp: SnapshotProtocol.SnapshotFound => resp.snapshot
+      case resp: SnapshotProtocol.FetchSnapshotResponse => resp
+    }.collect {
+      case res: SnapshotProtocol.SnapshotFound => res.snapshot
     }.toSet
   }
 }
