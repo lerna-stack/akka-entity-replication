@@ -1,7 +1,6 @@
 package lerna.akka.entityreplication.raft.snapshot
 
 import java.util.concurrent.atomic.AtomicInteger
-
 import akka.actor.{ ActorRef, ActorSystem, PoisonPill }
 import akka.testkit.TestKit
 import com.typesafe.config.{ Config, ConfigFactory }
@@ -9,9 +8,10 @@ import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
+import lerna.akka.entityreplication.testkit.KryoSerializable
 
 object ShardSnapshotStoreSuccessSpec {
-  final case object DummyState
+  final case object DummyState extends KryoSerializable
 }
 
 class ShardSnapshotStoreSuccessSpec extends TestKit(ActorSystem()) with ActorSpec {

@@ -7,6 +7,7 @@ import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
+import lerna.akka.entityreplication.testkit.KryoSerializable
 
 class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
 
@@ -535,9 +536,9 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       // leaderCommit > commitIndex
       val index2       = LogEntryIndex(2)
       val leaderCommit = LogEntryIndex(3)
-      case object SomeEvent1
-      case object SomeEvent2
-      case object SomeEvent3
+      case object SomeEvent1 extends KryoSerializable
+      case object SomeEvent2 extends KryoSerializable
+      case object SomeEvent3 extends KryoSerializable
       val logEntries = Seq(
         LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), SomeEvent1), term1),
         LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), SomeEvent2), term1),
