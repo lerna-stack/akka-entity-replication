@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.protobuf
 
 import akka.actor.{ ActorSystem, ExtendedActorSystem }
-import akka.persistence.query.{ Sequence, TimeBasedUUID }
+import akka.persistence.query.{ NoOffset, Sequence, TimeBasedUUID }
 import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId }
 import lerna.akka.entityreplication.protobuf.ClusterReplicationSerializerSpec.{
@@ -233,8 +233,10 @@ final class ClusterReplicationSerializerSpec
     )
 
     //raft.snapshot.sync
+    checkSerialization(SyncCompleted(NoOffset))
     checkSerialization(SyncCompleted(Sequence(124)))
     checkSerialization(SyncCompleted(TimeBasedUUID(UUID.fromString("ed286108-8a13-11eb-8dcd-0242ac130003"))))
+    checkSerialization(SyncProgress(NoOffset))
     checkSerialization(SyncProgress(Sequence(283)))
     checkSerialization(SyncProgress(TimeBasedUUID(UUID.fromString("ed286108-8a13-11eb-8dcd-0242ac130003"))))
 
