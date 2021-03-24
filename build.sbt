@@ -46,7 +46,7 @@ lazy val lerna = (project in file("."))
         "com.typesafe.akka"  %% "akka-persistence-query"       % akkaVersion,
         "com.lightbend.akka" %% "akka-projection-core"         % akkaProjectionVersion,
         "com.lightbend.akka" %% "akka-projection-eventsourced" % akkaProjectionVersion,
-        "io.altoo"           %% "akka-kryo-serialization"      % "1.1.5",
+        "io.altoo"           %% "akka-kryo-serialization"      % "1.1.5"     % Test,
         "com.typesafe.akka"  %% "akka-slf4j"                   % akkaVersion % Test,
         "ch.qos.logback"      % "logback-classic"              % "1.2.3"     % Test,
         "org.scalatest"      %% "scalatest"                    % "3.0.9"     % Test,
@@ -72,6 +72,13 @@ lazy val lerna = (project in file("."))
     // test-coverage
     coverageMinimum := 80,
     coverageFailOnMinimum := true,
+    coverageExcludedPackages := Seq(
+        "lerna\\.akka\\.entityreplication\\.protobuf\\.msg\\..*",
+      ).mkString(";"),
+    // scalapb
+    Compile / PB.targets := Seq(
+        scalapb.gen(flatPackage = true, lenses = false, grpc = false) -> (sourceManaged in Compile).value / "scalapb",
+      ),
   )
 
 addCommandAlias(

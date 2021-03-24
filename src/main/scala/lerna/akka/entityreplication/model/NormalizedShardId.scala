@@ -8,6 +8,9 @@ object NormalizedShardId {
   def from(shardId: String): NormalizedShardId = new NormalizedShardId(URLEncoder.encode(shardId, "utf-8"))
 
   private[entityreplication] def from(path: ActorPath) = new NormalizedShardId(path.name)
+
+  private[entityreplication] def fromEncodedValue(encodedShardId: String): NormalizedShardId =
+    new NormalizedShardId(encodedShardId)
 }
 
 final case class NormalizedShardId private (underlying: String) extends AnyVal {

@@ -11,7 +11,7 @@ object LogEntryIndex {
   }
 }
 
-case class LogEntryIndex(private[model] val underlying: Long) extends Ordered[LogEntryIndex] {
+case class LogEntryIndex(private[entityreplication] val underlying: Long) extends Ordered[LogEntryIndex] {
   require(underlying >= 0)
 
   def next(): LogEntryIndex = copy(underlying + 1)

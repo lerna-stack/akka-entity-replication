@@ -1,7 +1,6 @@
 package lerna.akka.entityreplication.raft.snapshot
 
 import java.util.concurrent.atomic.AtomicInteger
-
 import akka.actor.{ ActorRef, ActorSystem }
 import akka.testkit.TestKit
 import com.typesafe.config.{ Config, ConfigFactory }
@@ -11,6 +10,7 @@ import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.ShardSnapshotStoreFailureSpecBase._
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
+import lerna.akka.entityreplication.testkit.KryoSerializable
 
 // snapshot-store のスタブを利用して snapshot の読み込みを失敗させる
 class ShardSnapshotStoreLoadingFailureSpec
@@ -53,7 +53,7 @@ class ShardSnapshotStoreSavingFailureSpec
 }
 
 object ShardSnapshotStoreFailureSpecBase {
-  final case object DummyState
+  final case object DummyState extends KryoSerializable
 }
 
 abstract class ShardSnapshotStoreFailureSpecBase(config: Config)

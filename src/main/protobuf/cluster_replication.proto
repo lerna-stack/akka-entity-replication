@@ -1,0 +1,271 @@
+// Style Guide
+// https://developers.google.com/protocol-buffers/docs/style
+
+syntax = "proto2";
+
+package lerna.akka.entityreplication.protobuf.msg;
+option optimize_for = SPEED;
+
+
+// ===
+// raft
+// ===
+
+message BegunNewTerm {
+  required Term term = 1;
+}
+
+message Voted {
+  required Term term = 1;
+  required MemberIndex candidate = 2;
+}
+
+message DetectedNewTerm {
+  required Term term = 1;
+}
+
+message AppendedEntries {
+  required Term term = 1;
+  repeated LogEntry log_entries = 2;
+  required LogEntryIndex prev_log_index = 3;
+}
+
+message AppendedEvent {
+  required EntityEvent event = 1;
+}
+
+message CompactionCompleted {
+  required MemberIndex member_index = 1;
+  required NormalizedShardId shard_id = 2;
+  required Term snapshot_last_log_term = 3;
+  required LogEntryIndex snapshot_last_log_index = 4;
+  repeated NormalizedEntityId entity_ids = 5;
+}
+
+message SnapshotSyncCompleted {
+  required Term snapshot_last_log_term = 1;
+  required LogEntryIndex snapshot_last_log_index = 2;
+}
+
+message PersistentState {
+  required Term current_term = 1;
+  required ReplicatedLog replicated_log = 2;
+  required SnapshotStatus last_snapshot_status = 3;
+  optional MemberIndex voted_for = 4;
+}
+
+message Command {
+  required Payload command = 1;
+}
+
+message ForwardedCommand {
+  required Command command = 2;
+}
+
+
+// ===
+// raft.eventhandler
+// ===
+
+message CommitLogStoreInternalEvent {
+  // Empty
+}
+
+message CommitLogStoreSave {
+  required ReplicationId replication_id = 1;
+  required LogEntryIndex index = 2;
+  required Payload committed_event = 3;
+}
+
+message ReplicationId {
+  required string underlying = 1;
+}
+
+// ===
+// raft.protocol
+// ===
+
+message RequestVote {
+  required NormalizedShardId shard_id = 1;
+  required Term term = 2;
+  required MemberIndex candidate = 3;
+  required LogEntryIndex last_log_index = 4;
+  required Term last_log_term = 5;
+}
+
+message RequestVoteAccepted {
+  required Term term = 1;
+  required MemberIndex sender = 2;
+}
+
+message RequestVoteDenied {
+  required Term term = 1;
+}
+
+message AppendEntries {
+  required NormalizedShardId shard_id = 1;
+  required Term term = 2;
+  required MemberIndex leader = 3;
+  required LogEntryIndex prev_log_index = 4;
+  required Term prev_log_term  = 5;
+  repeated LogEntry entries = 6;
+  required LogEntryIndex leader_commit = 7;
+}
+
+message AppendEntriesSucceeded {
+  required Term term = 1;
+  required LogEntryIndex last_log_index = 2;
+  required MemberIndex sender = 3;
+}
+
+message AppendEntriesFailed {
+  required Term term = 1;
+  required MemberIndex sender = 2;
+}
+
+message InstallSnapshot {
+  required NormalizedShardId shard_id = 1;
+  required Term term = 2;
+  required MemberIndex src_member_index = 3;
+  required Term src_latest_snapshot_last_log_term = 4;
+  required LogEntryIndex src_latest_snapshot_last_log_log_index = 5;
+}
+
+message InstallSnapshotSucceeded {
+  required NormalizedShardId shard_id = 1;
+  required Term term = 2;
+  required LogEntryIndex dst_latest_snapshot_last_log_log_index = 3;
+  required MemberIndex sender = 4;
+}
+
+message SuspendEntity {
+  required NormalizedShardId shard_id = 1;
+  required NormalizedEntityId entity_id = 2;
+  required Payload stop_message = 3;
+}
+
+message TryCreateEntity {
+  required NormalizedShardId shard_id = 1;
+  required NormalizedEntityId entity_id = 2;
+}
+
+
+// ===
+// raft.snapshot
+// ===
+
+message EntitySnapshot {
+  required EntitySnapshotMetadata metadata = 1;
+  required EntityState state = 2;
+}
+
+message EntitySnapshotMetadata {
+  required NormalizedEntityId entity_id = 1;
+  required LogEntryIndex log_entry_index = 2;
+}
+
+message EntityState {
+  required Payload underlying = 1;
+}
+
+
+// ===
+// raft.snapshot.sync
+// ===
+
+message SyncCompleted {
+  required Offset offset = 1;
+}
+
+message SyncProgress {
+  required Offset offset = 1;
+}
+
+message Offset {
+  required Payload underlying = 1;
+}
+
+message NoOffset {
+  // empty
+}
+
+message Sequence {
+  required int64 value = 1;
+}
+
+message TimeBasedUUID {
+  required int64 most_sig_bits = 1;
+  required int64 least_sig_bits = 2;
+}
+
+
+// ===
+// model
+// ===
+
+message NormalizedEntityId {
+  required string underlying = 1;
+}
+
+message NormalizedShardId {
+  required string underlying = 1;
+}
+
+
+// ===
+// raft.model
+// ===
+
+message EntityEvent {
+  required Payload event = 1;
+  optional NormalizedEntityId entity_id = 2;
+}
+
+message LogEntry {
+  required LogEntryIndex index = 1;
+  required EntityEvent event = 2;
+  required Term term = 3;
+}
+
+message LogEntryIndex {
+  required int64 underlying = 1;
+}
+
+message NoOp {
+  // Empty
+}
+
+message ReplicatedLog {
+  repeated LogEntry entries = 1;
+  required Term ancestor_last_term = 2;
+  required LogEntryIndex ancestor_last_index = 3;
+}
+
+message SnapshotStatus {
+  required Term snapshot_last_term = 1;
+  required LogEntryIndex snapshot_last_log_index = 2;
+}
+
+message Term {
+  required int64 term = 1;
+}
+
+
+// ===
+// raft.routing
+// ===
+
+message MemberIndex {
+  required string role = 1;
+}
+
+
+// ===
+// payload
+// ===
+
+message Payload {
+  required bytes enclosed_message = 1;
+  required int32 serializer_id = 2;
+  optional bytes message_manifest = 3;
+}
