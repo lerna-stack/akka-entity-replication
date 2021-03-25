@@ -366,10 +366,6 @@ lerna.akka.entityreplication.raft.eventhandler {
       // Absolute path to the journal plugin configuration entry.
       // The journal stores Raft-committed events.
       journal.plugin = ""
-
-      // Absolute path to the query plugin configuration entry.
-      // The query is used by Raft EventHandler.
-      query.plugin = ""
     }
 }
 ```
@@ -388,7 +384,6 @@ lerna.akka.entityreplication.raft.persistence {
 // Query side persistence plugin settings
 lerna.akka.entityreplication.raft.eventhandler.persistence {
     journal.plugin  = ""
-    query.plugin    = ""
 }
 ```
 
