@@ -351,3 +351,28 @@ The data durability required by the command side, and the query side is differen
 The command side is more durable because the data is replicated by the Raft protocol. However, it is recommended to maintain durability using the data store because this extension does not currently have sufficient recovery capabilities in case of data loss. This recommendation may be changed in a future release.
 
 The query side data is not replicated like the command side data, so the data store should ensure durability. Otherwise, the query side may fail to update data.
+
+## Serializer Configuration
+
+Commands, events, and states should be serializable.
+You have to configure a serializer that serializes these instances.
+akka-entity-replication uses the serialization mechanism in *Akka*.
+Therefore, you can configure a serializer of commands, events, and states in `application.conf` like below.
+
+```hocon
+akka {
+  actor {
+    serializers {
+      jackson-json = "akka.serialization.jackson.JacksonJsonSerializer"
+    }
+    serialization-bindings {
+      "BankAccountActor.Command" = jackson-json
+      "BankAccountActor.DomainEvent" = jackson-json
+      "BankAccountActor.Account" = jackson-json
+    }
+  }
+}
+```
+
+Although the above example configuration uses [Jackson](https://github.com/FasterXML/jackson) as the serializer, you can use your favorite serializer.
+For more details, See [Serialization](https://doc.akka.io/docs/akka/current/serialization.html).
