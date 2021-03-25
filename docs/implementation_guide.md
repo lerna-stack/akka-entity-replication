@@ -288,9 +288,10 @@ akka-entity-replication.eventsourced.persistence.cassandra.journal {
 }
 ```
 
-To update a read model, implement Handler with [Akka Projection](https://doc.akka.io/docs/akka-projection/1.0.0/overview.html). It can read tagged events and update the read model.
+To update a read model, implement Handler with [Akka Projection](https://doc.akka.io/docs/akka-projection/1.1.0/overview.html). It can read tagged events and update the read model.
+Using Akka Projection requires adding dependencies to your project first. For more details, see [Akka Projection official document](https://doc.akka.io/docs/akka-projection/1.1.0/overview.html).
 
-In the case of [SlickHandler](https://doc.akka.io/docs/akka-projection/1.0.0/slick.html), it will be as follows.
+In the case of [SlickHandler](https://doc.akka.io/docs/akka-projection/1.1.0/slick.html), it will be as follows.
 
 ```scala
 class EventHandler(actions: StatisticsActions) extends SlickHandler[EventEnvelope[Event]] {
@@ -343,7 +344,7 @@ object EventHandler {
 `ProjectionId` is used to identify an offset in data store. You can set an arbitrary value however you cannot change the value easily after run the projection.
 
 ### Tips
-- If you want to use Handler and Projection other than Slick, please refer to [the official Akka documentation](https://doc.akka.io/docs/akka-projection/1.0.0/overview.html).
+- If you want to use Handler and Projection other than Slick, please refer to [the official Akka documentation](https://doc.akka.io/docs/akka-projection/1.1.0/overview.html).
 - Akka projection requires typed ActorSystem.
     - Conversion from classic ActorSystem to typed ActorSystem is possible with `import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps` and `system.toTyped` (see also: [Coexistence - Akka Documentation](https://doc.akka.io/docs/akka/2.6/typed/coexisting.html#classic-to-typed)).
 
