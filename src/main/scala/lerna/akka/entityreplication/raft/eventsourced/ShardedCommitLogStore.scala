@@ -3,13 +3,14 @@ package lerna.akka.entityreplication.raft.eventsourced
 import akka.actor.{ ActorSystem, Scheduler }
 import akka.pattern.ask
 import akka.util.Timeout
+import lerna.akka.entityreplication.model.TypeName
 import lerna.akka.entityreplication.raft.eventsourced.CommitLogStore.ReplicationId
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 
 import scala.jdk.DurationConverters._
 import scala.concurrent.duration.FiniteDuration
 
-class ShardedCommitLogStore(typeName: String, system: ActorSystem) extends CommitLogStore {
+class ShardedCommitLogStore(typeName: TypeName, system: ActorSystem) extends CommitLogStore {
   import system.dispatcher
   private implicit val scheduler: Scheduler = system.scheduler
 

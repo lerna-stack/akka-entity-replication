@@ -159,7 +159,8 @@ class RaftActor(
     }
   }
 
-  override val persistenceId: String = s"raft-${typeName.underlying}-${shardId.underlying}-${selfMemberIndex.role}"
+  override val persistenceId: String =
+    ActorIds.persistenceId("raft", typeName.underlying, shardId.underlying, selfMemberIndex.role)
 
   override def journalPluginId: String = settings.journalPluginId
 
@@ -169,7 +170,7 @@ class RaftActor(
 
   override def snapshotPluginConfig: Config = ConfigFactory.empty()
 
-  private[this] def replicationId = s"${typeName.underlying}-${shardId.underlying}"
+  private[this] def replicationId = shardId.underlying
 
   val numberOfMembers: Int = settings.replicationFactor
 

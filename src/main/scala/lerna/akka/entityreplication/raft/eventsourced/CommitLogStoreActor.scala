@@ -5,8 +5,13 @@ import akka.actor.{ ActorRef, ActorSystem, Props }
 import akka.cluster.sharding.ShardRegion.HashCodeMessageExtractor
 import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings }
 import akka.persistence.{ PersistentActor, RecoveryCompleted }
+import akka.util.ByteString
 import lerna.akka.entityreplication.ClusterReplicationSerializable
+import lerna.akka.entityreplication.model.TypeName
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
+import lerna.akka.entityreplication.util.ActorIds
+
+import java.net.URLDecoder
 
 private[entityreplication] final case class Save(
     replicationId: CommitLogStore.ReplicationId,
@@ -16,7 +21,7 @@ private[entityreplication] final case class Save(
 
 object CommitLogStoreActor {
 
-  def startClusterSharding(typeName: String, system: ActorSystem): ActorRef = {
+  def startClusterSharding(typeName: TypeName, system: ActorSystem): ActorRef = {
     val clusterSharding         = ClusterSharding(system)
     val clusterShardingSettings = ClusterShardingSettings(system)
 
@@ -29,17 +34,17 @@ object CommitLogStoreActor {
     }
 
     clusterSharding.start(
-      typeName = s"raft-committed-event-store-$typeName",
+      typeName = s"raft-committed-event-store-${typeName.underlying}",
       entityProps = CommitLogStoreActor.props(typeName),
       settings = clusterShardingSettings,
       messageExtractor = messageExtractor,
     )
   }
 
-  private def props(typeName: String): Props = Props(new CommitLogStoreActor(typeName))
+  private def props(typeName: TypeName): Props = Props(new CommitLogStoreActor(typeName))
 }
 
-class CommitLogStoreActor(typeName: String) extends PersistentActor {
+class CommitLogStoreActor(typeName: TypeName) extends PersistentActor {
   // TODO: 複数 Raft(typeName) に対応するために typeName ごとに cassandra-journal.keyspace を分ける
   override def journalPluginId: String =
     context.system.settings.config
@@ -47,6 +52,8 @@ class CommitLogStoreActor(typeName: String) extends PersistentActor {
 
   // TODO: Use snapshot for efficient recovery after reboot
   override def snapshotPluginId: String = "akka.persistence.no-snapshot-store"
+
+  private[this] val replicationId = URLDecoder.decode(self.path.name, ByteString.UTF_8)
 
   // state
   private[this] var currentIndex = LogEntryIndex.initial()
@@ -79,5 +86,5 @@ class CommitLogStoreActor(typeName: String) extends PersistentActor {
       }
   }
 
-  override def persistenceId: String = self.path.name
+  override def persistenceId: String = ActorIds.persistenceId("CommitLogStore", typeName.underlying, replicationId)
 }

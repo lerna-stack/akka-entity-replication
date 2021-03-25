@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication
 
 import akka.actor.{ ActorRef, ActorSystem, Props }
+import lerna.akka.entityreplication.model.TypeName
 import lerna.akka.entityreplication.raft.eventsourced.{ CommitLogStore, ShardedCommitLogStore }
 
 object ClusterReplication {
@@ -21,11 +22,13 @@ class ClusterReplication(system: ActorSystem) {
       extractEntityId: ReplicationRegion.ExtractEntityId,
       extractShardId: ReplicationRegion.ExtractShardId,
   ): ActorRef = {
+    val _typeName = TypeName.from(typeName)
+
     val maybeCommitLogStore: Option[CommitLogStore] = {
       // TODO: RMUの有効無効をconfigから指定
       val enabled = true // FIXME: settings から取得する (typeName ごとに切り替えられる必要あり)
       // TODO: テストのために差し替え出来るようにする
-      Option.when(enabled)(new ShardedCommitLogStore(typeName, system))
+      Option.when(enabled)(new ShardedCommitLogStore(_typeName, system))
     }
 
     system.actorOf(
