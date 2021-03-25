@@ -276,7 +276,7 @@ class BankAccountEventAdapter(system: ExtendedActorSystem) extends WriteEventAda
 The following configuration example sets `BankAccountEventAdapter` to cassandra journal plugin which used by event writer in akka-entity-replication.
 
 ```hocon
-akka-entity-replication.eventhandler.persistence.cassandra.journal {
+akka-entity-replication.eventsourced.persistence.cassandra.journal {
   // Tagging to allow some RaftActor(Shard) to handle individually committed events together(No need to change)
   event-adapters {
     bank-account-tagging = "com.example.BankAccountEventAdapter"
@@ -322,7 +322,7 @@ object EventHandler {
       EventSourcedProvider.eventsByTag[BankAccountActor.DomainEvent](
         system,
         // Note: You have to set a configuration key of *Query* Plugin, NOT Journal Plugin
-        readJournalPluginId = "akka-entity-replication.eventhandler.persistence.cassandra.query",
+        readJournalPluginId = "akka-entity-replication.eventsourced.persistence.cassandra.query",
         tag = "bank-account-transaction"
       )
     
@@ -352,7 +352,7 @@ object EventHandler {
 On the read side, there are the following settings.
 
 ```hocon
-lerna.akka.entityreplication.raft.eventhandler {
+lerna.akka.entityreplication.raft.eventsourced {
     // Settings for saving committed events from each RaftActor
     commit-log-store {
       // Retry setting to prevent events from being lost if commit-log-store(sharding) stops temporarily
@@ -382,7 +382,7 @@ lerna.akka.entityreplication.raft.persistence {
 }
 
 // Query side persistence plugin settings
-lerna.akka.entityreplication.raft.eventhandler.persistence {
+lerna.akka.entityreplication.raft.eventsourced.persistence {
     journal.plugin  = ""
 }
 ```

@@ -7,7 +7,7 @@ import lerna.akka.entityreplication.ReplicationActor.Snapshot
 import lerna.akka.entityreplication.ReplicationRegion.Msg
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, _ }
-import lerna.akka.entityreplication.raft.eventhandler.CommitLogStore
+import lerna.akka.entityreplication.raft.eventsourced.CommitLogStore
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands.{ InstallSnapshot, InstallSnapshotSucceeded }
 import lerna.akka.entityreplication.raft.routing.MemberIndex

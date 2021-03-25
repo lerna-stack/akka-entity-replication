@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication
 
 import akka.actor.{ ActorRef, ActorSystem, Props }
-import lerna.akka.entityreplication.raft.eventhandler.{ CommitLogStore, ShardedCommitLogStore }
+import lerna.akka.entityreplication.raft.eventsourced.{ CommitLogStore, ShardedCommitLogStore }
 
 object ClusterReplication {
 

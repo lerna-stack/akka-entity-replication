@@ -64,7 +64,7 @@ message ForwardedCommand {
 
 
 // ===
-// raft.eventhandler
+// raft.eventsourced
 // ===
 
 message CommitLogStoreInternalEvent {
