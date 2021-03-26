@@ -27,15 +27,25 @@ Akka ensures that the order of arrival of messages between source and destinatio
 
 To use this library, you must add a dependency into your sbt project, add the following lines to your `build.sbt` file:
 
+**Stable Release**
+
+[![Maven Central](https://img.shields.io/maven-central/v/com.lerna-stack/akka-entity-replication_2.13?color=%23005cb2&label=stable)](https://mvnrepository.com/artifact/com.lerna-stack/akka-entity-replication)
+
+```scala
+libraryDependencies += "com.lerna-stack" %% "akka-entity-replication" % "X.X.X"
+```
+
+**Unstable Release (SNAPSHOT)**
+
+[![Sonatype Nexus (Snapshots)](https://img.shields.io/nexus/s/com.lerna-stack/akka-entity-replication_2.13?color=%237B1FA2&label=unstable&server=https%3A%2F%2Foss.sonatype.org)](https://oss.sonatype.org/index.html#nexus-search;gav~com.lerna-stack~akka-entity-replication_*~~~)
+
 ```scala
 resolvers += Resolver.sonatypeRepo("snapshots")  // If you use SNAPSHOT, you need to refer to Sonatype
 
-libraryDependencies += "io.github.lerna-stack" %% "akka-entity-replication" % "0.1.0-SNAPSHOT"
+libraryDependencies += "com.lerna-stack" %% "akka-entity-replication" % "X.X.X-SNAPSHOT"
 ```
 
-[![Sonatype Nexus (Snapshots)](https://img.shields.io/nexus/s/io.github.lerna-stack/akka-entity-replication_2.13?color=%237B1FA2&label=master&server=https%3A%2F%2Foss.sonatype.org)](https://oss.sonatype.org/index.html#nexus-search;gav~io.github.lerna-stack~akka-entity-replication_*~~~)
-
-This version of akka-entity-replication depends on **Akka 2.6.x**. It has been published for Scala 2.13.
+These versions of akka-entity-replication depends on **Akka 2.6.x**. It has been published for Scala 2.13.
 
 For more information on how to implement an application using this library, please refer to the following documents.
 
