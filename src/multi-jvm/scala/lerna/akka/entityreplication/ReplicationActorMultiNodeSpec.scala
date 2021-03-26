@@ -259,7 +259,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
         }
       }
 
-      val entityId = createSeqReplicationId()
+      val entityId = createSeqEntityId()
 
       runOn(node1) {
         clusterReplication ! Ping(entityId)
@@ -288,7 +288,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
         }
       }
 
-      val entityId = createSeqReplicationId()
+      val entityId = createSeqEntityId()
 
       runOn(node1) {
         clusterReplication ! Ping(entityId)
@@ -322,7 +322,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
         }
       }
 
-      val entityId = createSeqReplicationId()
+      val entityId = createSeqEntityId()
 
       runOn(node1) {
         // 初期状態はロックされていない
@@ -345,7 +345,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
       var clusterReplication: ActorRef = null
       var raftMember: ActorRef         = null
 
-      val entityId = createSeqReplicationId()
+      val entityId = createSeqEntityId()
 
       runOn(node1, node2, node3) {
         clusterReplication = planAutoKill {
@@ -399,7 +399,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
       }
     }
 
-    val entityId = createSeqReplicationId()
+    val entityId = createSeqEntityId()
 
     runOn(node1) {
       // 初期値は 0
@@ -440,7 +440,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
     }
   }
 
-  private[this] val idGenerator                      = new AtomicInteger(0)
-  private[this] def createSeqReplicationId(): String = s"replication-${idGenerator.incrementAndGet()}"
+  private[this] val idGenerator                 = new AtomicInteger(0)
+  private[this] def createSeqEntityId(): String = s"replication-${idGenerator.incrementAndGet()}"
 
 }

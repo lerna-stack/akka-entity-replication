@@ -1,14 +1,11 @@
 package lerna.akka.entityreplication.raft.eventsourced
 
+import lerna.akka.entityreplication.model.NormalizedShardId
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
-
-object CommitLogStore {
-  type ReplicationId = String
-}
 
 trait CommitLogStore {
   private[raft] def save(
-      replicationId: CommitLogStore.ReplicationId,
+      shardId: NormalizedShardId,
       index: LogEntryIndex,
       committedEvent: Any,
   ): Unit

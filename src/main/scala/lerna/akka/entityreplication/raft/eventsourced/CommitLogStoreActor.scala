@@ -7,14 +7,14 @@ import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings }
 import akka.persistence.{ PersistentActor, RecoveryCompleted }
 import akka.util.ByteString
 import lerna.akka.entityreplication.ClusterReplicationSerializable
-import lerna.akka.entityreplication.model.TypeName
+import lerna.akka.entityreplication.model.{ NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
 import lerna.akka.entityreplication.util.ActorIds
 
 import java.net.URLDecoder
 
 private[entityreplication] final case class Save(
-    replicationId: CommitLogStore.ReplicationId,
+    shardId: NormalizedShardId,
     index: LogEntryIndex,
     committedEvent: Any,
 ) extends ClusterReplicationSerializable
@@ -28,7 +28,7 @@ object CommitLogStoreActor {
     val messageExtractor = new HashCodeMessageExtractor(maxNumberOfShards = 100) {
       override def entityId(message: Any): String =
         message match {
-          case save: Save => save.replicationId
+          case save: Save => save.shardId.underlying
           case _          => throw new RuntimeException("unknown message: " + message)
         }
     }
@@ -53,7 +53,7 @@ class CommitLogStoreActor(typeName: TypeName) extends PersistentActor {
   // TODO: Use snapshot for efficient recovery after reboot
   override def snapshotPluginId: String = "akka.persistence.no-snapshot-store"
 
-  private[this] val replicationId = URLDecoder.decode(self.path.name, ByteString.UTF_8)
+  private[this] val shardId = URLDecoder.decode(self.path.name, ByteString.UTF_8)
 
   // state
   private[this] var currentIndex = LogEntryIndex.initial()
@@ -86,5 +86,5 @@ class CommitLogStoreActor(typeName: TypeName) extends PersistentActor {
       }
   }
 
-  override def persistenceId: String = ActorIds.persistenceId("CommitLogStore", typeName.underlying, replicationId)
+  override def persistenceId: String = ActorIds.persistenceId("CommitLogStore", typeName.underlying, shardId)
 }

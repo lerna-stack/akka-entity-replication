@@ -3,8 +3,7 @@ package lerna.akka.entityreplication.raft.eventsourced
 import akka.actor.{ ActorSystem, Scheduler }
 import akka.pattern.ask
 import akka.util.Timeout
-import lerna.akka.entityreplication.model.TypeName
-import lerna.akka.entityreplication.raft.eventsourced.CommitLogStore.ReplicationId
+import lerna.akka.entityreplication.model.{ NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 
 import scala.jdk.DurationConverters._
@@ -23,12 +22,12 @@ class ShardedCommitLogStore(typeName: TypeName, system: ActorSystem) extends Com
   private val shardRegion = CommitLogStoreActor.startClusterSharding(typeName, system)
 
   override private[raft] def save(
-      replicationId: ReplicationId,
+      shardId: NormalizedShardId,
       index: LogEntryIndex,
       committedEvent: Any,
   ): Unit = {
     akka.pattern.retry(
-      () => shardRegion ? Save(replicationId, index, committedEvent),
+      () => shardRegion ? Save(shardId, index, committedEvent),
       attempts = retryAttempts,
       delay = retryDelay,
     )

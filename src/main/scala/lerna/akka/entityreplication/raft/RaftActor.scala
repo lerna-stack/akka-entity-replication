@@ -170,8 +170,6 @@ class RaftActor(
 
   override def snapshotPluginConfig: Config = ConfigFactory.empty()
 
-  private[this] def replicationId = shardId.underlying
-
   val numberOfMembers: Int = settings.replicationFactor
 
   protected def updateState(domainEvent: DomainEvent): RaftMemberData =
@@ -218,7 +216,7 @@ class RaftActor(
           .applyCommittedLogEntries { logEntries =>
             logEntries.foreach { logEntry =>
               applyToReplicationActor(logEntry)
-              maybeCommitLogStore.foreach(_.save(replicationId, logEntry.index, logEntry.event.event))
+              maybeCommitLogStore.foreach(_.save(shardId, logEntry.index, logEntry.event.event))
             }
           }
       case Committed(logEntryIndex) =>
@@ -226,7 +224,7 @@ class RaftActor(
           .commit(logEntryIndex)
           .handleCommittedLogEntriesAndClients { entries =>
             maybeCommitLogStore.foreach(store => {
-              entries.map(_._1).foreach(logEntry => store.save(replicationId, logEntry.index, logEntry.event.event))
+              entries.map(_._1).foreach(logEntry => store.save(shardId, logEntry.index, logEntry.event.event))
             })
             entries.foreach {
               case (logEntry, Some(client)) =>

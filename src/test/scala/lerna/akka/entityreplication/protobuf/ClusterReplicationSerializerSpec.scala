@@ -135,7 +135,7 @@ final class ClusterReplicationSerializerSpec
     checkSerialization(InternalEvent)
     checkSerialization(
       Save(
-        "rep&id172",
+        NormalizedShardId("shard:need?url&encode"),
         LogEntryIndex(75185),
         MyEvent(908125, "save?my-event!"),
       ),
