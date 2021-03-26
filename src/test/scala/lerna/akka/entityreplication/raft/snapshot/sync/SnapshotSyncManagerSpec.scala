@@ -65,13 +65,13 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
     srcSnapshotStore = planAutoKill(
       system.actorOf(
         ShardSnapshotStore.props(typeName, settings.raftSettings, srcMemberIndex),
-        "srcSnapshotStore",
+        s"srcSnapshotStore:${snapshotSyncManagerUniqueId.getAndIncrement()}",
       ),
     )
     dstSnapshotStore = planAutoKill(
       system.actorOf(
         ShardSnapshotStore.props(typeName, settings.raftSettings, dstMemberIndex),
-        "dstSnapshotStore",
+        s"dstSnapshotStore:${snapshotSyncManagerUniqueId.getAndIncrement()}",
       ),
     )
   }

@@ -18,6 +18,7 @@ object ConsistencyTestBase {
         ConfigFactory
           .parseString("""
              akka.actor.provider = cluster
+              akka.test.single-expect-default = 15s
              lerna.akka.entityreplication.raft.multi-raft-roles = ["member-1", "member-2", "member-3"]
            """).withFallback(
             ConfigFactory.parseResources("multi-jvm-testing.conf"),
