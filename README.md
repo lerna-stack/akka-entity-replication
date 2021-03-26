@@ -13,7 +13,7 @@ akka-entity-replication helps to implement *Event Sourcing* and *Command Query R
 
 ![](docs/images/demo.apng)
 
-*The Leader moves immediately from node2 to node3 when a failure(KILL) occurred*
+*Requests recover (become green) immediately even if failure (kill a node) occurred*
 
 ## Technical background
 
