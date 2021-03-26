@@ -240,9 +240,58 @@ akka-entity-replication supports the Command Query Responsibility Segregation (C
 
 ### Example
 
-To update a read model, implement Handler with [Akka Projection](https://doc.akka.io/docs/akka-projection/1.0.0/overview.html).
+First, building read model data requires the following preparations.
 
-In the case of [SlickHandler](https://doc.akka.io/docs/akka-projection/1.0.0/slick.html), it will be as follows.
+- Create `EventAdapter` for tagging events
+- Add a setting to the configuration of a journal plugin to enable the `EventAdapter`
+
+The following `BankAccountEventAdapter` example tags the `DomainEvent` of `BankAccountActor` with the tag `"bank-account-transaction"`. For more details about `EventAdapter`, see [this Akka official document](https://doc.akka.io/docs/akka/2.6/persistence.html#event-adapters).
+
+```scala
+import akka.actor.ExtendedActorSystem
+import akka.event.Logging
+import akka.persistence.journal.{Tagged, WriteEventAdapter}
+
+class BankAccountEventAdapter(system: ExtendedActorSystem) extends WriteEventAdapter {
+
+  private[this] val log = Logging(system, getClass)
+
+  override def manifest(event: Any): String = "" // when no manifest needed, return ""
+
+  override def toJournal(event: Any): Any = {
+    event match {
+      case domainEvent: BankAccountActor.DomainEvent =>
+        val tags: Set[String] = Set(
+          "bank-account-transaction",
+        )
+        Tagged(domainEvent, tags)
+      case _ =>
+        log.warning("unexpected event: {}", event)
+        event // identity
+    }
+  }
+}
+```
+
+The following configuration example sets `BankAccountEventAdapter` to cassandra journal plugin which used by event writer in akka-entity-replication.
+
+```hocon
+akka-entity-replication.eventsourced.persistence.cassandra.journal {
+  // Tagging to allow some RaftActor(Shard) to handle individually committed events together(No need to change)
+  event-adapters {
+    bank-account-tagging = "com.example.BankAccountEventAdapter"
+  }
+  event-adapter-bindings {
+    // bank-account-tagging takes events which mixins BankAccount$DomainEvent
+    "com.example.BankAccount$DomainEvent" = bank-account-tagging
+  }
+}
+```
+
+To update a read model, implement Handler with [Akka Projection](https://doc.akka.io/docs/akka-projection/1.1.0/overview.html). It can read tagged events and update the read model.
+Using Akka Projection requires adding dependencies to your project first. For more details, see [Akka Projection official document](https://doc.akka.io/docs/akka-projection/1.1.0/overview.html).
+
+In the case of [SlickHandler](https://doc.akka.io/docs/akka-projection/1.1.0/slick.html), it will be as follows.
 
 ```scala
 class EventHandler(actions: StatisticsActions) extends SlickHandler[EventEnvelope[Event]] {
@@ -260,7 +309,7 @@ class EventHandler(actions: StatisticsActions) extends SlickHandler[EventEnvelop
 The definition for starting the defined Handler is as follows.
 
 ```scala
-import lerna.akka.entityreplication.raft.eventhandler.EntityReplicationEventSource
+import akka.projection.eventsourced.scaladsl.EventSourcedProvider
 
 object EventHandler {
   def start(
@@ -269,10 +318,19 @@ object EventHandler {
   )(implicit
       system: ActorSystem[_],
   ): ActorRef[ProjectionBehavior.Command] = {
+    
+    val sourceProvider =
+      EventSourcedProvider.eventsByTag[BankAccountActor.DomainEvent](
+        system,
+        // Note: You have to set a configuration key of *Query* Plugin, NOT Journal Plugin
+        readJournalPluginId = "akka-entity-replication.eventsourced.persistence.cassandra.query",
+        tag = "bank-account-transaction"
+      )
+    
     def generateProjection(): ExactlyOnceProjection[Offset, EventEnvelope[Event]] =
       SlickProjection.exactlyOnce(
         projectionId = ProjectionId(name = "BankAccount", key = "aggregate"),
-        sourceProvider = EntityReplicationEventSource.sourceProvider,
+        sourceProvider = sourceProvider,
         databaseConfig = databaseConfig,
         handler = () => new EventHandler(actions),
       )
@@ -284,10 +342,9 @@ object EventHandler {
 ```
 
 `ProjectionId` is used to identify an offset in data store. You can set an arbitrary value however you cannot change the value easily after run the projection.
-`EntityReplicationEventSource.sourceProvider` should be set to `sourceProvider`. `EntityReplicationEventSource.sourceProvider` provides events which were produced in command side of akka-entity-replication.
 
 ### Tips
-- If you want to use Handler and Projection other than Slick, please refer to [the official Akka documentation](https://doc.akka.io/docs/akka-projection/1.0.0/overview.html).
+- If you want to use Handler and Projection other than Slick, please refer to [the official Akka documentation](https://doc.akka.io/docs/akka-projection/1.1.0/overview.html).
 - Akka projection requires typed ActorSystem.
     - Conversion from classic ActorSystem to typed ActorSystem is possible with `import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps` and `system.toTyped` (see also: [Coexistence - Akka Documentation](https://doc.akka.io/docs/akka/2.6/typed/coexisting.html#classic-to-typed)).
 
@@ -296,7 +353,7 @@ object EventHandler {
 On the read side, there are the following settings.
 
 ```hocon
-lerna.akka.entityreplication.raft.eventhandler {
+lerna.akka.entityreplication.raft.eventsourced {
     // Settings for saving committed events from each RaftActor
     commit-log-store {
       // Retry setting to prevent events from being lost if commit-log-store(sharding) stops temporarily
@@ -310,10 +367,6 @@ lerna.akka.entityreplication.raft.eventhandler {
       // Absolute path to the journal plugin configuration entry.
       // The journal stores Raft-committed events.
       journal.plugin = ""
-
-      // Absolute path to the query plugin configuration entry.
-      // The query is used by Raft EventHandler.
-      query.plugin = ""
     }
 }
 ```
@@ -330,9 +383,8 @@ lerna.akka.entityreplication.raft.persistence {
 }
 
 // Query side persistence plugin settings
-lerna.akka.entityreplication.raft.eventhandler.persistence {
+lerna.akka.entityreplication.raft.eventsourced.persistence {
     journal.plugin  = ""
-    query.plugin    = ""
 }
 ```
 

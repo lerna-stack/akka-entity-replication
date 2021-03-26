@@ -30,7 +30,7 @@ class EventHandler(actions: StatisticsActions) extends SlickHandler[EventEnvelop
   }
 }
 
-import lerna.akka.entityreplication.raft.eventhandler.EntityReplicationEventSource
+import lerna.akka.entityreplication.raft.eventsourced.EntityReplicationEventSource
 
 object EventHandler {
   def start(

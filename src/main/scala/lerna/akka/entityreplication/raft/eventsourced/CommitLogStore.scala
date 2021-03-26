@@ -1,4 +1,4 @@
-package lerna.akka.entityreplication.raft.eventhandler
+package lerna.akka.entityreplication.raft.eventsourced
 
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 

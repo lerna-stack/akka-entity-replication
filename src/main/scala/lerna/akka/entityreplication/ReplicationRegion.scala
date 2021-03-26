@@ -10,7 +10,7 @@ import lerna.akka.entityreplication.ReplicationRegion.{ ExtractEntityId, Extract
 import lerna.akka.entityreplication.model._
 import lerna.akka.entityreplication.raft.RaftActor
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand }
-import lerna.akka.entityreplication.raft.eventhandler.CommitLogStore
+import lerna.akka.entityreplication.raft.eventsourced.CommitLogStore
 import lerna.akka.entityreplication.raft.protocol.ShardRequest
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.ShardSnapshotStore
