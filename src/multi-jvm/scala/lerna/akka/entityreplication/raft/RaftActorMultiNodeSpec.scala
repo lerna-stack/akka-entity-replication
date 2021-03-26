@@ -173,13 +173,13 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
 
     "Candidate が同時に現れても選挙を再試行して Leader が選出される" in {
 
-      val replicationId = createSeqShardId()
+      val shardId = createSeqShardId()
 
       val term                            = Term.initial()
       var candidateMember: RaftTestFSMRef = null
       runOn(node1) {
         candidateMember = createRaftActor(
-          replicationId,
+          shardId,
           new RaftSettingsForTest(config)(
             overrideElectionTimeout = Option(6.seconds),
           ),
@@ -189,7 +189,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       }
       runOn(node2) {
         candidateMember = createRaftActor(
-          replicationId,
+          shardId,
           new RaftSettingsForTest(config)(
             overrideElectionTimeout = Option(6.seconds),
           ),
@@ -199,7 +199,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       }
       runOn(node3) {
         candidateMember = createRaftActor(
-          replicationId,
+          shardId,
           new RaftSettingsForTest(config)(
             // 確実にリーダーになるように仕向けるため
             overrideElectionTimeout = Option(3.seconds),
@@ -215,13 +215,13 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
     }
 
     "Replicate コマンドによってイベントがレプリケーションされる" in {
-      val replicationId = createSeqShardId()
+      val shardId = createSeqShardId()
 
       var leaderMember: RaftTestFSMRef   = null
       var followerMember: RaftTestFSMRef = null
       runOn(node1) {
         leaderMember = createRaftActor(
-          replicationId,
+          shardId,
           new RaftSettingsForTest(config)(
             // リーダーとして選出させるため
             overrideElectionTimeout = Option(500.millis),
@@ -231,11 +231,11 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
         awaitCond(getState(leaderMember).stateName == Leader)
       }
       runOn(node2) {
-        followerMember = createRaftActor(replicationId)
+        followerMember = createRaftActor(shardId)
         awaitCond(getState(followerMember).stateName == Follower)
       }
       runOn(node3) {
-        followerMember = createRaftActor(replicationId)
+        followerMember = createRaftActor(shardId)
         awaitCond(getState(followerMember).stateName == Follower)
       }
       enterBarrier("raft member up")
@@ -263,13 +263,13 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
     }
 
     "ReplicationSucceeded が返ってきたらコミットされたとみなせる" in {
-      val replicationId = createSeqShardId()
+      val shardId = createSeqShardId()
 
       var leaderMember: RaftTestFSMRef   = null
       var followerMember: RaftTestFSMRef = null
       runOn(node1) {
         leaderMember = createRaftActor(
-          replicationId,
+          shardId,
           new RaftSettingsForTest(config)(
             // リーダーとして選出させるため
             overrideElectionTimeout = Option(500.millis),
@@ -279,11 +279,11 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
         awaitCond(getState(leaderMember).stateName == Leader)
       }
       runOn(node2) {
-        followerMember = createRaftActor(replicationId)
+        followerMember = createRaftActor(shardId)
         awaitCond(getState(followerMember).stateName == Follower)
       }
       runOn(node3) {
-        followerMember = createRaftActor(replicationId)
+        followerMember = createRaftActor(shardId)
         awaitCond(getState(followerMember).stateName == Follower)
       }
       enterBarrier("raft member up")
@@ -315,13 +315,13 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
     }
 
     "Follower のログの prevLogIndex の Term が prevLogTerm と一致しない場合はログ同期を再試行する" in {
-      val replicationId = createSeqShardId()
+      val shardId = createSeqShardId()
 
       var leaderMember: RaftTestFSMRef   = null
       var followerMember: RaftTestFSMRef = null
       runOn(node1) {
         leaderMember = createRaftActor(
-          replicationId,
+          shardId,
           new RaftSettingsForTest(config)(
             // リーダーとして選出させるため
             overrideElectionTimeout = Option(3.seconds),
@@ -341,7 +341,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
         setState(leaderMember, Leader, leaderData.asInstanceOf[RaftMemberDataImpl].copy(replicatedLog = log))
       }
       runOn(node2) {
-        followerMember = createRaftActor(replicationId)
+        followerMember = createRaftActor(shardId)
         awaitCond(getState(followerMember).stateName == Follower)
         val followerData = getState(followerMember).stateData
         val conflictLog = followerData.replicatedLog.merge(
@@ -358,7 +358,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
         )
       }
       runOn(node3) {
-        followerMember = createRaftActor(replicationId)
+        followerMember = createRaftActor(shardId)
         awaitCond(getState(followerMember).stateName == Follower)
       }
       enterBarrier("raft member up")
@@ -416,13 +416,13 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       //    node2 Term:3 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)]
       //  * node3 Term:3 Log:[(Term(1), NoOp), (Term(2), NoOp),   (Term(2), event2)]
 
-      val replicationId = createSeqShardId()
+      val shardId = createSeqShardId()
 
       var nodeMember: RaftTestFSMRef = null
       // make node1 be a leader
       runOn(node1) {
         nodeMember = createRaftActor(
-          replicationId,
+          shardId,
           new RaftSettingsForTest(config)(
             // to make it be a leader
             overrideElectionTimeout = Option(1.seconds),
@@ -432,12 +432,12 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
         awaitCond(getState(nodeMember).stateName == Leader)
       }
       runOn(node2) {
-        nodeMember = createRaftActor(replicationId)
+        nodeMember = createRaftActor(shardId)
         awaitCond(getState(nodeMember).stateName == Follower)
       }
       runOn(node3) {
         nodeMember = createRaftActor(
-          replicationId,
+          shardId,
           new RaftSettingsForTest(config)(
             // to make it be a leader
             overrideElectionTimeout = Option(6.seconds),
@@ -523,12 +523,12 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
     }
 
     "メンバー全てがシャットダウンしても再作成すると状態が復元する" ignore { // FIXME: シャットダウンしたのとは別のノードでクラスターを構成する必要がある
-      val replicationId = createSeqShardId()
+      val shardId = createSeqShardId()
 
       var raftMember: RaftTestFSMRef = null
       runOn(node1) {
         raftMember = createRaftActor(
-          replicationId,
+          shardId,
           new RaftSettingsForTest(config)(
             // リーダーになりやすくするため
             overrideElectionTimeout = Option(1.seconds),
@@ -538,7 +538,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
         awaitCond(getState(raftMember).stateName == Leader)
       }
       runOn(node2, node3) {
-        raftMember = createRaftActor(replicationId)
+        raftMember = createRaftActor(shardId)
         awaitCond(getState(raftMember).stateName == Follower)
       }
       enterBarrier("raft member up")
@@ -569,7 +569,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
         system.stop(system.actorSelection(raftMember.path.parent).resolveOne().await)
         expectTerminated(raftMember)
         // 再作成
-        raftMember = createRaftActor(replicationId)
+        raftMember = createRaftActor(shardId)
         awaitAssert {
           // 内部状態が復元
           val currentData = getState(raftMember).stateData

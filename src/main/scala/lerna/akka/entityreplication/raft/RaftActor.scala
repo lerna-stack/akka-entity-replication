@@ -159,7 +159,8 @@ class RaftActor(
     }
   }
 
-  override val persistenceId: String = s"raft-${typeName.underlying}-${shardId.underlying}-${selfMemberIndex.role}"
+  override val persistenceId: String =
+    ActorIds.persistenceId("raft", typeName.underlying, shardId.underlying, selfMemberIndex.role)
 
   override def journalPluginId: String = settings.journalPluginId
 
@@ -168,8 +169,6 @@ class RaftActor(
   override def snapshotPluginId: String = settings.snapshotStorePluginId
 
   override def snapshotPluginConfig: Config = ConfigFactory.empty()
-
-  private[this] def replicationId = s"${typeName.underlying}-${shardId.underlying}"
 
   val numberOfMembers: Int = settings.replicationFactor
 
@@ -217,7 +216,7 @@ class RaftActor(
           .applyCommittedLogEntries { logEntries =>
             logEntries.foreach { logEntry =>
               applyToReplicationActor(logEntry)
-              maybeCommitLogStore.foreach(_.save(replicationId, logEntry.index, logEntry.event.event))
+              maybeCommitLogStore.foreach(_.save(shardId, logEntry.index, logEntry.event.event))
             }
           }
       case Committed(logEntryIndex) =>
@@ -225,7 +224,7 @@ class RaftActor(
           .commit(logEntryIndex)
           .handleCommittedLogEntriesAndClients { entries =>
             maybeCommitLogStore.foreach(store => {
-              entries.map(_._1).foreach(logEntry => store.save(replicationId, logEntry.index, logEntry.event.event))
+              entries.map(_._1).foreach(logEntry => store.save(shardId, logEntry.index, logEntry.event.event))
             })
             entries.foreach {
               case (logEntry, Some(client)) =>

@@ -387,7 +387,7 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   private def commitLogStoreSaveToBinary(message: raft.eventsourced.Save): Array[Byte] = {
     msg.CommitLogStoreSave
       .of(
-        replicationId = replicationIdToProto(message.replicationId),
+        shardId = normalizedShardIdToProto(message.shardId),
         index = logEntryIndexToProto(message.index),
         committedEvent = payloadToProto(message.committedEvent),
       ).toByteArray
@@ -396,20 +396,10 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   private def commitLogStoreSaveFromBinary(bytes: Array[Byte]): raft.eventsourced.Save = {
     val proto = msg.CommitLogStoreSave.parseFrom(bytes)
     raft.eventsourced.Save(
-      replicationId = replicationIdFromProto(proto.replicationId),
+      shardId = normalizedShardIdFromProto(proto.shardId),
       index = logEntryIndexFromProto(proto.index),
       committedEvent = payloadFromProto(proto.committedEvent),
     )
-  }
-
-  private def replicationIdToProto(message: raft.eventsourced.CommitLogStore.ReplicationId): msg.ReplicationId = {
-    // Use a consistent style for the future even if the ReplicationId is not a value class
-    msg.ReplicationId.of(message)
-  }
-
-  private def replicationIdFromProto(proto: msg.ReplicationId): raft.eventsourced.CommitLogStore.ReplicationId = {
-    // Use a consistent style for the future even if the ReplicationId is not a value class
-    proto.underlying
   }
 
   // ===

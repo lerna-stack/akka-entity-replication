@@ -72,13 +72,9 @@ message CommitLogStoreInternalEvent {
 }
 
 message CommitLogStoreSave {
-  required ReplicationId replication_id = 1;
+  required NormalizedShardId shard_id = 1;
   required LogEntryIndex index = 2;
   required Payload committed_event = 3;
-}
-
-message ReplicationId {
-  required string underlying = 1;
 }
 
 // ===

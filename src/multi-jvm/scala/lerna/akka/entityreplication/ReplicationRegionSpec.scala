@@ -243,7 +243,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
     "子の Entity にコマンドを転送する" in {
       val typeName = createSeqTypeName()
 
-      val entityId = createSeqReplicationId()
+      val entityId = createSeqEntityId()
       runOn(node1, node2, node3) {
         clusterReplication = createReplication(typeName)
       }
@@ -259,7 +259,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
 
     "各 ReplicationActor の状態が同期する" in {
       val typeName = createSeqTypeName()
-      val entityId = createSeqReplicationId()
+      val entityId = createSeqEntityId()
       runOn(node1, node2, node3) {
         clusterReplication = createReplication(typeName)
       }
@@ -288,7 +288,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
 
     "一度 Region を停止しても各 ReplicationActor の状態が復元する" in {
       val typeName = createSeqTypeName()
-      val entityId = createSeqReplicationId()
+      val entityId = createSeqEntityId()
       runOn(node1, node2, node3) {
         clusterReplication = createReplication(typeName)
       }
@@ -340,7 +340,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
         }
         enterBarrier("ReplicationRegion created")
 
-        val entityId = createSeqReplicationId()
+        val entityId = createSeqEntityId()
 
         val message = Command(CheckRouting(entityId))
 
@@ -365,7 +365,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
         }
         enterBarrier("ReplicationRegion created")
 
-        val entityId = createSeqReplicationId()
+        val entityId = createSeqEntityId()
 
         val message = Command(CheckRouting(entityId))
 
@@ -393,7 +393,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
         }
         enterBarrier("ReplicationRegion created")
 
-        val entityId = createSeqReplicationId()
+        val entityId = createSeqEntityId()
 
         val message = Command(CheckRouting(entityId))
 
@@ -415,7 +415,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
 
       "いずれかの MemberIndex に配信される" in {
         val typeName = createSeqTypeName()
-        val entityId = createSeqReplicationId()
+        val entityId = createSeqEntityId()
 
         val message = CheckRouting(entityId)
 
@@ -451,7 +451,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
       "ShardId が同じ場合は、ある role の同じノードに転送される" in {
         val typeName = createSeqTypeName()
         // entityId が同じなら ShardId も同じになる
-        val entityId = createSeqReplicationId()
+        val entityId = createSeqEntityId()
 
         val message = CheckRouting(entityId)
 
@@ -485,7 +485,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
       "Adding a node has no effect on routing except for the MemberIndex with more nodes" in {
         val typeName = createSeqTypeName()
         // entityId が同じなら ShardId も同じになる
-        val entityId = createSeqReplicationId()
+        val entityId = createSeqEntityId()
 
         val message = CheckRouting(entityId)
 
@@ -540,8 +540,8 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
     }
   }
 
-  private[this] val idGenerator                      = new AtomicInteger(0)
-  private[this] def createSeqReplicationId(): String = s"replication-${idGenerator.incrementAndGet()}"
-  private[this] def createSeqTypeName(): String      = s"typeName-${idGenerator.incrementAndGet()}"
+  private[this] val idGenerator                 = new AtomicInteger(0)
+  private[this] def createSeqEntityId(): String = s"replication-${idGenerator.incrementAndGet()}"
+  private[this] def createSeqTypeName(): String = s"typeName-${idGenerator.incrementAndGet()}"
 
 }
