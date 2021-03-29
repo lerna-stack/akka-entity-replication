@@ -1,4 +1,4 @@
-ThisBuild / organization := "io.github.lerna-stack"
+ThisBuild / organization := "com.lerna-stack"
 ThisBuild / organizationName := "Lerna Project"
 ThisBuild / organizationHomepage := Some(url("https://lerna-stack.github.io/"))
 
