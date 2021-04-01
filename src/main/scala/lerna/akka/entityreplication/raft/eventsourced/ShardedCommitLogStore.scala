@@ -9,7 +9,7 @@ import lerna.akka.entityreplication.raft.model.LogEntryIndex
 import scala.jdk.DurationConverters._
 import scala.concurrent.duration.FiniteDuration
 
-class ShardedCommitLogStore(typeName: TypeName, system: ActorSystem) extends CommitLogStore {
+private[entityreplication] class ShardedCommitLogStore(typeName: TypeName, system: ActorSystem) extends CommitLogStore {
   import system.dispatcher
   private implicit val scheduler: Scheduler = system.scheduler
 

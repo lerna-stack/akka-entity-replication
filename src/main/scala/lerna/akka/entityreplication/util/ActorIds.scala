@@ -1,6 +1,6 @@
 package lerna.akka.entityreplication.util
 
-object ActorIds {
+private[entityreplication] object ActorIds {
 
   private[this] val delimiter = ":"
 

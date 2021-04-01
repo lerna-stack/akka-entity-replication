@@ -10,18 +10,19 @@ import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 
-object ReplicationActor {
+private[entityreplication] object ReplicationActor {
 
-  private val instanceIdCounter = new AtomicInteger(1)
+  private[this] val instanceIdCounter = new AtomicInteger(1)
 
   private def generateInstanceId(): EntityInstanceId = EntityInstanceId(instanceIdCounter.getAndIncrement())
 
-  final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef)
-  final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState)
+  private[entityreplication] final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef)
+  private[entityreplication] final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState)
 
   private final case object RecoveryTimeout
 
-  final case class EntityRecoveryTimeoutException(entityPath: ActorPath) extends RuntimeException
+  private[entityreplication] final case class EntityRecoveryTimeoutException(entityPath: ActorPath)
+      extends RuntimeException
 }
 
 trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.StashFactory {

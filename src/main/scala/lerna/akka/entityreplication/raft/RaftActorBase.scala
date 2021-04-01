@@ -5,14 +5,14 @@ import akka.persistence.{ PersistentActor, RecoveryCompleted, SnapshotOffer }
 import lerna.akka.entityreplication.raft.PersistentStateData.PersistentState
 import lerna.akka.entityreplication.raft.RaftActor._
 
-object RaftActorBase {
+private[raft] object RaftActorBase {
 
   object `->` {
     def unapply(in: (State, State)) = Some(in)
   }
 }
 
-trait RaftActorBase extends PersistentActor with ActorLogging {
+private[raft] trait RaftActorBase extends PersistentActor with ActorLogging {
 
   type TransitionHandler = PartialFunction[(State, State), Unit]
 

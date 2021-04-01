@@ -5,15 +5,18 @@ import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.RaftSettings
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
-object ShardSnapshotStore {
+private[entityreplication] object ShardSnapshotStore {
 
   def props(typeName: TypeName, settings: RaftSettings, selfMemberIndex: MemberIndex): Props =
     Props(new ShardSnapshotStore(typeName, settings, selfMemberIndex))
 
 }
 
-class ShardSnapshotStore(typeName: TypeName, settings: RaftSettings, selfMemberIndex: MemberIndex)
-    extends Actor
+private[entityreplication] class ShardSnapshotStore(
+    typeName: TypeName,
+    settings: RaftSettings,
+    selfMemberIndex: MemberIndex,
+) extends Actor
     with ActorLogging {
   import SnapshotProtocol._
 

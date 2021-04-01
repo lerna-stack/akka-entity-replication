@@ -1,12 +1,13 @@
 package lerna.akka.entityreplication.raft.model
 
-object LogEntry {
+private[entityreplication] object LogEntry {
 
   def apply(index: LogEntryIndex, event: EntityEvent, term: Term) =
     new LogEntry(index, event, term)
 }
 
-class LogEntry(val index: LogEntryIndex, val event: EntityEvent, val term: Term) extends Serializable {
+private[entityreplication] class LogEntry(val index: LogEntryIndex, val event: EntityEvent, val term: Term)
+    extends Serializable {
   require(index > LogEntryIndex.initial())
 
   def canEqual(other: Any): Boolean = other.isInstanceOf[LogEntry]

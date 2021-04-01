@@ -6,7 +6,7 @@ import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshotMetadata
 
-object PersistentStateData {
+private[entityreplication] object PersistentStateData {
 
   final case class PersistentState(
       currentTerm: Term,
@@ -16,7 +16,7 @@ object PersistentStateData {
   ) extends ClusterReplicationSerializable
 }
 
-trait PersistentStateData[T <: PersistentStateData[T]] {
+private[entityreplication] trait PersistentStateData[T <: PersistentStateData[T]] {
   import PersistentStateData._
 
   def currentTerm: Term
@@ -35,7 +35,7 @@ trait PersistentStateData[T <: PersistentStateData[T]] {
     PersistentState(currentTerm, votedFor, replicatedLog, lastSnapshotStatus)
 }
 
-trait VolatileStateData[T <: VolatileStateData[T]] {
+private[entityreplication] trait VolatileStateData[T <: VolatileStateData[T]] {
   def commitIndex: LogEntryIndex
   def lastApplied: LogEntryIndex
   def snapshottingProgress: SnapshottingProgress
@@ -47,7 +47,7 @@ trait VolatileStateData[T <: VolatileStateData[T]] {
   ): T
 }
 
-trait FollowerData { self: RaftMemberData =>
+private[entityreplication] trait FollowerData { self: RaftMemberData =>
   def leaderMember: Option[MemberIndex]
 
   def initializeFollowerData(): RaftMemberData = {
@@ -101,7 +101,7 @@ trait FollowerData { self: RaftMemberData =>
   protected def updateFollowerVolatileState(leaderMember: Option[MemberIndex] = leaderMember): RaftMemberData
 }
 
-trait CandidateData { self: RaftMemberData =>
+private[entityreplication] trait CandidateData { self: RaftMemberData =>
   def acceptedMembers: Set[MemberIndex]
 
   def initializeCandidateData(): RaftMemberData = {
@@ -122,7 +122,7 @@ trait CandidateData { self: RaftMemberData =>
   protected def updateCandidateVolatileState(acceptedMembers: Set[MemberIndex]): RaftMemberData
 }
 
-trait LeaderData { self: RaftMemberData =>
+private[entityreplication] trait LeaderData { self: RaftMemberData =>
   def nextIndex: Option[NextIndex]
   def matchIndex: MatchIndex
   def clients: Map[LogEntryIndex, ClientContext]
@@ -205,7 +205,7 @@ trait LeaderData { self: RaftMemberData =>
   ): RaftMemberData
 }
 
-object RaftMemberData {
+private[entityreplication] object RaftMemberData {
   import PersistentStateData._
 
   def apply(persistentState: PersistentState): RaftMemberData = {
@@ -248,7 +248,7 @@ object RaftMemberData {
     )
 }
 
-trait RaftMemberData
+private[entityreplication] trait RaftMemberData
     extends PersistentStateData[RaftMemberData]
     with VolatileStateData[RaftMemberData]
     with FollowerData
@@ -347,7 +347,7 @@ trait RaftMemberData
 
 }
 
-final case class RaftMemberDataImpl(
+private[entityreplication] final case class RaftMemberDataImpl(
     currentTerm: Term,
     votedFor: Option[MemberIndex],
     replicatedLog: ReplicatedLog,

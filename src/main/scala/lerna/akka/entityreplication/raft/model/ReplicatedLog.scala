@@ -1,13 +1,13 @@
 package lerna.akka.entityreplication.raft.model
 
-object ReplicatedLog {
+private[entityreplication] object ReplicatedLog {
 
   def apply(): ReplicatedLog = ReplicatedLog(Seq.empty)
 
   private def apply(entries: Seq[LogEntry]) = new ReplicatedLog(entries)
 }
 
-case class ReplicatedLog private[model] (
+private[entityreplication] final case class ReplicatedLog private[model] (
     entries: Seq[LogEntry],
     ancestorLastTerm: Term = Term.initial(),
     ancestorLastIndex: LogEntryIndex = LogEntryIndex.initial(),

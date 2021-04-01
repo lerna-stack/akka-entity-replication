@@ -11,7 +11,7 @@ object ClusterReplication {
   val actorNamePrefix: String = "replicationRegion"
 }
 
-class ClusterReplication(system: ActorSystem) {
+class ClusterReplication private (system: ActorSystem) {
 
   import ClusterReplication._
 

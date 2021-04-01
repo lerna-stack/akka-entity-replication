@@ -5,7 +5,7 @@ import lerna.akka.entityreplication.ReplicationRegion.EntityId
 
 import java.net.URLEncoder
 
-object NormalizedEntityId {
+private[entityreplication] object NormalizedEntityId {
   def from(entityId: EntityId): NormalizedEntityId = new NormalizedEntityId(URLEncoder.encode(entityId, "utf-8"))
 
   def of(entityPath: ActorPath): NormalizedEntityId = new NormalizedEntityId(entityPath.name)
@@ -14,4 +14,4 @@ object NormalizedEntityId {
     new NormalizedEntityId(encodedEntityId)
 }
 
-final case class NormalizedEntityId private (underlying: String) extends AnyVal
+private[entityreplication] final case class NormalizedEntityId private (underlying: String) extends AnyVal

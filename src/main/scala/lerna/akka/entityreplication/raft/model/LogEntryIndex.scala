@@ -2,7 +2,7 @@ package lerna.akka.entityreplication.raft.model
 
 import lerna.akka.entityreplication.raft.model.exception.SeqIndexOutOfBoundsException
 
-object LogEntryIndex {
+private[entityreplication] object LogEntryIndex {
 
   def initial(): LogEntryIndex = LogEntryIndex(0)
 
@@ -11,7 +11,8 @@ object LogEntryIndex {
   }
 }
 
-case class LogEntryIndex(private[entityreplication] val underlying: Long) extends Ordered[LogEntryIndex] {
+private[entityreplication] final case class LogEntryIndex(private[entityreplication] val underlying: Long)
+    extends Ordered[LogEntryIndex] {
   require(underlying >= 0)
 
   def next(): LogEntryIndex = copy(underlying + 1)

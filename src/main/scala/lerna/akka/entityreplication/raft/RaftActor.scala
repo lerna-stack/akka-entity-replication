@@ -17,7 +17,7 @@ import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 import lerna.akka.entityreplication.util.ActorIds
 import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ReplicationActor, ReplicationRegion }
 
-object RaftActor {
+private[entityreplication] object RaftActor {
 
   def props(
       typeName: TypeName,
@@ -95,7 +95,7 @@ object RaftActor {
   trait NonPersistEventLike extends NonPersistEvent // テスト用
 }
 
-class RaftActor(
+private[raft] class RaftActor(
     typeName: TypeName,
     val extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
     replicationActorProps: Props,

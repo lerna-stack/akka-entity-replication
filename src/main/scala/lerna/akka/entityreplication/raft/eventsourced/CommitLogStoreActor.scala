@@ -19,7 +19,7 @@ private[entityreplication] final case class Save(
     committedEvent: Any,
 ) extends ClusterReplicationSerializable
 
-object CommitLogStoreActor {
+private[entityreplication] object CommitLogStoreActor {
 
   def startClusterSharding(typeName: TypeName, system: ActorSystem): ActorRef = {
     val clusterSharding         = ClusterSharding(system)
@@ -44,7 +44,7 @@ object CommitLogStoreActor {
   private def props(typeName: TypeName): Props = Props(new CommitLogStoreActor(typeName))
 }
 
-class CommitLogStoreActor(typeName: TypeName) extends PersistentActor {
+private[entityreplication] class CommitLogStoreActor(typeName: TypeName) extends PersistentActor {
   // TODO: 複数 Raft(typeName) に対応するために typeName ごとに cassandra-journal.keyspace を分ける
   override def journalPluginId: String =
     context.system.settings.config

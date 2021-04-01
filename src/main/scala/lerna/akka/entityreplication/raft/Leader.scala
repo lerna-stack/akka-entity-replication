@@ -10,7 +10,7 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 import lerna.akka.entityreplication.{ ReplicationActor, ReplicationRegion }
 
-trait Leader { this: RaftActor =>
+private[raft] trait Leader { this: RaftActor =>
   import RaftActor._
 
   def leaderBehavior: Receive = {

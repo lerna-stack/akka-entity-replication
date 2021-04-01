@@ -8,7 +8,7 @@ import scala.jdk.DurationConverters._
 import scala.concurrent.duration.{ Duration, FiniteDuration }
 import scala.util.Random
 
-object RaftSettings {
+private[entityreplication] object RaftSettings {
   def apply(root: Config) = new RaftSettings(root)
 }
 

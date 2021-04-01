@@ -2,6 +2,6 @@ package lerna.akka.entityreplication.raft.protocol
 
 import lerna.akka.entityreplication.model.NormalizedShardId
 
-trait ShardRequest {
+private[entityreplication] trait ShardRequest {
   def shardId: NormalizedShardId
 }

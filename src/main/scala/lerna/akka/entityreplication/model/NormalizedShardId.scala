@@ -4,7 +4,7 @@ import java.net.{ URLDecoder, URLEncoder }
 
 import akka.actor.ActorPath
 
-object NormalizedShardId {
+private[entityreplication] object NormalizedShardId {
   def from(shardId: String): NormalizedShardId = new NormalizedShardId(URLEncoder.encode(shardId, "utf-8"))
 
   private[entityreplication] def from(path: ActorPath) = new NormalizedShardId(path.name)
@@ -13,6 +13,6 @@ object NormalizedShardId {
     new NormalizedShardId(encodedShardId)
 }
 
-final case class NormalizedShardId private (underlying: String) extends AnyVal {
+private[entityreplication] final case class NormalizedShardId private (underlying: String) extends AnyVal {
   def raw: String = URLDecoder.decode(underlying, "utf-8")
 }
