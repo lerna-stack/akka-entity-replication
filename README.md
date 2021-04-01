@@ -62,6 +62,10 @@ You can see a sample application using this extension in the following project.
 
 [lerna-stack/akka-entity-replication-sample](https://github.com/lerna-stack/akka-entity-replication-sample)
 
+## Changelog
+
+You can see all the notable changes in [CHANGELOG](CHANGELOG.md).
+
 ## License
 
 akka-entity-replication is released under the terms of the [Apache License Version 2.0](./LICENSE).
