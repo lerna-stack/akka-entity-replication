@@ -1,5 +1,6 @@
 package lerna.akka.entityreplication.util
 
+import akka.Done
 import akka.actor.{ ActorRef, ActorSystem }
 import akka.event.Logging
 import akka.pattern.ask
@@ -49,4 +50,6 @@ object AtLeastOnceComplete {
 
     promise.future
   }
+
+  def tellTo(destination: ActorRef, message: Any, retryInterval: FiniteDuration): Future[Any] = Future.successful(Done)
 }
