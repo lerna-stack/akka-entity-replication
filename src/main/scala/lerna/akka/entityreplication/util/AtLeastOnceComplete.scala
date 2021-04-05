@@ -13,6 +13,7 @@ object AtLeastOnceComplete {
       destination: ActorRef,
       message: Any,
       retryInterval: FiniteDuration,
+      fizz: String = "fizz",
   )(implicit system: ActorSystem, timeout: Timeout): Future[Any] = {
 
     val logging = Logging(system, this.getClass)
