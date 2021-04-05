@@ -74,7 +74,7 @@ lazy val lerna = (project in file("."))
         scalapb.gen(flatPackage = true, lenses = false, grpc = false) -> (sourceManaged in Compile).value / "scalapb",
       ),
     // mima
-    mimaPreviousArtifacts := Set(organization.value %% moduleName.value % "1.0.0"),
+    mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %% moduleName.value % _).toSet,
     mimaReportSignatureProblems := true, // check also generic parameters
   )
 
