@@ -12,7 +12,7 @@ private[entityreplication] object RaftSettings {
   def apply(root: Config) = new RaftSettings(root)
 }
 
-class RaftSettings(root: Config) {
+class RaftSettings private[raft] (root: Config) {
 
   val config: Config = root.getConfig("lerna.akka.entityreplication.raft")
 
