@@ -51,7 +51,7 @@ object ReplicationRegion {
 
   private[entityreplication] type ExtractNormalizedShardId = PartialFunction[Msg, NormalizedShardId]
 
-  def props(
+  private[entityreplication] def props(
       typeName: String,
       entityProps: Props,
       settings: ClusterReplicationSettings,
@@ -61,24 +61,24 @@ object ReplicationRegion {
   ) =
     Props(new ReplicationRegion(typeName, entityProps, settings, extractEntityId, extractShardId, maybeCommitLogStore))
 
-  case class CreateShard(shardId: NormalizedShardId) extends ShardRequest
+  private[entityreplication] case class CreateShard(shardId: NormalizedShardId) extends ShardRequest
 
   final case class Passivate(entityPath: ActorPath, stopMessage: Any)
 
-  sealed trait RoutingCommand
-  final case class Broadcast(message: Any)                     extends RoutingCommand
-  final case class BroadcastWithoutSelf(message: Any)          extends RoutingCommand
-  final case class DeliverTo(index: MemberIndex, message: Any) extends RoutingCommand
-  final case class DeliverSomewhere(message: Any)              extends RoutingCommand
+  private[entityreplication] sealed trait RoutingCommand
+  private[entityreplication] final case class Broadcast(message: Any)                     extends RoutingCommand
+  private[entityreplication] final case class BroadcastWithoutSelf(message: Any)          extends RoutingCommand
+  private[entityreplication] final case class DeliverTo(index: MemberIndex, message: Any) extends RoutingCommand
+  private[entityreplication] final case class DeliverSomewhere(message: Any)              extends RoutingCommand
 
   /**
     * [[ReplicationRegion]] 同士の通信で利用。適切なノードにメッセージがルーティング済みであることを表す
     * @param message
     */
-  final case class Routed(message: Any)
+  private[entityreplication] final case class Routed(message: Any)
 }
 
-class ReplicationRegion(
+private[entityreplication] class ReplicationRegion(
     typeName: String,
     entityProps: Props,
     settings: ClusterReplicationSettings,

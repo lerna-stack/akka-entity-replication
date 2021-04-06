@@ -2,7 +2,7 @@ package lerna.akka.entityreplication.raft.model
 
 import lerna.akka.entityreplication.model.NormalizedEntityId
 
-object SnapshottingProgress {
+private[entityreplication] object SnapshottingProgress {
   def empty: SnapshottingProgress =
     SnapshottingProgress(
       snapshotLastLogTerm = Term.initial(),
@@ -12,7 +12,7 @@ object SnapshottingProgress {
     )
 }
 
-case class SnapshottingProgress(
+private[entityreplication] final case class SnapshottingProgress(
     snapshotLastLogTerm: Term,
     snapshotLastLogIndex: LogEntryIndex,
     inProgressEntities: Set[NormalizedEntityId],

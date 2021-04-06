@@ -3,7 +3,7 @@ package lerna.akka.entityreplication.raft.persistence
 import akka.persistence.journal.{ EventAdapter, EventSeq, Tagged }
 import lerna.akka.entityreplication.raft.RaftActor.CompactionCompleted
 
-class RaftEventAdapter extends EventAdapter {
+private[entityreplication] class RaftEventAdapter extends EventAdapter {
 
   override def manifest(event: Any): String = "" // No need
 

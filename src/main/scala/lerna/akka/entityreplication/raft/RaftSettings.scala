@@ -8,17 +8,17 @@ import scala.jdk.DurationConverters._
 import scala.concurrent.duration.{ Duration, FiniteDuration }
 import scala.util.Random
 
-object RaftSettings {
+private[entityreplication] object RaftSettings {
   def apply(root: Config) = new RaftSettings(root)
 }
 
-class RaftSettings(root: Config) {
+class RaftSettings private[raft] (root: Config) {
 
   val config: Config = root.getConfig("lerna.akka.entityreplication.raft")
 
   val electionTimeout: FiniteDuration = config.getDuration("election-timeout").toScala
 
-  def randomizedElectionTimeout(): FiniteDuration = randomized(electionTimeout)
+  private[raft] def randomizedElectionTimeout(): FiniteDuration = randomized(electionTimeout)
 
   val heartbeatInterval: FiniteDuration = config.getDuration("heartbeat-interval").toScala
 
@@ -29,7 +29,7 @@ class RaftSettings(root: Config) {
   /**
     * 75% - 150% of duration
     */
-  def randomized(duration: FiniteDuration): FiniteDuration = {
+  private[this] def randomized(duration: FiniteDuration): FiniteDuration = {
     val randomizedDuration = duration * (randomizedMinFactor + randomizedMaxFactor * Random.nextDouble())
     FiniteDuration(randomizedDuration.toNanos, NANOSECONDS)
   }
@@ -76,7 +76,8 @@ class RaftSettings(root: Config) {
 
   val compactionLogSizeCheckInterval: FiniteDuration = config.getDuration("compaction.log-size-check-interval").toScala
 
-  def randomizedCompactionLogSizeCheckInterval(): FiniteDuration = randomized(compactionLogSizeCheckInterval)
+  private[raft] def randomizedCompactionLogSizeCheckInterval(): FiniteDuration =
+    randomized(compactionLogSizeCheckInterval)
 
   val snapshotSyncCopyingParallelism: Int = config.getInt("snapshot-sync.snapshot-copying-parallelism")
 

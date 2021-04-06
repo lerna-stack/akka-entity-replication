@@ -1,2 +1,2 @@
 package lerna.akka.entityreplication
-trait ClusterReplicationSerializable extends Serializable
+private[entityreplication] trait ClusterReplicationSerializable extends Serializable

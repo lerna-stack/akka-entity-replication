@@ -7,7 +7,7 @@ import lerna.akka.entityreplication.raft.protocol.{ SuspendEntity, TryCreateEnti
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 
-trait Candidate { this: RaftActor =>
+private[raft] trait Candidate { this: RaftActor =>
   import RaftActor._
 
   def candidateBehavior: Receive = {

@@ -5,7 +5,7 @@ import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 
-object SnapshotProtocol {
+private[entityreplication] object SnapshotProtocol {
 
   sealed trait Command {
     def entityId: NormalizedEntityId

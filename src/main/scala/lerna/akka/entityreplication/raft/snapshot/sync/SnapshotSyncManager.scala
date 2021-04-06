@@ -22,7 +22,7 @@ import lerna.akka.entityreplication.util.ActorIds
 
 import scala.concurrent.Future
 
-object SnapshotSyncManager {
+private[entityreplication] object SnapshotSyncManager {
 
   def props(
       typeName: TypeName,
@@ -119,7 +119,7 @@ object SnapshotSyncManager {
       with SyncFailures
 }
 
-class SnapshotSyncManager(
+private[entityreplication] class SnapshotSyncManager(
     typeName: TypeName,
     srcMemberIndex: MemberIndex,
     dstMemberIndex: MemberIndex,

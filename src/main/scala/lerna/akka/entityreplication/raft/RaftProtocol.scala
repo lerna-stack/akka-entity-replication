@@ -6,7 +6,7 @@ import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId
 import lerna.akka.entityreplication.raft.model.{ LogEntry, LogEntryIndex }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshot
 
-object RaftProtocol {
+private[entityreplication] object RaftProtocol {
 
   final case class RequestRecovery(entityId: NormalizedEntityId)
   final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot])

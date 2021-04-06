@@ -8,7 +8,7 @@ import lerna.akka.entityreplication.raft.RaftSettings
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.util.ActorIds
 
-object SnapshotStore {
+private[entityreplication] object SnapshotStore {
 
   def props(
       typeName: TypeName,
@@ -19,7 +19,7 @@ object SnapshotStore {
     Props(new SnapshotStore(typeName, entityId, settings, selfMemberIndex))
 }
 
-class SnapshotStore(
+private[entityreplication] class SnapshotStore(
     typeName: TypeName,
     entityId: NormalizedEntityId,
     settings: RaftSettings,
