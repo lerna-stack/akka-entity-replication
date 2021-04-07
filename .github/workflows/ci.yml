@@ -17,6 +17,10 @@ jobs:
     timeout-minutes: 30
     steps:
     - uses: actions/checkout@v2
+      with:
+        # sbt-dynver (used by sbt-ci-release) detects the previous version by tag:
+        # https://github.com/dwijnand/sbt-dynver/tree/v4.1.1#previous-version-detection
+        fetch-depth: 0
 
     - name: Set up JDK 1.8
       uses: actions/setup-java@v1
@@ -33,6 +37,9 @@ jobs:
     # Detect compilation errors early
     - name: Compile
       run: sbt clean compile test:compile multi-jvm:compile
+
+    - name: Check binary compartibility
+      run: sbt --batch mimaReportBinaryIssues
 
     - name: Run tests
       continue-on-error: true # results are reported by action-junit-report

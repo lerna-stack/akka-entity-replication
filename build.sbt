@@ -73,6 +73,9 @@ lazy val lerna = (project in file("."))
     Compile / PB.targets := Seq(
         scalapb.gen(flatPackage = true, lenses = false, grpc = false) -> (sourceManaged in Compile).value / "scalapb",
       ),
+    // mima
+    mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %% moduleName.value % _).toSet,
+    mimaReportSignatureProblems := true, // check also generic parameters
   )
 
 addCommandAlias(
