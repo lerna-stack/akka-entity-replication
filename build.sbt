@@ -33,6 +33,7 @@ lazy val lerna = (project in file("."))
     fork in Test := true,
     parallelExecution in Test := false,
     libraryDependencies ++= Seq(
+        "com.typesafe.akka" %% "akka-cluster-typed"    % akkaVersion,
         "com.typesafe.akka" %% "akka-stream"           % akkaVersion,
         "com.typesafe.akka" %% "akka-cluster"          % akkaVersion,
         "com.typesafe.akka" %% "akka-cluster-sharding" % akkaVersion,
