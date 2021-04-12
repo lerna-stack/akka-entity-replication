@@ -37,7 +37,7 @@ trait ReplicatedEntityRef[-M] extends RecipientRef[M] { this: InternalRecipientR
     *
     * Example usage:
     * {{{
-    * case class Echo(message: String, replyTo: ActorRef[Reply])
+    * case class Echo(message: String, replyTo: ActorRef[EchoResponse])
     * case class EchoResponse(message: String)
     *
     * implicit val timeout = Timeout(3.seconds)
@@ -63,7 +63,7 @@ trait ReplicatedEntityRef[-M] extends RecipientRef[M] { this: InternalRecipientR
     *
     * Example usage:
     * {{{
-    * case class Echo(message: String, replyTo: ActorRef[Reply])
+    * case class Echo(message: String, replyTo: ActorRef[EchoResponse])
     * case class EchoResponse(message: String)
     *
     * implicit val timeout = Timeout(3.seconds)
