@@ -16,4 +16,10 @@ object ClusterReplication extends ExtensionId[ClusterReplication] {
 trait ClusterReplication extends Extension {
 
   def init[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E]
+
+  /**
+    * Create an [[ActorRef]]-like reference to a specific replicated entity.
+    */
+  def entityRefFor[M](typeKey: ReplicatedEntityContext[M], entityId: String): ReplicatedEntityRef[M]
+
 }
