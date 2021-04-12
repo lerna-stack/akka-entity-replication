@@ -20,6 +20,6 @@ trait ClusterReplication extends Extension {
   /**
     * Create an [[ActorRef]]-like reference to a specific replicated entity.
     */
-  def entityRefFor[M](typeKey: ReplicatedEntityContext[M], entityId: String): ReplicatedEntityRef[M]
+  def entityRefFor[M](typeKey: ReplicatedEntityTypeKey[M], entityId: String): ReplicatedEntityRef[M]
 
 }
