@@ -18,9 +18,9 @@ private[entityreplication] object RaftProtocol {
   final case class RequestRecovery(entityId: NormalizedEntityId)                          extends RaftActorCommand
   final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot]) extends EntityCommand
 
-  case class Command(command: Any)              extends ClusterReplicationSerializable with RaftActorCommand with EntityCommand
-  case class ForwardedCommand(command: Command) extends ClusterReplicationSerializable with RaftActorCommand
-  case class Replica(logEntry: LogEntry)        extends EntityCommand
+  final case class Command(command: Any)              extends ClusterReplicationSerializable with RaftActorCommand with EntityCommand
+  final case class ForwardedCommand(command: Command) extends ClusterReplicationSerializable with RaftActorCommand
+  final case class Replica(logEntry: LogEntry)        extends EntityCommand
 
   object Replicate {
     def apply(
@@ -38,7 +38,7 @@ private[entityreplication] object RaftProtocol {
     }
   }
 
-  case class Replicate(
+  final case class Replicate(
       event: Any,
       replyTo: ActorRef,
       entityId: Option[NormalizedEntityId],
@@ -48,7 +48,7 @@ private[entityreplication] object RaftProtocol {
 
   sealed trait ReplicationResponse
 
-  case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex, instanceId: Option[EntityInstanceId])
+  final case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex, instanceId: Option[EntityInstanceId])
       extends ReplicationResponse
       with EntityCommand
 
