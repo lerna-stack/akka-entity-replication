@@ -1,10 +1,14 @@
 package lerna.akka.entityreplication.raft
 
-import akka.actor.ActorRef
+import akka.actor.{ ActorPath, ActorRef }
 import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.model.{ LogEntry, LogEntryIndex }
-import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshot
+import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
+  EntitySnapshot,
+  EntitySnapshotMetadata,
+  EntityState,
+}
 
 private[entityreplication] object RaftProtocol {
 
@@ -43,4 +47,11 @@ private[entityreplication] object RaftProtocol {
 
   case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex, instanceId: Option[EntityInstanceId])
       extends ReplicationResponse
+
+  final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef)
+  final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState)
+
+  final case object RecoveryTimeout
+
+  final case class EntityRecoveryTimeoutException(entityPath: ActorPath) extends RuntimeException
 }
