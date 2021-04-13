@@ -13,15 +13,10 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
 private[entityreplication] object RaftProtocol {
 
   sealed trait RaftActorCommand
-  sealed trait EntityCommand
-
-  final case class RequestRecovery(entityId: NormalizedEntityId)                          extends RaftActorCommand
-  final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot]) extends EntityCommand
-
-  final case class ProcessCommand(command: Any)       extends EntityCommand
-  final case class Command(command: Any)              extends ClusterReplicationSerializable with RaftActorCommand
-  final case class ForwardedCommand(command: Command) extends ClusterReplicationSerializable with RaftActorCommand
-  final case class Replica(logEntry: LogEntry)        extends EntityCommand
+  final case class RequestRecovery(entityId: NormalizedEntityId)                  extends RaftActorCommand
+  final case class Command(command: Any)                                          extends RaftActorCommand with ClusterReplicationSerializable
+  final case class ForwardedCommand(command: Command)                             extends RaftActorCommand with ClusterReplicationSerializable
+  final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState) extends RaftActorCommand
 
   object Replicate {
     def apply(
@@ -47,16 +42,19 @@ private[entityreplication] object RaftProtocol {
       originSender: Option[ActorRef],
   ) extends RaftActorCommand
 
+  sealed trait EntityCommand
+
+  final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot]) extends EntityCommand
+  final case class ProcessCommand(command: Any)                                           extends EntityCommand
+  final case class Replica(logEntry: LogEntry)                                            extends EntityCommand
+  final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef)      extends EntityCommand
+  final case object RecoveryTimeout                                                       extends EntityCommand
+
   sealed trait ReplicationResponse
 
   final case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex, instanceId: Option[EntityInstanceId])
       extends ReplicationResponse
       with EntityCommand
-
-  final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef) extends EntityCommand
-  final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState)    extends RaftActorCommand
-
-  final case object RecoveryTimeout extends EntityCommand
 
   final case class EntityRecoveryTimeoutException(entityPath: ActorPath) extends RuntimeException
 }
