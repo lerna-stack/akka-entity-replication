@@ -12,12 +12,15 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
 
 private[entityreplication] object RaftProtocol {
 
-  final case class RequestRecovery(entityId: NormalizedEntityId)
-  final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot])
+  sealed trait RaftActorCommand
+  sealed trait EntityCommand
 
-  case class Command(command: Any)              extends ClusterReplicationSerializable
-  case class ForwardedCommand(command: Command) extends ClusterReplicationSerializable
-  case class Replica(logEntry: LogEntry)
+  final case class RequestRecovery(entityId: NormalizedEntityId)                          extends RaftActorCommand
+  final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot]) extends EntityCommand
+
+  case class Command(command: Any)              extends ClusterReplicationSerializable with RaftActorCommand with EntityCommand
+  case class ForwardedCommand(command: Command) extends ClusterReplicationSerializable with RaftActorCommand
+  case class Replica(logEntry: LogEntry)        extends EntityCommand
 
   object Replicate {
     def apply(
@@ -41,17 +44,18 @@ private[entityreplication] object RaftProtocol {
       entityId: Option[NormalizedEntityId],
       instanceId: Option[EntityInstanceId],
       originSender: Option[ActorRef],
-  )
+  ) extends RaftActorCommand
 
   sealed trait ReplicationResponse
 
   case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex, instanceId: Option[EntityInstanceId])
       extends ReplicationResponse
+      with EntityCommand
 
-  final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef)
-  final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState)
+  final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef) extends EntityCommand
+  final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState)    extends RaftActorCommand
 
-  final case object RecoveryTimeout
+  final case object RecoveryTimeout extends EntityCommand
 
   final case class EntityRecoveryTimeoutException(entityPath: ActorPath) extends RuntimeException
 }
