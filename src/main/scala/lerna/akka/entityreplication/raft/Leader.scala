@@ -177,7 +177,7 @@ private[raft] trait Leader { this: RaftActor =>
         if (currentData.currentTermIsCommitted) {
           val (entityId, cmd) = extractEntityId(message)
           broadcast(TryCreateEntity(shardId, entityId))
-          replicationActor(entityId) forward Command(cmd)
+          replicationActor(entityId) forward ProcessCommand(cmd)
         } else {
           // The commands will be released after initial NoOp event was committed
           stash()

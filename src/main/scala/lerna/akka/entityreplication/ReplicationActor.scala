@@ -83,7 +83,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
 
     override def stateReceive(receive: Receive, message: Any): Unit =
       message match {
-        case Command(command) =>
+        case ProcessCommand(command) =>
           receive.applyOrElse[Any, Unit](
             command,
             command => {

@@ -4,7 +4,7 @@ import akka.actor.ActorSystem
 import akka.testkit.{ TestKit, TestProbe }
 import lerna.akka.entityreplication.ReplicationRegion
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId }
-import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand }
+import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand, ProcessCommand }
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -223,7 +223,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       leader ! AppendEntriesSucceeded(term, lastLogIndex, follower2MemberIndex)
 
       // the leader forwards the command to ReplicationActor
-      replicationActor.expectMsg(Command(SomeCommand))
+      replicationActor.expectMsg(ProcessCommand(SomeCommand))
     }
 
     "AppendEntries の prevLogIndex/prevLogTerm に一致するログエントリがある場合は AppendEntriesSucceeded" in {

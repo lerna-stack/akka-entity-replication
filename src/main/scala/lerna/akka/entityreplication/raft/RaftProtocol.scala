@@ -18,7 +18,8 @@ private[entityreplication] object RaftProtocol {
   final case class RequestRecovery(entityId: NormalizedEntityId)                          extends RaftActorCommand
   final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot]) extends EntityCommand
 
-  final case class Command(command: Any)              extends ClusterReplicationSerializable with RaftActorCommand with EntityCommand
+  final case class ProcessCommand(command: Any)       extends EntityCommand
+  final case class Command(command: Any)              extends ClusterReplicationSerializable with RaftActorCommand
   final case class ForwardedCommand(command: Command) extends ClusterReplicationSerializable with RaftActorCommand
   final case class Replica(logEntry: LogEntry)        extends EntityCommand
 
