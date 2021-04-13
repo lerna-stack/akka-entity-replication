@@ -27,6 +27,6 @@ protected[testkit] class TestReplicationActor(replicationActorProps: Props) exte
     case Terminated(`replicationActor`) =>
       context.stop(self)
     case message =>
-      replicationActor forward Command(message)
+      replicationActor forward ProcessCommand(message)
   }
 }

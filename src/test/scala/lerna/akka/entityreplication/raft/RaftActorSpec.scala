@@ -3,7 +3,7 @@ package lerna.akka.entityreplication.raft
 import akka.actor.ActorSystem
 import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
-import lerna.akka.entityreplication.ReplicationActor.{ Snapshot, TakeSnapshot }
+import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, Term }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
