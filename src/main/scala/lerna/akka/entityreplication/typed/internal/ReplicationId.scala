@@ -5,7 +5,8 @@ import lerna.akka.entityreplication.typed.ReplicatedEntityTypeKey
 
 private[entityreplication] object ReplicationId {
 
-  def apply[Command](entityTypeKey: ReplicatedEntityTypeKey[Command], entityId: String): ReplicationId[Command] = ???
+  def apply[Command](entityTypeKey: ReplicatedEntityTypeKey[Command], entityId: String): ReplicationId[Command] =
+    ReplicationIdImpl(entityTypeKey, NormalizedEntityId.from(entityId))
 }
 
 trait ReplicationId[Command] {
