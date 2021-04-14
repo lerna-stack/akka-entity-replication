@@ -1,15 +1,7 @@
 package lerna.akka.entityreplication.typed
 
 import akka.actor.typed.ActorRef
-import lerna.akka.entityreplication.typed.internal._
-import lerna.akka.entityreplication.typed.internal.effect.{
-  EffectBuilderImpl,
-  ReplicateEffect,
-  ReplicateNothingEffect,
-  StashEffect,
-}
-
-import scala.collection.immutable
+import lerna.akka.entityreplication.typed.internal.effect._
 
 object Effect {
 
