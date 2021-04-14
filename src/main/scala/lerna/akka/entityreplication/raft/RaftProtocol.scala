@@ -9,10 +9,11 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
   EntitySnapshotMetadata,
   EntityState,
 }
+import lerna.akka.entityreplication.typed.ClusterReplication.ShardCommand
 
 private[entityreplication] object RaftProtocol {
 
-  sealed trait RaftActorCommand
+  sealed trait RaftActorCommand                                                   extends ShardCommand
   final case class RequestRecovery(entityId: NormalizedEntityId)                  extends RaftActorCommand
   final case class Command(command: Any)                                          extends RaftActorCommand with ClusterReplicationSerializable
   final case class ForwardedCommand(command: Command)                             extends RaftActorCommand with ClusterReplicationSerializable
