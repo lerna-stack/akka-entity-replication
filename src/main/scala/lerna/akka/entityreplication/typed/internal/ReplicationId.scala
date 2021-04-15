@@ -1,8 +1,9 @@
-package lerna.akka.entityreplication.typed
+package lerna.akka.entityreplication.typed.internal
 
 import lerna.akka.entityreplication.model.NormalizedEntityId
+import lerna.akka.entityreplication.typed.ReplicatedEntityTypeKey
 
-object ReplicationId {
+private[entityreplication] object ReplicationId {
 
   def apply[Command](entityTypeKey: ReplicatedEntityTypeKey[Command], entityId: String): ReplicationId[Command] = ???
 }
