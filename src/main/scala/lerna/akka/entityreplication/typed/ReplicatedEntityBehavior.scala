@@ -1,6 +1,6 @@
 package lerna.akka.entityreplication.typed
 
-import akka.actor.typed.{ Behavior, Signal }
+import akka.actor.typed.Signal
 
 object ReplicatedEntityBehavior {
 
@@ -16,7 +16,7 @@ object ReplicatedEntityBehavior {
   ): ReplicatedEntityBehavior[Command, Event, State] = ???
 }
 
-trait ReplicatedEntityBehavior[Command, Event, State] extends Behavior[Command] {
+trait ReplicatedEntityBehavior[Command, Event, State] {
 
   def replicationId: ReplicationId[Command]
 
