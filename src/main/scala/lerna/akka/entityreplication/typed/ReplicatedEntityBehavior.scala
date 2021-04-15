@@ -9,7 +9,7 @@ object ReplicatedEntityBehavior {
   type EventHandler[State, Event] = (State, Event) => State
 
   def apply[Command, Event, State](
-      replicationId: ReplicationId,
+      replicationId: ReplicationId[Command],
       emptyState: State,
       commandHandler: CommandHandler[Command, Event, State],
       eventHandler: EventHandler[State, Event],
@@ -18,7 +18,7 @@ object ReplicatedEntityBehavior {
 
 trait ReplicatedEntityBehavior[Command, Event, State] extends Behavior[Command] {
 
-  def replicationId: ReplicationId
+  def replicationId: ReplicationId[Command]
 
   def receiveSignal(
       signalHandler: PartialFunction[(State, Signal), Unit],
