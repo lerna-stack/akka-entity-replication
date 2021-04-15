@@ -1,5 +1,6 @@
 package lerna.akka.entityreplication.typed
 
+import akka.actor.typed.ActorSystem
 import akka.actor.typed.scaladsl.{ ActorContext, Behaviors }
 
 /**
@@ -99,10 +100,10 @@ object ReplicatedEntityBehaviorSpec {
         }
     }
 
-    def apply(replicationId: ReplicationId): Behavior[Command] = {
+    def apply(entityContext: ReplicatedEntityContext[Command]): Behavior[Command] = {
       Behaviors.setup { context =>
         ReplicatedEntityBehavior[Command, Event, State](
-          replicationId,
+          entityContext,
           emptyState = Account(balance = 0),
           commandHandler = (state, command) => state.applyCommand(command, context),
           eventHandler = (state, event) => state.applyEvent(event, context),
@@ -111,4 +112,10 @@ object ReplicatedEntityBehaviorSpec {
     }
   }
 
+  def startRegion(system: ActorSystem[_]): ActorRef[ReplicationEnvelope[BankAccountBehavior.Command]] = {
+    val typeKey = ReplicatedEntityTypeKey[BankAccountBehavior.Command]("test")
+    ClusterReplication(system).init(ReplicatedEntity(typeKey) { entityContext =>
+      BankAccountBehavior(entityContext)
+    })
+  }
 }

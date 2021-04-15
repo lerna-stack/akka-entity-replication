@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.typed
 
-import akka.actor.typed.{ Behavior, Signal }
+import akka.actor.typed.Signal
+import akka.lerna.DeferredBehavior
 
 object ReplicatedEntityBehavior {
 
@@ -9,16 +10,16 @@ object ReplicatedEntityBehavior {
   type EventHandler[State, Event] = (State, Event) => State
 
   def apply[Command, Event, State](
-      replicationId: ReplicationId,
+      entityContext: ReplicatedEntityContext[Command],
       emptyState: State,
       commandHandler: CommandHandler[Command, Event, State],
       eventHandler: EventHandler[State, Event],
   ): ReplicatedEntityBehavior[Command, Event, State] = ???
 }
 
-trait ReplicatedEntityBehavior[Command, Event, State] extends Behavior[Command] {
+trait ReplicatedEntityBehavior[Command, Event, State] extends DeferredBehavior[Command] {
 
-  def replicationId: ReplicationId
+  def entityContext: ReplicatedEntityContext[Command]
 
   def receiveSignal(
       signalHandler: PartialFunction[(State, Signal), Unit],
