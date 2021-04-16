@@ -89,6 +89,6 @@ private[entityreplication] final case class ReplicatedEntityBehaviorImpl[Command
     copy(signalHandler = signalHandler)
   }
 
-  def withStopMessage(message: Command): ReplicatedEntityBehavior[Command, Event, State] =
+  override def withStopMessage(message: Command): ReplicatedEntityBehavior[Command, Event, State] =
     copy(stopMessage = Option(message))
 }

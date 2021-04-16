@@ -33,4 +33,6 @@ trait ReplicatedEntityBehavior[Command, Event, State] extends DeferredBehavior[C
   ): ReplicatedEntityBehavior[Command, Event, State]
 
   def signalHandler: PartialFunction[(State, Signal), Unit]
+
+  def withStopMessage(message: Command): ReplicatedEntityBehavior[Command, Event, State]
 }
