@@ -30,6 +30,15 @@ object Effect {
     none.thenPassivate()
 
   /**
+    * Stop this local entity actor immediately
+    *
+    * Note that this Effect doesn't stop all actors that are one entity replicated in other nodes.
+    * To stop all replicated actors, you should use [[passivate()]].
+    */
+  def stopLocally[Event, State](): EffectBuilder[Event, State] =
+    none.thenStopLocally()
+
+  /**
     * Unstash the commands that were stashed with [[Effect.stash()]]
     */
   def unstashAll[Event, State](): EffectBuilder[Event, State] =
@@ -73,6 +82,14 @@ trait EffectBuilder[+Event, State] {
     * Passivate (stop temporarily) this entity to reduce memory consumption
     */
   def thenPassivate(): EffectBuilder[Event, State]
+
+  /**
+    * Stop this local entity actor immediately
+    *
+    * Note that this Effect doesn't stop all actors that are one entity replicated in other nodes.
+    * To stop all replicated actors, you should use [[thenPassivate]].
+    */
+  def thenStopLocally(): EffectBuilder[Event, State]
 
   /**
     * Unstash the commands that were stashed with [[Effect.stash()]]

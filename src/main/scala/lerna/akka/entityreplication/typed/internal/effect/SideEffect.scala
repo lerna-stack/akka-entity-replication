@@ -30,6 +30,10 @@ private[entityreplication] case class PassivateEffect[State]() extends SideEffec
   override def toString: String = "Passivate"
 }
 
+private[entityreplication] case class StopLocallyEffect[State]() extends SideEffect[State] {
+  override def toString: String = "StopLocally"
+}
+
 private[entityreplication] case class UnstashAllEffect[State]() extends SideEffect[State] {
   override def toString: String = "UnstashAll"
 }

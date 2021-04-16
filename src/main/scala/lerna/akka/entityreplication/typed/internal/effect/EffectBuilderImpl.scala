@@ -32,6 +32,9 @@ private[entityreplication] final case class EffectBuilderImpl[+Event, State](
   override def thenPassivate(): EffectBuilder[Event, State] =
     copy(sideEffects = sideEffects :+ PassivateEffect())
 
+  override def thenStopLocally(): EffectBuilder[Event, State] =
+    copy(sideEffects = sideEffects :+ StopLocallyEffect())
+
   override def thenUnstashAll(): EffectBuilder[Event, State] =
     copy(sideEffects = sideEffects :+ UnstashAllEffect())
 
