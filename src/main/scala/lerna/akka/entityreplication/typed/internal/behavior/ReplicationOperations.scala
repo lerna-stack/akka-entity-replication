@@ -6,7 +6,7 @@ import akka.actor.typed.scaladsl.{ ActorContext, Behaviors, StashBuffer }
 import lerna.akka.entityreplication.ReplicationRegion.Passivate
 import lerna.akka.entityreplication.raft.RaftProtocol.{ EntityCommand, Snapshot, TakeSnapshot }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntityState
-import lerna.akka.entityreplication.typed.internal.effect.{ Callback, PassivateEffect, SideEffect, UnstashAllEffect }
+import lerna.akka.entityreplication.typed.internal.effect._
 
 import scala.collection.immutable
 
@@ -43,6 +43,9 @@ private[entityreplication] trait ReplicationOperations[Command, Event, State] {
       case _: PassivateEffect[_] =>
         setup.shard ! Passivate(context.self.path, setup.stopMessage.getOrElse(PoisonPill))
         behavior
+
+      case _: StopLocallyEffect[_] =>
+        Behaviors.stopped
 
       case _: UnstashAllEffect[_] =>
         stashBuffer.unstashAll(behavior)
