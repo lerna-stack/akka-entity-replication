@@ -30,18 +30,21 @@ private[entityreplication] object Ready {
         setup: BehaviorSetup[Command, Event, State],
         event: Any,
         logEntryIndex: LogEntryIndex,
-    ): ReadyState[State] =
-      event match {
-        case NoOp =>
-          copy(
-            lastAppliedLogEntryIndex = logEntryIndex,
-          )
-        case event =>
-          copy(
-            entityState = setup.eventHandler(entityState, event.asInstanceOf[Event]),
-            lastAppliedLogEntryIndex = logEntryIndex,
-          )
-      }
+    ): ReadyState[State] = {
+      if (logEntryIndex > lastAppliedLogEntryIndex) {
+        event match {
+          case NoOp =>
+            copy(
+              lastAppliedLogEntryIndex = logEntryIndex,
+            )
+          case event =>
+            copy(
+              entityState = setup.eventHandler(entityState, event.asInstanceOf[Event]),
+              lastAppliedLogEntryIndex = logEntryIndex,
+            )
+        }
+      } else this
+    }
   }
 
   def behavior[Command, Event, State](
