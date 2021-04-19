@@ -15,6 +15,13 @@ private[entityreplication] object Ready {
   final case class ReadyState[State](
       entityState: State,
       instanceId: EntityInstanceId,
+      /**
+        * It records the [[LogEntryIndex]] of the last applied event, and ignores
+        * if the entity receives again an already applied event.
+        *
+        * Duplication occurs when the timing of requesting [[RequestRecovery]] from [[ReplicationActor]]
+        * and the timing of committing the event by [[RaftActor]] overlap.
+        */
       lastAppliedLogEntryIndex: LogEntryIndex,
       stashBuffer: StashBuffer[EntityCommand],
   ) {

@@ -49,6 +49,7 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
     }
 
   private[this] def receiveReplica(command: RaftProtocol.Replica, state: BehaviorState): Behavior[EntityCommand] = {
+    // ReplicatedEntityBehavior can receive Replica message when RaftActor demoted to Follower while replicating an event
     Ready.behavior(
       setup,
       transformReadyState(state).applyEvent(setup, command.logEntry.event.event, command.logEntry.index),

@@ -53,6 +53,7 @@ private[entityreplication] class Recovering[Command, Event, State](
             scheduler.cancel(RecoveryTimeoutTimer)
             receiveRecoveryState(command, state)
           case RaftProtocol.RecoveryTimeout =>
+            // TODO: Enable backoff to prevent cascade failures
             throw RaftProtocol.EntityRecoveryTimeoutException(context.self.path)
           case command: RaftProtocol.ProcessCommand =>
             state.stashBuffer.stash(command)
