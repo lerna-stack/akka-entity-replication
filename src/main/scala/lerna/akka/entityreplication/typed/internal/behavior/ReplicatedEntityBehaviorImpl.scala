@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.typed.internal.behavior
 
 import akka.actor.typed.{ ActorRef, Behavior, BehaviorInterceptor, Signal, SupervisorStrategy, TypedActorContext }
-import akka.actor.typed.scaladsl.Behaviors
+import akka.actor.typed.scaladsl.{ ActorContext, Behaviors }
 import lerna.akka.entityreplication.ClusterReplicationSettings
 import lerna.akka.entityreplication.raft.RaftProtocol.{ EntityCommand, ProcessCommand }
 import lerna.akka.entityreplication.typed.ClusterReplication.ShardCommand
@@ -9,8 +9,18 @@ import lerna.akka.entityreplication.typed.internal.ReplicationId
 import lerna.akka.entityreplication.typed.internal.behavior.Recovering.RecoveringState
 import lerna.akka.entityreplication.typed.{ ReplicatedEntityBehavior, ReplicatedEntityContext }
 import akka.actor.typed.scaladsl.adapter._
+import lerna.akka.entityreplication.model.EntityInstanceId
+import lerna.akka.entityreplication.typed.internal.behavior.ReplicatedEntityBehaviorImpl.generateInstanceId
 
+import java.util.concurrent.atomic.AtomicInteger
 import scala.util.control.NonFatal
+
+object ReplicatedEntityBehaviorImpl {
+
+  private[this] val instanceIdCounter = new AtomicInteger(1)
+
+  private def generateInstanceId(): EntityInstanceId = EntityInstanceId(instanceIdCounter.getAndIncrement())
+}
 
 private[entityreplication] final case class ReplicatedEntityBehaviorImpl[Command, Event, State](
     entityContext: ReplicatedEntityContext[Command],
@@ -63,24 +73,25 @@ private[entityreplication] final case class ReplicatedEntityBehaviorImpl[Command
     }
 
   def createBehavior(shard: ActorRef[ShardCommand], settings: ClusterReplicationSettings): Behavior[EntityCommand] = {
-    Behaviors.setup { context =>
-      val setup = BehaviorSetup(
-        entityContext,
-        emptyState,
-        commandHandler,
-        eventHandler,
-        signalHandler,
-        stopMessage,
-        ReplicationId(entityContext.entityTypeKey, entityContext.entityId),
-        shard,
-        settings,
-        context,
-      )
-      Behaviors
-        .supervise {
-          Recovering.behavior(setup, RecoveringState.initial[State](context))
-        }.onFailure(SupervisorStrategy.restart)
-    }
+    Behaviors
+      .supervise {
+        Behaviors.setup { context: ActorContext[EntityCommand] =>
+          val setup = BehaviorSetup(
+            entityContext,
+            emptyState,
+            commandHandler,
+            eventHandler,
+            signalHandler,
+            stopMessage,
+            ReplicationId(entityContext.entityTypeKey, entityContext.entityId),
+            shard,
+            settings,
+            context,
+          )
+          val instanceId = generateInstanceId()
+          Recovering.behavior(setup, RecoveringState.initial[State](context, instanceId))
+        }
+      }.onFailure(SupervisorStrategy.restart)
   }
 
   override def receiveSignal(

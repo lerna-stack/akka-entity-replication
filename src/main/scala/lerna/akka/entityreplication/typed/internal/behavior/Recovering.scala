@@ -2,6 +2,7 @@ package lerna.akka.entityreplication.typed.internal.behavior
 import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.{ ActorContext, Behaviors, StashBuffer }
 import akka.lerna.StashBuffer
+import lerna.akka.entityreplication.model.EntityInstanceId
 import lerna.akka.entityreplication.raft.RaftProtocol
 import lerna.akka.entityreplication.raft.RaftProtocol.EntityCommand
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
@@ -10,12 +11,12 @@ import lerna.akka.entityreplication.typed.internal.behavior.Ready.ReadyState
 private[entityreplication] object Recovering {
 
   object RecoveringState {
-    def initial[State](context: ActorContext[EntityCommand]): RecoveringState[State] =
-      RecoveringState(InstanceId.initial(), StashBuffer(context, Int.MaxValue /* TODO: Should I get from config? */ ))
+    def initial[State](context: ActorContext[EntityCommand], instanceId: EntityInstanceId): RecoveringState[State] =
+      RecoveringState(instanceId, StashBuffer(context, Int.MaxValue /* TODO: Should I get from config? */ ))
   }
 
   final case class RecoveringState[State](
-      instanceId: InstanceId,
+      instanceId: EntityInstanceId,
       stashBuffer: StashBuffer[EntityCommand],
   )
 

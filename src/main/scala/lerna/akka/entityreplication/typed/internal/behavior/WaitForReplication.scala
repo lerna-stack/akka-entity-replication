@@ -2,6 +2,7 @@ package lerna.akka.entityreplication.typed.internal.behavior
 
 import akka.actor.typed.Behavior
 import akka.actor.typed.scaladsl.{ Behaviors, StashBuffer }
+import lerna.akka.entityreplication.model.EntityInstanceId
 import lerna.akka.entityreplication.raft.RaftProtocol
 import lerna.akka.entityreplication.raft.RaftProtocol.EntityCommand
 import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntryIndex }
@@ -20,7 +21,7 @@ private[entityreplication] object WaitForReplication {
 
   final case class WaitForReplicationState[State](
       entityState: State,
-      instanceId: InstanceId,
+      instanceId: EntityInstanceId,
       lastAppliedLogIndex: LogEntryIndex,
       sideEffects: immutable.Seq[SideEffect[State]],
       stashBuffer: StashBuffer[EntityCommand],

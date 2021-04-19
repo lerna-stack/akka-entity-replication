@@ -14,7 +14,7 @@ private[entityreplication] object Ready {
 
   final case class ReadyState[State](
       entityState: State,
-      instanceId: InstanceId,
+      instanceId: EntityInstanceId,
       lastAppliedLogEntryIndex: LogEntryIndex,
       stashBuffer: StashBuffer[EntityCommand],
   ) {
