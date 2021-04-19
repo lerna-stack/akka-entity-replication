@@ -40,10 +40,13 @@ private[entityreplication] object Ready {
   def behavior[Command, Event, State](
       setup: BehaviorSetup[Command, Event, State],
       readyState: ReadyState[State],
-  ): Behavior[EntityCommand] =
-    Behaviors.setup { context =>
-      new Ready(setup, context).createBehavior(readyState)
+  ): Behavior[EntityCommand] = {
+    readyState.stashBuffer.unstashAll {
+      Behaviors.setup { context =>
+        new Ready(setup, context).createBehavior(readyState)
+      }
     }
+  }
 }
 
 private[entityreplication] class Ready[Command, Event, State](
