@@ -595,7 +595,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       Props(
         new ReplicationRegion(
           typeName = typeName,
-          replicationActorProps,
+          _ => replicationActorProps,
           ClusterReplicationSettings(system),
           extractEntityId,
           extractShardId,
@@ -606,7 +606,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
               new RaftActor(
                 typeName = TypeName.from("test"),
                 extractNormalizedEntityId,
-                replicationActorProps,
+                _ => replicationActorProps,
                 self,
                 shardSnapshotStoreProps = Props.empty,
                 selfMemberIndex,

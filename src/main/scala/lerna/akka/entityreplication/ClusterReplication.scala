@@ -9,6 +9,8 @@ object ClusterReplication {
   def apply(system: ActorSystem): ClusterReplication = new ClusterReplication(system)
 
   private val actorNamePrefix: String = "replicationRegion"
+
+  private[entityreplication] type EntityPropsProvider = ReplicationActorContext => Props
 }
 
 class ClusterReplication private (system: ActorSystem) {
@@ -18,6 +20,16 @@ class ClusterReplication private (system: ActorSystem) {
   def start(
       typeName: String,
       entityProps: Props,
+      settings: ClusterReplicationSettings,
+      extractEntityId: ReplicationRegion.ExtractEntityId,
+      extractShardId: ReplicationRegion.ExtractShardId,
+  ): ActorRef = {
+    internalStart(typeName, _ => entityProps, settings, extractEntityId, extractShardId)
+  }
+
+  private[entityreplication] def internalStart(
+      typeName: String,
+      entityProps: EntityPropsProvider,
       settings: ClusterReplicationSettings,
       extractEntityId: ReplicationRegion.ExtractEntityId,
       extractShardId: ReplicationRegion.ExtractShardId,

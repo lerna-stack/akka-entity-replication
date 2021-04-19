@@ -193,7 +193,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
           Props(
             new ReplicationRegion(
               typeName = typeName,
-              DummyReplicationActor.props(entityProbe),
+              _ => DummyReplicationActor.props(entityProbe),
               ClusterReplicationSettings(system),
               DummyReplicationActor.extractEntityId,
               DummyReplicationActor.extractShardId,

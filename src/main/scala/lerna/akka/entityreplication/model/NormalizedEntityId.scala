@@ -1,9 +1,10 @@
 package lerna.akka.entityreplication.model
 
 import akka.actor.ActorPath
+import akka.util.ByteString
 import lerna.akka.entityreplication.ReplicationRegion.EntityId
 
-import java.net.URLEncoder
+import java.net.{ URLDecoder, URLEncoder }
 
 private[entityreplication] object NormalizedEntityId {
   def from(entityId: EntityId): NormalizedEntityId = new NormalizedEntityId(URLEncoder.encode(entityId, "utf-8"))
@@ -14,4 +15,7 @@ private[entityreplication] object NormalizedEntityId {
     new NormalizedEntityId(encodedEntityId)
 }
 
-private[entityreplication] final case class NormalizedEntityId private (underlying: String) extends AnyVal
+private[entityreplication] final case class NormalizedEntityId private (underlying: String) extends AnyVal {
+
+  def decoded: String = URLDecoder.decode(underlying, ByteString.UTF_8)
+}
