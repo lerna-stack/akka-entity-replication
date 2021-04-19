@@ -53,6 +53,10 @@ private[entityreplication] class Recovering[Command, Event, State](
             scheduler.cancel(RecoveryTimeoutTimer)
             receiveRecoveryState(command, state)
           case RaftProtocol.RecoveryTimeout =>
+            context.log.info(
+              "Entity (name: {}) recovering timed out. It will be retried later.",
+              setup.entityContext.entityId,
+            )
             // TODO: Enable backoff to prevent cascade failures
             throw RaftProtocol.EntityRecoveryTimeoutException(context.self.path)
           case command: RaftProtocol.ProcessCommand =>
