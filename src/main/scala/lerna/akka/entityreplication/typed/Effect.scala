@@ -35,7 +35,7 @@ object Effect {
     * Note that this Effect doesn't stop all actors that are one entity replicated in other nodes.
     * To stop all replicated actors, you should use [[passivate()]].
     */
-  def stopLocally[Event, State](): EffectBuilder[Event, State] =
+  def stopLocally[Event, State](): Effect[Event, State] =
     none.thenStopLocally()
 
   /**
@@ -89,7 +89,7 @@ trait EffectBuilder[+Event, State] {
     * Note that this Effect doesn't stop all actors that are one entity replicated in other nodes.
     * To stop all replicated actors, you should use [[thenPassivate]].
     */
-  def thenStopLocally(): EffectBuilder[Event, State]
+  def thenStopLocally(): Effect[Event, State]
 
   /**
     * Unstash the commands that were stashed with [[Effect.stash()]]

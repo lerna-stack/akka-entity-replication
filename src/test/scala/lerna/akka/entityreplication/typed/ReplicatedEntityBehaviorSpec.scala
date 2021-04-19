@@ -89,7 +89,7 @@ object ReplicatedEntityBehaviorSpec {
             Effect.none.thenPassivate().thenNoReply()
 
           case Stop =>
-            Effect.stopLocally().thenNoReply()
+            Effect.stopLocally()
 
           case SimulateFailure =>
             throw new IllegalStateException("bang!")
