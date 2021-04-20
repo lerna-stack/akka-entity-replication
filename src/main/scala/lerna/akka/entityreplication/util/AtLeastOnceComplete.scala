@@ -3,7 +3,9 @@ package lerna.akka.entityreplication.util
 import akka.actor.{ ActorRef, ActorSystem }
 import akka.actor.typed
 import akka.actor.typed.RecipientRef
-import akka.event.Logging
+import akka.actor.typed.scaladsl.AskPattern._
+import akka.actor.typed.scaladsl.adapter._
+import akka.event.{ Logging, LoggingAdapter }
 import akka.pattern.{ ask, StatusReply }
 import akka.util.Timeout
 
@@ -23,7 +25,25 @@ object AtLeastOnceComplete {
       destination: RecipientRef[Message],
       message: typed.ActorRef[Reply] => Message,
       retryInterval: FiniteDuration,
-  )(implicit system: typed.ActorSystem[_], timeout: Timeout): Future[Reply] = ???
+  )(implicit system: typed.ActorSystem[_], timeout: Timeout): Future[Reply] =
+    internalAskTo(
+      { (retrying: Boolean, logging: LoggingAdapter) =>
+        destination ask { replyTo: typed.ActorRef[Reply] =>
+          val msg = message(replyTo)
+          if (retrying) {
+            logging.debug(
+              "Destination {} did not reply to a message in {}. Retrying to send the message [{}].",
+              destination,
+              retryInterval,
+              msg,
+            )
+          }
+          msg
+        }
+      },
+      retryInterval,
+      system.toClassic,
+    )
 
   /**
     * Asks the destination with retrying until timeout.
@@ -37,37 +57,69 @@ object AtLeastOnceComplete {
       destination: RecipientRef[Message],
       message: typed.ActorRef[StatusReply[Reply]] => Message,
       retryInterval: FiniteDuration,
-  )(implicit system: typed.ActorSystem[_], timeout: Timeout): Future[Reply] = ???
+  )(implicit system: typed.ActorSystem[_], timeout: Timeout): Future[Reply] =
+    internalAskTo(
+      { (retrying: Boolean, logging: LoggingAdapter) =>
+        destination askWithStatus { replyTo: typed.ActorRef[StatusReply[Reply]] =>
+          val msg = message(replyTo)
+          if (retrying) {
+            logging.debug(
+              "Destination {} did not reply to a message in {}. Retrying to send the message [{}].",
+              destination,
+              retryInterval,
+              msg,
+            )
+          }
+          msg
+        }
+      },
+      retryInterval,
+      system.toClassic,
+    )
 
   def askTo(
       destination: ActorRef,
       message: Any,
       retryInterval: FiniteDuration,
-  )(implicit system: ActorSystem, timeout: Timeout): Future[Any] = {
+  )(implicit system: ActorSystem, timeout: Timeout): Future[Any] =
+    internalAskTo(
+      { (retrying: Boolean, logging: LoggingAdapter) =>
+        if (retrying) {
+          logging.debug(
+            "Destination {} did not reply to a message in {}. Retrying to send the message [{}].",
+            destination,
+            retryInterval,
+            message,
+          )
+        }
+        destination ? message
+      },
+      retryInterval,
+      system,
+    )
+
+  private[this] trait AskStrategy[Reply] {
+    def apply(retrying: Boolean, logging: LoggingAdapter): Future[Reply]
+  }
+
+  private[this] def internalAskTo[Message, Reply](
+      ask: AskStrategy[Reply],
+      retryInterval: FiniteDuration,
+      system: ActorSystem,
+  )(implicit timeout: Timeout): Future[Reply] = {
 
     val logging = Logging(system, this.getClass)
 
     import system.dispatcher
-    val promise = Promise[Any]()
+    val promise = Promise[Reply]()
 
-    def send(): Unit = {
-      val future = destination ? message
-      promise.completeWith(future)
-    }
-
-    send()
+    promise.completeWith(ask(retrying = false, logging))
 
     val cancellable = system.scheduler.scheduleAtFixedRate(
       initialDelay = retryInterval,
       interval = retryInterval,
     ) { () =>
-      logging.debug(
-        "Destination {} did not reply to a message in {}. Retrying to send the message [{}].",
-        destination,
-        retryInterval,
-        message,
-      )
-      send()
+      promise.completeWith(ask(retrying = true, logging))
     }
 
     promise.future.onComplete { _ =>
