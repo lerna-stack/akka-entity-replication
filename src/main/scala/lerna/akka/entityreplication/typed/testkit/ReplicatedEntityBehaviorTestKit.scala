@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.typed.testkit
 
 import akka.actor.typed.{ ActorRef, ActorSystem, Behavior }
+import lerna.akka.entityreplication.typed.{ ReplicatedEntityContext, ReplicatedEntityTypeKey }
 
 import scala.reflect.ClassTag
 
@@ -11,7 +12,9 @@ object ReplicatedEntityBehaviorTestKit {
     */
   def apply[Command, Event, State](
       system: ActorSystem[_],
-      behavior: Behavior[Command],
+      entityTypeKey: ReplicatedEntityTypeKey[Command],
+      entityId: String,
+      behavior: ReplicatedEntityContext[Command] => Behavior[Command],
   ): ReplicatedEntityBehaviorTestKit[Command, Event, State] = ???
 
   trait CommandResult[Command, Event, State] {
