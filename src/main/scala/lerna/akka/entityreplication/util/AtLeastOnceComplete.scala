@@ -4,7 +4,7 @@ import akka.actor.{ ActorRef, ActorSystem }
 import akka.actor.typed
 import akka.actor.typed.RecipientRef
 import akka.event.Logging
-import akka.pattern.ask
+import akka.pattern.{ ask, StatusReply }
 import akka.util.Timeout
 
 import scala.concurrent.duration.FiniteDuration
@@ -15,6 +15,12 @@ object AtLeastOnceComplete {
   def askTo[Message, Reply](
       destination: RecipientRef[Message],
       message: typed.ActorRef[Reply] => Message,
+      retryInterval: FiniteDuration,
+  )(implicit system: typed.ActorSystem[_], timeout: Timeout): Future[Reply] = ???
+
+  def askWithStatusTo[Message, Reply](
+      destination: RecipientRef[Message],
+      message: typed.ActorRef[StatusReply[Reply]] => Message,
       retryInterval: FiniteDuration,
   )(implicit system: typed.ActorSystem[_], timeout: Timeout): Future[Reply] = ???
 
