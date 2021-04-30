@@ -1,5 +1,6 @@
 package lerna.akka.entityreplication.typed.internal
 
+import akka.{ actor => classic }
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ ActorRef, ActorSystem, Behavior, BehaviorInterceptor, TypedActorContext }
 import akka.actor.typed.scaladsl.adapter._
@@ -9,9 +10,19 @@ import lerna.akka.entityreplication.typed.ClusterReplication
 import lerna.akka.{ entityreplication => untyped }
 import lerna.akka.entityreplication.typed._
 
+import scala.jdk.CollectionConverters._
+import scala.collection.concurrent
+import java.util.concurrent.ConcurrentHashMap
+
 private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) extends ClusterReplication {
 
-  override def init[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E] = {
+  private[this] val regions: concurrent.Map[ReplicatedEntityTypeKey[_], classic.ActorRef] =
+    new ConcurrentHashMap[ReplicatedEntityTypeKey[_], classic.ActorRef].asScala
+
+  override def init[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E] =
+    regions.getOrElseUpdate(entity.typeKey, internalInit(entity)).toTyped
+
+  private[this] def internalInit[M, E](entity: ReplicatedEntity[M, E]): classic.ActorRef = {
     val classicSystem = system.toClassic
     val settings      = untyped.ClusterReplicationSettings(classicSystem)
     val extractEntityId: untyped.ReplicationRegion.ExtractEntityId = {
@@ -53,8 +64,13 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
           extractEntityId = extractEntityId,
           extractShardId = extractShardId,
         )
-    region.toTyped[E]
+    region
   }
 
-  override def entityRefFor[M](typeKey: ReplicatedEntityTypeKey[M], entityId: String): ReplicatedEntityRef[M] = ???
+  override def entityRefFor[M](typeKey: ReplicatedEntityTypeKey[M], entityId: String): ReplicatedEntityRef[M] =
+    regions.get(typeKey) match {
+      case Some(region) =>
+        new ReplicatedEntityRefImpl[M](typeKey, entityId, region.toTyped, system)
+      case None => throw new IllegalStateException(s"The type [${typeKey}] must be init first")
+    }
 }
