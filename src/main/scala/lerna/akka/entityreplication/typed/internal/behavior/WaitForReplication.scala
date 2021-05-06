@@ -37,16 +37,17 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
   private[this] type BehaviorState = WaitForReplicationState[State]
 
   def createBehavior(state: BehaviorState): Behavior[EntityCommand] =
-    Behaviors.receiveMessage {
-      case command: RaftProtocol.Replica              => receiveReplica(command, state)
-      case command: RaftProtocol.ReplicationSucceeded => receiveReplicationSucceeded(command, state)
-      case command: RaftProtocol.TakeSnapshot         => receiveTakeSnapshot(command, state.entityState)
-      case command: RaftProtocol.ProcessCommand =>
-        state.stashBuffer.stash(command)
-        Behaviors.same
-      case _: RaftProtocol.RecoveryState => Behaviors.unhandled
-      case RaftProtocol.RecoveryTimeout  => Behaviors.unhandled
-    }
+    Behaviors
+      .receiveMessage[EntityCommand] {
+        case command: RaftProtocol.Replica              => receiveReplica(command, state)
+        case command: RaftProtocol.ReplicationSucceeded => receiveReplicationSucceeded(command, state)
+        case command: RaftProtocol.TakeSnapshot         => receiveTakeSnapshot(command, state.entityState)
+        case command: RaftProtocol.ProcessCommand =>
+          state.stashBuffer.stash(command)
+          Behaviors.same
+        case _: RaftProtocol.RecoveryState => Behaviors.unhandled
+        case RaftProtocol.RecoveryTimeout  => Behaviors.unhandled
+      }.receiveSignal(setup.onSignal(state.entityState))
 
   private[this] def receiveReplica(command: RaftProtocol.Replica, state: BehaviorState): Behavior[EntityCommand] = {
     // ReplicatedEntityBehavior can receive Replica message when RaftActor demoted to Follower while replicating an event

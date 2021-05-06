@@ -70,14 +70,14 @@ private[entityreplication] class Ready[Command, Event, State](
 
   def createBehavior(readyState: BehaviorState): Behavior[EntityCommand] =
     Behaviors
-      .receiveMessage {
+      .receiveMessage[EntityCommand] {
         case command: RaftProtocol.ProcessCommand => receiveProcessCommand(command, readyState)
         case command: RaftProtocol.Replica        => receiveReplica(command, readyState)
         case command: RaftProtocol.TakeSnapshot   => receiveTakeSnapshot(command, readyState.entityState)
         case _: RaftProtocol.RecoveryState        => Behaviors.unhandled
         case _: RaftProtocol.ReplicationSucceeded => Behaviors.unhandled
         case RaftProtocol.RecoveryTimeout         => Behaviors.unhandled
-      }
+      }.receiveSignal(setup.onSignal(readyState.entityState))
 
   def receiveProcessCommand(command: RaftProtocol.ProcessCommand, state: BehaviorState): Behavior[EntityCommand] = {
     val effect = setup.commandHandler(state.entityState, command.command.asInstanceOf[Command])
