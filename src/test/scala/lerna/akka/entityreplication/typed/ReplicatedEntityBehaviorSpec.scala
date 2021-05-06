@@ -180,7 +180,7 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
             event shouldBe a[BankAccountBehavior.Deposited]
             replyTo should be(bankAccount.toClassic)
             entityId should contain(normalizedEntityId)
-            instanceId should not be null
+            instanceId should not be empty
             originSender should contain(testkit.system.deadLetters.toClassic)
             cmd
         }
@@ -214,7 +214,7 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
             event should be(NoOp)
             replyTo should be(bankAccount.toClassic)
             entityId should contain(normalizedEntityId)
-            instanceId should not be null
+            instanceId should not be empty
             originSender should contain(testkit.system.deadLetters.toClassic)
             cmd
         }
