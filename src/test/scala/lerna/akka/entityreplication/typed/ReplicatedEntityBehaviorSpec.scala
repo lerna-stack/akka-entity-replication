@@ -1,7 +1,8 @@
 package lerna.akka.entityreplication.typed
 
 import akka.actor.testkit.typed.scaladsl.{ ActorTestKit, TestProbe }
-import akka.actor.typed.{ ActorRef, ActorSystem }
+import akka.actor.typed.eventstream.EventStream
+import akka.actor.typed.{ ActorRef, ActorSystem, PostStop }
 import akka.actor.typed.scaladsl.{ ActorContext, Behaviors }
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol
@@ -47,6 +48,8 @@ object ReplicatedEntityBehaviorSpec {
     sealed trait Event
     final case class Deposited(amount: Int) extends Event
     final case class Withdrawn(amount: Int) extends Event
+
+    final case object PostStopReceived
 
     type Effect = lerna.akka.entityreplication.typed.Effect[Event, State]
 
@@ -116,7 +119,10 @@ object ReplicatedEntityBehaviorSpec {
           emptyState = Account(balance = 0),
           commandHandler = (state, command) => state.applyCommand(command, context),
           eventHandler = (state, event) => state.applyEvent(event, context),
-        ).withStopMessage(Stop)
+        ).withStopMessage(Stop).receiveSignal {
+          case (_, PostStop) =>
+            context.system.eventStream ! EventStream.Publish(PostStopReceived)
+        }
       }
     }
   }
@@ -460,6 +466,23 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
 
       localTestkit.stop(bankAccount)
       localTestkit.shutdownTestKit()
+    }
+
+    "handle signal" in {
+      val bankAccount           = testkit.spawn(BankAccountBehavior(entityContext))
+      val eventStreamSubscriber = testkit.createTestProbe[BankAccountBehavior.PostStopReceived.type]()
+
+      testkit.system.eventStream ! EventStream.Subscribe(eventStreamSubscriber.ref)
+
+      // recover the entity
+      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
+      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      bankAccount ! BankAccountBehavior.Stop
+
+      // PostStopReceived is published to EventStream by PostStop signal
+      eventStreamSubscriber.receiveMessage() should be(BankAccountBehavior.PostStopReceived)
+
+      testkit.system.eventStream ! EventStream.Unsubscribe(eventStreamSubscriber.ref)
     }
   }
 }
