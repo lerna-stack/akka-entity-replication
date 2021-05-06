@@ -60,6 +60,11 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
       command: RaftProtocol.ReplicationSucceeded,
       state: BehaviorState,
   ): Behavior[EntityCommand] = {
+    require(
+      command.instanceId.nonEmpty,
+      "ReplicationSucceeded received by the Entity should contain a instanceId",
+      // Entity sends a Replicate command which contains the instanceId
+    )
     if (command.instanceId.contains(state.instanceId)) {
       val event    = EntityEvent(Option(setup.replicationId.entityId), command.event)
       val newState = transformReadyState(state).applyEvent(setup, event.event, command.logEntryIndex)
