@@ -85,7 +85,7 @@ private[entityreplication] class Ready[Command, Event, State](
       case effect: EffectImpl[Event, State] =>
         applyEffect(command, effect, state)
       case other =>
-        throw new IllegalStateException(s"Illegal effect Implementation: ${other.getClass.getName}") // TODO:
+        throw new IllegalStateException(s"Illegal effect Implementation: ${other.getClass.getName}")
     }
   }
 
