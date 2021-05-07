@@ -89,7 +89,9 @@ private[entityreplication] final case class ReplicatedEntityBehaviorImpl[Command
             context,
           )
           val instanceId = generateInstanceId()
-          Recovering.behavior(setup, RecoveringState.initial[State](context, instanceId))
+          Behaviors.withStash[EntityCommand](Int.MaxValue /* TODO: Should I get from config? */ ) { buffer =>
+            Recovering.behavior(setup, RecoveringState.initial[State](buffer, instanceId))
+          }
         }
       }.onFailure(SupervisorStrategy.restart)
   }
