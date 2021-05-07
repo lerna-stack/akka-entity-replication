@@ -54,7 +54,6 @@ private[entityreplication] trait ReplicationOperations[Command, Event, State] {
 
       case _: UnstashAllEffect[_] =>
         stashBuffer.unstashAll(behavior)
-        behavior
 
       case callback: Callback[State] =>
         callback.sideEffect(entityState)
