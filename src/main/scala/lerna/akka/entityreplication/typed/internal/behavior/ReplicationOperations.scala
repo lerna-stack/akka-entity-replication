@@ -66,7 +66,7 @@ private[entityreplication] trait ReplicationOperations[Command, Event, State] {
         setup.context.system.eventStream ! EventStream.Publish(unhandledMessage)
         behavior
 
-      case _ =>
-        throw new IllegalArgumentException(s"Unsupported side effect found: $effect")
+      case _: NoReplyEffect[_] =>
+        behavior
     }
 }

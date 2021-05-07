@@ -50,7 +50,8 @@ private[entityreplication] final case class EffectBuilderImpl[+Event, State](
     )
   }
 
-  override def thenNoReply(): Effect[Event, State] = effect.EffectImpl(mainEffect, sideEffects)
+  override def thenNoReply(): Effect[Event, State] =
+    effect.EffectImpl(mainEffect, sideEffects :+ new NoReplyEffect[State]())
 
   /**
     * SideEffects that may affect outside the entity world must ensure consistency
