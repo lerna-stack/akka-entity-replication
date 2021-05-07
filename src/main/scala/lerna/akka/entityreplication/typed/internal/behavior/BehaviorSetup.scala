@@ -1,8 +1,9 @@
 package lerna.akka.entityreplication.typed.internal.behavior
 
-import akka.actor.typed.scaladsl.{ ActorContext, Behaviors }
+import akka.actor.typed.scaladsl.{ ActorContext, Behaviors, StashBuffer }
 import akka.actor.typed.{ ActorRef, Behavior, Signal }
 import lerna.akka.entityreplication.ClusterReplicationSettings
+import lerna.akka.entityreplication.model.EntityInstanceId
 import lerna.akka.entityreplication.typed.{ ClusterReplication, ReplicatedEntityBehavior, ReplicatedEntityContext }
 import lerna.akka.entityreplication.raft.RaftProtocol.EntityCommand
 import lerna.akka.entityreplication.typed.internal.ReplicationId
@@ -18,6 +19,8 @@ private[entityreplication] final class BehaviorSetup[Command, Event, State](
     val shard: ActorRef[ClusterReplication.ShardCommand],
     val settings: ClusterReplicationSettings,
     val context: ActorContext[EntityCommand],
+    val instanceId: EntityInstanceId,
+    val stashBuffer: StashBuffer[EntityCommand],
 ) {
 
   def onSignal(state: State): PartialFunction[(ActorContext[EntityCommand], Signal), Behavior[EntityCommand]] = {

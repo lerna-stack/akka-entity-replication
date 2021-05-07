@@ -1,8 +1,7 @@
 package lerna.akka.entityreplication.typed.internal.behavior
 
 import akka.actor.typed.Behavior
-import akka.actor.typed.scaladsl.{ Behaviors, StashBuffer }
-import lerna.akka.entityreplication.model.EntityInstanceId
+import akka.actor.typed.scaladsl.Behaviors
 import lerna.akka.entityreplication.raft.RaftProtocol
 import lerna.akka.entityreplication.raft.RaftProtocol.EntityCommand
 import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntryIndex }
@@ -22,10 +21,8 @@ private[entityreplication] object WaitForReplication {
   final case class WaitForReplicationState[State](
       processingCommand: RaftProtocol.ProcessCommand,
       entityState: State,
-      instanceId: EntityInstanceId,
       lastAppliedLogIndex: LogEntryIndex,
       sideEffects: immutable.Seq[SideEffect[State]],
-      stashBuffer: StashBuffer[EntityCommand],
   )
 }
 
@@ -44,7 +41,7 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
         case command: RaftProtocol.ReplicationSucceeded => receiveReplicationSucceeded(command, state)
         case command: RaftProtocol.TakeSnapshot         => receiveTakeSnapshot(command, state.entityState)
         case command: RaftProtocol.ProcessCommand =>
-          state.stashBuffer.stash(command)
+          setup.stashBuffer.stash(command)
           Behaviors.same
         case _: RaftProtocol.RecoveryState => Behaviors.unhandled
         case RaftProtocol.RecoveryTimeout  => Behaviors.unhandled
@@ -67,13 +64,12 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
       "ReplicationSucceeded received by the Entity should contain a instanceId",
       // Entity sends a Replicate command which contains the instanceId
     )
-    if (command.instanceId.contains(state.instanceId)) {
+    if (command.instanceId.contains(setup.instanceId)) {
       val event    = EntityEvent(Option(setup.replicationId.entityId), command.event)
       val newState = transformReadyState(state).applyEvent(setup, event.event, command.logEntryIndex)
       applySideEffects(
         state.processingCommand,
         state.sideEffects,
-        newState.stashBuffer,
         newState.entityState,
         Ready.behavior(setup, newState),
       )
@@ -84,6 +80,6 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
   }
 
   private[this] def transformReadyState(state: BehaviorState): ReadyState[State] = {
-    ReadyState(state.entityState, state.instanceId, state.lastAppliedLogIndex, state.stashBuffer)
+    ReadyState(state.entityState, state.lastAppliedLogIndex)
   }
 }

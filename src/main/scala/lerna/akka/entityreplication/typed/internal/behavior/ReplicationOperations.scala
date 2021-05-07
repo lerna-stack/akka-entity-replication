@@ -3,7 +3,7 @@ package lerna.akka.entityreplication.typed.internal.behavior
 import akka.actor.{ PoisonPill, UnhandledMessage }
 import akka.actor.typed.Behavior
 import akka.actor.typed.eventstream.EventStream
-import akka.actor.typed.scaladsl.{ ActorContext, Behaviors, StashBuffer }
+import akka.actor.typed.scaladsl.{ ActorContext, Behaviors }
 import lerna.akka.entityreplication.ReplicationRegion.Passivate
 import lerna.akka.entityreplication.raft.RaftProtocol.{ EntityCommand, Snapshot, TakeSnapshot }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntityState
@@ -28,19 +28,17 @@ private[entityreplication] trait ReplicationOperations[Command, Event, State] {
   def applySideEffects(
       command: RaftProtocol.ProcessCommand,
       effects: immutable.Seq[SideEffect[State]],
-      stashBuffer: StashBuffer[EntityCommand],
       entityState: State,
       behavior: Behavior[EntityCommand],
   ): Behavior[EntityCommand] = {
     val appliedBehavior =
-      effects.foldLeft(behavior)((b, effect) => applySideEffect(command, effect, stashBuffer, entityState, b))
+      effects.foldLeft(behavior)((b, effect) => applySideEffect(command, effect, entityState, b))
     appliedBehavior
   }
 
   def applySideEffect(
       command: RaftProtocol.ProcessCommand,
       effect: SideEffect[State],
-      stashBuffer: StashBuffer[EntityCommand],
       entityState: State,
       behavior: Behavior[EntityCommand],
   ): Behavior[EntityCommand] =
@@ -53,7 +51,7 @@ private[entityreplication] trait ReplicationOperations[Command, Event, State] {
         Behaviors.stopped
 
       case _: UnstashAllEffect[_] =>
-        stashBuffer.unstashAll(behavior)
+        setup.stashBuffer.unstashAll(behavior)
 
       case callback: Callback[State] =>
         callback.sideEffect(entityState)

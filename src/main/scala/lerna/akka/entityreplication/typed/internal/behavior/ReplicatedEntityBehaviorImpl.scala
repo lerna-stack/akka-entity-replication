@@ -6,7 +6,6 @@ import lerna.akka.entityreplication.ClusterReplicationSettings
 import lerna.akka.entityreplication.raft.RaftProtocol.{ EntityCommand, ProcessCommand }
 import lerna.akka.entityreplication.typed.ClusterReplication.ShardCommand
 import lerna.akka.entityreplication.typed.internal.ReplicationId
-import lerna.akka.entityreplication.typed.internal.behavior.Recovering.RecoveringState
 import lerna.akka.entityreplication.typed.{ ReplicatedEntityBehavior, ReplicatedEntityContext }
 import akka.actor.typed.scaladsl.adapter._
 import lerna.akka.entityreplication.model.EntityInstanceId
@@ -76,21 +75,23 @@ private[entityreplication] final case class ReplicatedEntityBehaviorImpl[Command
     Behaviors
       .supervise {
         Behaviors.setup { context: ActorContext[EntityCommand] =>
-          val setup = new BehaviorSetup(
-            entityContext,
-            emptyState,
-            commandHandler,
-            eventHandler,
-            signalHandler,
-            stopMessage,
-            ReplicationId(entityContext.entityTypeKey, entityContext.entityId),
-            shard,
-            settings,
-            context,
-          )
-          val instanceId = generateInstanceId()
           Behaviors.withStash[EntityCommand](Int.MaxValue /* TODO: Should I get from config? */ ) { buffer =>
-            Recovering.behavior(setup, RecoveringState.initial[State](buffer, instanceId))
+            val instanceId = generateInstanceId()
+            val setup = new BehaviorSetup(
+              entityContext,
+              emptyState,
+              commandHandler,
+              eventHandler,
+              signalHandler,
+              stopMessage,
+              ReplicationId(entityContext.entityTypeKey, entityContext.entityId),
+              shard,
+              settings,
+              context,
+              instanceId,
+              buffer,
+            )
+            Recovering.behavior(setup)
           }
         }
       }.onFailure(SupervisorStrategy.restart)

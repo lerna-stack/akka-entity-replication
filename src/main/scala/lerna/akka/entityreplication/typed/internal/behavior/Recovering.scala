@@ -1,7 +1,6 @@
 package lerna.akka.entityreplication.typed.internal.behavior
 import akka.actor.typed.Behavior
-import akka.actor.typed.scaladsl.{ Behaviors, StashBuffer }
-import lerna.akka.entityreplication.model.EntityInstanceId
+import akka.actor.typed.scaladsl.Behaviors
 import lerna.akka.entityreplication.raft.RaftProtocol
 import lerna.akka.entityreplication.raft.RaftProtocol.EntityCommand
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
@@ -9,21 +8,10 @@ import lerna.akka.entityreplication.typed.internal.behavior.Ready.ReadyState
 
 private[entityreplication] object Recovering {
 
-  object RecoveringState {
-    def initial[State](stashBuffer: StashBuffer[EntityCommand], instanceId: EntityInstanceId): RecoveringState[State] =
-      RecoveringState(instanceId, stashBuffer)
-  }
-
-  final case class RecoveringState[State](
-      instanceId: EntityInstanceId,
-      stashBuffer: StashBuffer[EntityCommand],
-  )
-
   def behavior[Command, Event, State](
       setup: BehaviorSetup[Command, Event, State],
-      recoveringState: RecoveringState[State],
   ): Behavior[EntityCommand] = {
-    new Recovering[Command, Event, State](setup).createBehavior(recoveringState)
+    new Recovering[Command, Event, State](setup).createBehavior()
   }
 
   final case object RecoveryTimeoutTimer
@@ -35,9 +23,7 @@ private[entityreplication] class Recovering[Command, Event, State](
 
   import Recovering._
 
-  private[this] type BehaviorState = RecoveringState[State]
-
-  def createBehavior(state: BehaviorState): Behavior[EntityCommand] =
+  def createBehavior(): Behavior[EntityCommand] =
     Behaviors.setup { context =>
       setup.shard ! RaftProtocol.RequestRecovery(setup.replicationId.entityId)
 
@@ -51,7 +37,7 @@ private[entityreplication] class Recovering[Command, Event, State](
           .receiveMessage[EntityCommand] {
             case command: RaftProtocol.RecoveryState =>
               scheduler.cancel(RecoveryTimeoutTimer)
-              receiveRecoveryState(command, state)
+              receiveRecoveryState(command)
             case RaftProtocol.RecoveryTimeout =>
               context.log.info(
                 "Entity (name: {}) recovering timed out. It will be retried later.",
@@ -60,13 +46,13 @@ private[entityreplication] class Recovering[Command, Event, State](
               // TODO: Enable backoff to prevent cascade failures
               throw RaftProtocol.EntityRecoveryTimeoutException(context.self.path)
             case command: RaftProtocol.ProcessCommand =>
-              state.stashBuffer.stash(command)
+              setup.stashBuffer.stash(command)
               Behaviors.same
             case command: RaftProtocol.Replica =>
-              state.stashBuffer.stash(command)
+              setup.stashBuffer.stash(command)
               Behaviors.same
             case command: RaftProtocol.TakeSnapshot =>
-              state.stashBuffer.stash(command)
+              setup.stashBuffer.stash(command)
               Behaviors.same
             case _: RaftProtocol.ReplicationSucceeded => Behaviors.unhandled
           }.receiveSignal(setup.onSignal(setup.emptyState))
@@ -75,7 +61,6 @@ private[entityreplication] class Recovering[Command, Event, State](
 
   private[this] def receiveRecoveryState(
       command: RaftProtocol.RecoveryState,
-      state: BehaviorState,
   ): Behavior[EntityCommand] = {
     val (entityState, lastAppliedLogIndex) = command.snapshot.fold(
       ifEmpty = (setup.emptyState, LogEntryIndex.initial()),
@@ -83,7 +68,7 @@ private[entityreplication] class Recovering[Command, Event, State](
       (snapshot.state.underlying.asInstanceOf[State], snapshot.metadata.logEntryIndex)
     }
     val snapshotAppliedState =
-      ReadyState(entityState, state.instanceId, lastAppliedLogIndex, state.stashBuffer)
+      ReadyState(entityState, lastAppliedLogIndex)
     val eventAppliedState =
       command.events.foldLeft(snapshotAppliedState)((state, entry) =>
         state.applyEvent(setup, entry.event.event, entry.index),

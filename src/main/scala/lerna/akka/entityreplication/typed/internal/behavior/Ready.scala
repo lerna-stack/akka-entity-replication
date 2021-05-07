@@ -1,20 +1,18 @@
 package lerna.akka.entityreplication.typed.internal.behavior
 
 import akka.actor.typed.Behavior
-import akka.actor.typed.scaladsl.{ ActorContext, Behaviors, StashBuffer }
+import akka.actor.typed.scaladsl.{ ActorContext, Behaviors }
 import lerna.akka.entityreplication.raft.RaftProtocol
 import lerna.akka.entityreplication.raft.RaftProtocol.EntityCommand
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
 import lerna.akka.entityreplication.typed.internal.effect._
 import akka.actor.typed.scaladsl.adapter._
-import lerna.akka.entityreplication.model.EntityInstanceId
 import lerna.akka.entityreplication.typed.internal.behavior.WaitForReplication.WaitForReplicationState
 
 private[entityreplication] object Ready {
 
   final case class ReadyState[State](
       entityState: State,
-      instanceId: EntityInstanceId,
       /**
         * It records the [[LogEntryIndex]] of the last applied event, and ignores
         * if the entity receives again an already applied event.
@@ -23,7 +21,6 @@ private[entityreplication] object Ready {
         * and the timing of committing the event by [[RaftActor]] overlap.
         */
       lastAppliedLogEntryIndex: LogEntryIndex,
-      stashBuffer: StashBuffer[EntityCommand],
   ) {
 
     def applyEvent[Command, Event](
@@ -51,7 +48,7 @@ private[entityreplication] object Ready {
       setup: BehaviorSetup[Command, Event, State],
       readyState: ReadyState[State],
   ): Behavior[EntityCommand] = {
-    readyState.stashBuffer.unstashAll {
+    setup.stashBuffer.unstashAll {
       Behaviors.setup { context =>
         new Ready(setup, context).createBehavior(readyState)
       }
@@ -103,10 +100,10 @@ private[entityreplication] class Ready[Command, Event, State](
       case ReplicateEffect(event)    => replicate(command, event, state, effect)
       case EnsureConsistencyEffect() => replicate(command, NoOp, state, effect)
       case ReplicateNothingEffect() =>
-        applySideEffects(command, effect.sideEffects, state.stashBuffer, state.entityState, Behaviors.same)
+        applySideEffects(command, effect.sideEffects, state.entityState, Behaviors.same)
       case StashEffect() =>
-        state.stashBuffer.stash(command)
-        applySideEffects(command, effect.sideEffects, state.stashBuffer, state.entityState, Behaviors.same)
+        setup.stashBuffer.stash(command)
+        applySideEffects(command, effect.sideEffects, state.entityState, Behaviors.same)
     }
   }
 
@@ -120,7 +117,7 @@ private[entityreplication] class Ready[Command, Event, State](
       event = event,
       replyTo = context.self.toClassic,
       entityId = setup.replicationId.entityId,
-      instanceId = state.instanceId,
+      instanceId = setup.instanceId,
       originSender = context.system.deadLetters.toClassic, // typed API can not use sender
     )
     WaitForReplication.behavior(
@@ -128,10 +125,8 @@ private[entityreplication] class Ready[Command, Event, State](
       WaitForReplicationState(
         command,
         state.entityState,
-        state.instanceId,
         state.lastAppliedLogEntryIndex,
         effect.sideEffects,
-        state.stashBuffer,
       ),
     )
   }
