@@ -7,7 +7,9 @@
     </encoder>
   </appender>
 
-  <logger name="lerna.akka.entityreplication.raft" level="DEBUG">
+  <logger name="lerna.akka.entityreplication.raft" level="DEBUG" />
+
+  <root level="WARN">
     <appender-ref ref="STDOUT_TEST"/>
-  </logger>
+  </root>
 </configuration>

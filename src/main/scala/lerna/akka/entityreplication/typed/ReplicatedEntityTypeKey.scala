@@ -1,5 +1,7 @@
 package lerna.akka.entityreplication.typed
 
+import lerna.akka.entityreplication.typed.internal.ReplicatedEntityTypeKeyImpl
+
 import scala.reflect.ClassTag
 
 object ReplicatedEntityTypeKey {
@@ -7,7 +9,8 @@ object ReplicatedEntityTypeKey {
   /**
     * Creates an [[ReplicatedEntityTypeKey]]. The `name` must be unique.
     */
-  def apply[M](name: String)(implicit mTag: ClassTag[M]): ReplicatedEntityTypeKey[M] = ???
+  def apply[M](name: String)(implicit mTag: ClassTag[M]): ReplicatedEntityTypeKey[M] =
+    ReplicatedEntityTypeKeyImpl(name, mTag.runtimeClass.getName)
 }
 
 /**

@@ -2,6 +2,7 @@ package lerna.akka.entityreplication.typed
 
 import akka.actor.typed.Signal
 import akka.lerna.DeferredBehavior
+import lerna.akka.entityreplication.typed.internal.behavior.ReplicatedEntityBehaviorImpl
 
 object ReplicatedEntityBehavior {
 
@@ -14,7 +15,13 @@ object ReplicatedEntityBehavior {
       emptyState: State,
       commandHandler: CommandHandler[Command, Event, State],
       eventHandler: EventHandler[State, Event],
-  ): ReplicatedEntityBehavior[Command, Event, State] = ???
+  ): ReplicatedEntityBehavior[Command, Event, State] =
+    new ReplicatedEntityBehaviorImpl[Command, Event, State](
+      entityContext,
+      emptyState,
+      commandHandler,
+      eventHandler,
+    )
 }
 
 trait ReplicatedEntityBehavior[Command, Event, State] extends DeferredBehavior[Command] {
@@ -26,4 +33,6 @@ trait ReplicatedEntityBehavior[Command, Event, State] extends DeferredBehavior[C
   ): ReplicatedEntityBehavior[Command, Event, State]
 
   def signalHandler: PartialFunction[(State, Signal), Unit]
+
+  def withStopMessage(message: Command): ReplicatedEntityBehavior[Command, Event, State]
 }
