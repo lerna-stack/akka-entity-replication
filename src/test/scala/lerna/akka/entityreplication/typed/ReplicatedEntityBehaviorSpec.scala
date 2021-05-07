@@ -1,5 +1,6 @@
 package lerna.akka.entityreplication.typed
 
+import akka.actor.UnhandledMessage
 import akka.actor.testkit.typed.scaladsl.{ ActorTestKit, TestProbe }
 import akka.actor.typed.eventstream.EventStream
 import akka.actor.typed.{ ActorRef, ActorSystem, PostStop }
@@ -32,6 +33,7 @@ object ReplicatedEntityBehaviorSpec {
     final case object Passivate                                              extends Command
     final case object Stop                                                   extends Command
     final case object SimulateFailure                                        extends Command
+    final case object Unhandled                                              extends Command
     final case class Deposit(amount: Int, replyTo: ActorRef[DepositReply])   extends Command
     final case class Withdraw(amount: Int, replyTo: ActorRef[WithdrawReply]) extends Command
     final case class GetBalance(replyTo: ActorRef[AccountBalance])           extends Command
@@ -97,12 +99,8 @@ object ReplicatedEntityBehaviorSpec {
           case SimulateFailure =>
             throw new IllegalStateException("bang!")
 
-          case command =>
-            Effect.unhandled
-              .thenRun { _: State =>
-                context.log.warn(s"unhandled ${command}")
-              }
-              .thenNoReply()
+          case Unhandled =>
+            Effect.unhandled.thenNoReply()
         }
 
       override def applyEvent(event: Event, context: ActorContext[Command]): State =
@@ -483,6 +481,31 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       eventStreamSubscriber.receiveMessage() should be(BankAccountBehavior.PostStopReceived)
 
       testkit.system.eventStream ! EventStream.Unsubscribe(eventStreamSubscriber.ref)
+
+      testkit.stop(bankAccount)
+    }
+
+    "publish unhandled command to Akka event stream" in {
+      val bankAccount           = testkit.spawn(BankAccountBehavior(entityContext))
+      val eventStreamSubscriber = testkit.createTestProbe[UnhandledMessage]()
+
+      testkit.system.eventStream ! EventStream.Subscribe(eventStreamSubscriber.ref)
+
+      // recover the entity
+      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
+      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+
+      bankAccount ! BankAccountBehavior.Unhandled
+
+      inside(eventStreamSubscriber.receiveMessage()) {
+        case UnhandledMessage(message, sender, recipient) =>
+          message should be(BankAccountBehavior.Unhandled)
+          sender should be(testkit.system.deadLetters.toClassic)
+          recipient should be(bankAccount.toClassic)
+      }
+
+      testkit.system.eventStream ! EventStream.Unsubscribe(eventStreamSubscriber.ref)
+      testkit.stop(bankAccount)
     }
   }
 }
