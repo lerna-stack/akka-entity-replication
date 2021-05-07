@@ -24,7 +24,5 @@ private[entityreplication] final case class BehaviorSetup[Command, Event, State]
     case (_, signal) if signalHandler.isDefinedAt((state, signal)) =>
       signalHandler((state, signal))
       Behaviors.same
-    case _ =>
-      Behaviors.unhandled
   }
 }
