@@ -7,17 +7,17 @@ import lerna.akka.entityreplication.typed.{ ClusterReplication, ReplicatedEntity
 import lerna.akka.entityreplication.raft.RaftProtocol.EntityCommand
 import lerna.akka.entityreplication.typed.internal.ReplicationId
 
-private[entityreplication] final case class BehaviorSetup[Command, Event, State](
-    entityContext: ReplicatedEntityContext[Command],
-    emptyState: State,
-    commandHandler: ReplicatedEntityBehavior.CommandHandler[Command, Event, State],
-    eventHandler: ReplicatedEntityBehavior.EventHandler[State, Event],
-    signalHandler: PartialFunction[(State, Signal), Unit],
-    stopMessage: Option[Command],
-    replicationId: ReplicationId[Command],
-    shard: ActorRef[ClusterReplication.ShardCommand],
-    settings: ClusterReplicationSettings,
-    context: ActorContext[EntityCommand],
+private[entityreplication] final class BehaviorSetup[Command, Event, State](
+    val entityContext: ReplicatedEntityContext[Command],
+    val emptyState: State,
+    val commandHandler: ReplicatedEntityBehavior.CommandHandler[Command, Event, State],
+    val eventHandler: ReplicatedEntityBehavior.EventHandler[State, Event],
+    val signalHandler: PartialFunction[(State, Signal), Unit],
+    val stopMessage: Option[Command],
+    val replicationId: ReplicationId[Command],
+    val shard: ActorRef[ClusterReplication.ShardCommand],
+    val settings: ClusterReplicationSettings,
+    val context: ActorContext[EntityCommand],
 ) {
 
   def onSignal(state: State): PartialFunction[(ActorContext[EntityCommand], Signal), Behavior[EntityCommand]] = {

@@ -76,7 +76,7 @@ private[entityreplication] final case class ReplicatedEntityBehaviorImpl[Command
     Behaviors
       .supervise {
         Behaviors.setup { context: ActorContext[EntityCommand] =>
-          val setup = BehaviorSetup(
+          val setup = new BehaviorSetup(
             entityContext,
             emptyState,
             commandHandler,
