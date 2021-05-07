@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.typed
 
 import akka.actor.typed.Behavior
+import lerna.akka.entityreplication.typed.internal.ReplicatedEntityImpl
 
 object ReplicatedEntity {
 
@@ -9,7 +10,7 @@ object ReplicatedEntity {
     */
   def apply[M](typeKey: ReplicatedEntityTypeKey[M])(
       createBehavior: ReplicatedEntityContext[M] => Behavior[M],
-  ): ReplicatedEntity[M, ReplicationEnvelope[M]] = ???
+  ): ReplicatedEntity[M, ReplicationEnvelope[M]] = ReplicatedEntityImpl(typeKey, createBehavior)
 }
 
 /**
