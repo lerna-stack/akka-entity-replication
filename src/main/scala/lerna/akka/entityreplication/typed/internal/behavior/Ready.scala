@@ -95,22 +95,23 @@ private[entityreplication] class Ready[Command, Event, State](
   }
 
   def applyEffect(
-      command: EntityCommand,
+      command: RaftProtocol.ProcessCommand,
       effect: EffectImpl[Event, State],
       state: BehaviorState,
   ): Behavior[EntityCommand] = {
     effect.mainEffect match {
-      case ReplicateEffect(event)    => replicate(event, state, effect)
-      case EnsureConsistencyEffect() => replicate(NoOp, state, effect)
+      case ReplicateEffect(event)    => replicate(command, event, state, effect)
+      case EnsureConsistencyEffect() => replicate(command, NoOp, state, effect)
       case ReplicateNothingEffect() =>
-        applySideEffects(effect.sideEffects, state.stashBuffer, state.entityState, Behaviors.same)
+        applySideEffects(command, effect.sideEffects, state.stashBuffer, state.entityState, Behaviors.same)
       case StashEffect() =>
         state.stashBuffer.stash(command)
-        applySideEffects(effect.sideEffects, state.stashBuffer, state.entityState, Behaviors.same)
+        applySideEffects(command, effect.sideEffects, state.stashBuffer, state.entityState, Behaviors.same)
     }
   }
 
   private[this] def replicate(
+      command: RaftProtocol.ProcessCommand,
       event: Any,
       state: BehaviorState,
       effect: EffectImpl[Event, State],
@@ -125,6 +126,7 @@ private[entityreplication] class Ready[Command, Event, State](
     WaitForReplication.behavior(
       setup,
       WaitForReplicationState(
+        command,
         state.entityState,
         state.instanceId,
         state.lastAppliedLogEntryIndex,

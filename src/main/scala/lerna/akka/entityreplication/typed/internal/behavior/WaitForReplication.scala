@@ -20,6 +20,7 @@ private[entityreplication] object WaitForReplication {
     new WaitForReplication[Command, Event, State](setup).createBehavior(state)
 
   final case class WaitForReplicationState[State](
+      processingCommand: RaftProtocol.ProcessCommand,
       entityState: State,
       instanceId: EntityInstanceId,
       lastAppliedLogIndex: LogEntryIndex,
@@ -69,7 +70,13 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
     if (command.instanceId.contains(state.instanceId)) {
       val event    = EntityEvent(Option(setup.replicationId.entityId), command.event)
       val newState = transformReadyState(state).applyEvent(setup, event.event, command.logEntryIndex)
-      applySideEffects(state.sideEffects, newState.stashBuffer, newState.entityState, Ready.behavior(setup, newState))
+      applySideEffects(
+        state.processingCommand,
+        state.sideEffects,
+        newState.stashBuffer,
+        newState.entityState,
+        Ready.behavior(setup, newState),
+      )
     } else {
       // ignore ReplicationSucceeded which is produced by replicate command of old ReplicatedEntityBehavior instance
       Behaviors.same
