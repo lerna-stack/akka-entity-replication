@@ -102,7 +102,7 @@ object AtLeastOnceComplete {
     def apply(retrying: Boolean, logging: LoggingAdapter): Future[Reply]
   }
 
-  private[this] def internalAskTo[Message, Reply](
+  private[this] def internalAskTo[Reply](
       ask: AskStrategy[Reply],
       retryInterval: FiniteDuration,
       system: ActorSystem,
