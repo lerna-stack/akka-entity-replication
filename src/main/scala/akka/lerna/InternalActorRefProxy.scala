@@ -2,7 +2,7 @@ package akka.lerna
 
 import akka.actor.ActorRefProvider
 import akka.actor.typed.ActorRef
-import akka.actor.typed.scaladsl.adapter._
+import akka.actor.typed.internal.adapter.ActorRefAdapter
 
 object InternalActorRefProxy {
   def apply[T](ref: ActorRef[T]): InternalActorRefProxy[T] =
@@ -11,7 +11,7 @@ object InternalActorRefProxy {
 
 class InternalActorRefProxy[T](ref: ActorRef[T]) {
 
-  private[this] val classicRef = ref.toClassic.asInstanceOf[akka.actor.InternalActorRef]
+  private[this] val classicRef = ActorRefAdapter.toClassic(ref)
 
   def provider: ActorRefProvider = classicRef.provider
 
