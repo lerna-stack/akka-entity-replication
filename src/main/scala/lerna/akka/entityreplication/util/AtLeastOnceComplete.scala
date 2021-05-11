@@ -25,9 +25,10 @@ object AtLeastOnceComplete {
       destination: RecipientRef[Message],
       message: typed.ActorRef[Reply] => Message,
       retryInterval: FiniteDuration,
-  )(implicit system: typed.ActorSystem[_], timeout: Timeout): Future[Reply] =
+  )(implicit system: typed.ActorSystem[_], timeout: Timeout): Future[Reply] = {
+    val logging = Logging(system.toClassic, this.getClass)
     internalAskTo(
-      { (retrying: Boolean, logging: LoggingAdapter) =>
+      { (retrying: Boolean) =>
         destination ask { replyTo: typed.ActorRef[Reply] =>
           val msg = message(replyTo)
           if (retrying) {
@@ -44,6 +45,7 @@ object AtLeastOnceComplete {
       retryInterval,
       system.toClassic,
     )
+  }
 
   /**
     * Asks the destination with retrying until timeout.
@@ -57,9 +59,10 @@ object AtLeastOnceComplete {
       destination: RecipientRef[Message],
       message: typed.ActorRef[StatusReply[Reply]] => Message,
       retryInterval: FiniteDuration,
-  )(implicit system: typed.ActorSystem[_], timeout: Timeout): Future[Reply] =
+  )(implicit system: typed.ActorSystem[_], timeout: Timeout): Future[Reply] = {
+    val logging = Logging(system.toClassic, this.getClass)
     internalAskTo(
-      { (retrying: Boolean, logging: LoggingAdapter) =>
+      { (retrying: Boolean) =>
         destination askWithStatus { replyTo: typed.ActorRef[StatusReply[Reply]] =>
           val msg = message(replyTo)
           if (retrying) {
@@ -76,14 +79,16 @@ object AtLeastOnceComplete {
       retryInterval,
       system.toClassic,
     )
+  }
 
   def askTo(
       destination: ActorRef,
       message: Any,
       retryInterval: FiniteDuration,
-  )(implicit system: ActorSystem, timeout: Timeout): Future[Any] =
+  )(implicit system: ActorSystem, timeout: Timeout): Future[Any] = {
+    val logging = Logging(system, this.getClass)
     internalAskTo(
-      { (retrying: Boolean, logging: LoggingAdapter) =>
+      { (retrying: Boolean) =>
         if (retrying) {
           logging.warning(
             "Destination {} did not reply to a message in {}. Retrying to send the message [{}].",
@@ -97,9 +102,10 @@ object AtLeastOnceComplete {
       retryInterval,
       system,
     )
+  }
 
   private[this] trait AskStrategy[Reply] {
-    def apply(retrying: Boolean, logging: LoggingAdapter): Future[Reply]
+    def apply(retrying: Boolean): Future[Reply]
   }
 
   private[this] def internalAskTo[Reply](
@@ -108,18 +114,16 @@ object AtLeastOnceComplete {
       system: ActorSystem,
   )(implicit timeout: Timeout): Future[Reply] = {
 
-    val logging = Logging(system, this.getClass)
-
     import system.dispatcher
     val promise = Promise[Reply]()
 
-    promise.completeWith(ask(retrying = false, logging))
+    promise.completeWith(ask(retrying = false))
 
     val cancellable = system.scheduler.scheduleAtFixedRate(
       initialDelay = retryInterval,
       interval = retryInterval,
     ) { () =>
-      promise.completeWith(ask(retrying = true, logging))
+      promise.completeWith(ask(retrying = true))
     }
 
     promise.future.onComplete { _ =>
