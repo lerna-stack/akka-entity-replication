@@ -31,7 +31,7 @@ object AtLeastOnceComplete {
         destination ask { replyTo: typed.ActorRef[Reply] =>
           val msg = message(replyTo)
           if (retrying) {
-            logging.debug(
+            logging.warning(
               "Destination {} did not reply to a message in {}. Retrying to send the message [{}].",
               destination,
               retryInterval,
@@ -63,7 +63,7 @@ object AtLeastOnceComplete {
         destination askWithStatus { replyTo: typed.ActorRef[StatusReply[Reply]] =>
           val msg = message(replyTo)
           if (retrying) {
-            logging.debug(
+            logging.warning(
               "Destination {} did not reply to a message in {}. Retrying to send the message [{}].",
               destination,
               retryInterval,
@@ -85,7 +85,7 @@ object AtLeastOnceComplete {
     internalAskTo(
       { (retrying: Boolean, logging: LoggingAdapter) =>
         if (retrying) {
-          logging.debug(
+          logging.warning(
             "Destination {} did not reply to a message in {}. Retrying to send the message [{}].",
             destination,
             retryInterval,
