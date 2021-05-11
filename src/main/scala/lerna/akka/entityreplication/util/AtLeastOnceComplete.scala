@@ -19,7 +19,7 @@ object AtLeastOnceComplete {
     * The message will be sent multiple times for each retryInterval.
     * It will stop when it receives the response from the destination.
     * Note that the destination may be receive the same message even if it responds due to a delay in message arrival.
-    * The returned Future will be completed with an [[akka.pattern.AskTimeoutException]] after the given timeout has expired.
+    * The returned Future will be failed with an [[java.util.concurrent.TimeoutException]] after the given timeout has expired.
     */
   def askTo[Message, Reply](
       destination: RecipientRef[Message],
@@ -52,7 +52,7 @@ object AtLeastOnceComplete {
     * The message will be sent multiple times for each retryInterval.
     * It will stop when it receives the response from the destination.
     * Note that the destination may be receive the same message even if it responds due to a delay in message arrival.
-    * The returned Future will be completed with an [[akka.pattern.AskTimeoutException]] after the given timeout has expired.
+    * The returned Future will be failed with an [[java.util.concurrent.TimeoutException]] after the given timeout has expired.
     * The Future will also failed if a [[akka.pattern.StatusReply.Error]] arrives.
     */
   def askWithStatusTo[Message, Reply](
