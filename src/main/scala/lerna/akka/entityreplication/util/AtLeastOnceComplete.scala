@@ -5,7 +5,7 @@ import akka.actor.typed
 import akka.actor.typed.RecipientRef
 import akka.actor.typed.scaladsl.AskPattern._
 import akka.actor.typed.scaladsl.adapter._
-import akka.event.{ Logging, LoggingAdapter }
+import akka.event.Logging
 import akka.pattern.{ ask, StatusReply }
 import akka.util.Timeout
 
