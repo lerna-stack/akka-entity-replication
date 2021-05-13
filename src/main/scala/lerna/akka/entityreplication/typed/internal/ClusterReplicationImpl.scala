@@ -1,6 +1,5 @@
 package lerna.akka.entityreplication.typed.internal
 
-import akka.{ actor => classic }
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ ActorRef, ActorSystem, Behavior, BehaviorInterceptor, TypedActorContext }
 import akka.actor.typed.scaladsl.adapter._
@@ -16,13 +15,13 @@ import java.util.concurrent.ConcurrentHashMap
 
 private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) extends ClusterReplication {
 
-  private[this] val regions: concurrent.Map[ReplicatedEntityTypeKey[_], classic.ActorRef] =
-    new ConcurrentHashMap[ReplicatedEntityTypeKey[_], classic.ActorRef].asScala
+  private[this] val regions: concurrent.Map[ReplicatedEntityTypeKey[Nothing], ActorRef[Nothing]] =
+    new ConcurrentHashMap[ReplicatedEntityTypeKey[_], ActorRef[_]].asScala
 
   override def init[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E] =
-    regions.getOrElseUpdate(entity.typeKey, internalInit(entity)).toTyped
+    regions.getOrElseUpdate(entity.typeKey, internalInit(entity)).unsafeUpcast[E]
 
-  private[this] def internalInit[M, E](entity: ReplicatedEntity[M, E]): classic.ActorRef = {
+  private[this] def internalInit[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E] = {
     val classicSystem = system.toClassic
     val settings      = untyped.ClusterReplicationSettings(classicSystem)
     val extractEntityId: untyped.ReplicationRegion.ExtractEntityId = {
@@ -64,13 +63,13 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
           extractEntityId = extractEntityId,
           extractShardId = extractShardId,
         )
-    region
+    region.toTyped
   }
 
   override def entityRefFor[M](typeKey: ReplicatedEntityTypeKey[M], entityId: String): ReplicatedEntityRef[M] =
     regions.get(typeKey) match {
       case Some(region) =>
-        new ReplicatedEntityRefImpl[M](typeKey, entityId, region.toTyped, system)
+        new ReplicatedEntityRefImpl[M](typeKey, entityId, region.unsafeUpcast[ReplicationEnvelope[M]], system)
       case None => throw new IllegalStateException(s"The type [${typeKey}] must be init first")
     }
 }
