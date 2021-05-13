@@ -1,19 +1,19 @@
 package lerna.akka.entityreplication
 
-import akka.actor.{ ActorRef, ActorSystem, Props }
+import akka.actor.{ ActorRef, ExtendedActorSystem, Extension, ExtensionId, Props }
 import lerna.akka.entityreplication.model.TypeName
 import lerna.akka.entityreplication.raft.eventsourced.{ CommitLogStore, ShardedCommitLogStore }
 
-object ClusterReplication {
+object ClusterReplication extends ExtensionId[ClusterReplication] {
 
-  def apply(system: ActorSystem): ClusterReplication = new ClusterReplication(system)
+  override def createExtension(system: ExtendedActorSystem): ClusterReplication = new ClusterReplication(system)
 
   private val actorNamePrefix: String = "replicationRegion"
 
   private[entityreplication] type EntityPropsProvider = ReplicationActorContext => Props
 }
 
-class ClusterReplication private (system: ActorSystem) {
+class ClusterReplication private (system: ExtendedActorSystem) extends Extension {
 
   import ClusterReplication._
 
@@ -43,7 +43,7 @@ class ClusterReplication private (system: ActorSystem) {
       Option.when(enabled)(new ShardedCommitLogStore(_typeName, system))
     }
 
-    system.actorOf(
+    system.systemActorOf(
       ReplicationRegion.props(typeName, entityProps, settings, extractEntityId, extractShardId, maybeCommitLogStore),
       s"$actorNamePrefix-$typeName",
     )
