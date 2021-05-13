@@ -23,10 +23,6 @@ object ClusterReplicationMultiNodeSpecConfig extends MultiNodeConfig {
 
   commonConfig(
     debugConfig(false)
-      .withFallback(ConfigFactory.parseString(s"""
-      akka.actor.provider = cluster
-      akka.test.single-expect-default = 15s
-      """))
       .withValue(
         "lerna.akka.entityreplication.raft.multi-raft-roles",
         ConfigValueFactory.fromIterable(memberIndexes.values.map(_.role).toSet.asJava),
