@@ -185,7 +185,7 @@ class ReplicatedEntityBehaviorTestKitSpec extends FlatSpec with Matchers with Be
     }
 
     it should "provide the state of the entity" in {
-      commandResult.state
+      commandResult.state shouldBe a[ExpectedState]
     }
 
     it should "provide the state of the entity as the specified type" in {
