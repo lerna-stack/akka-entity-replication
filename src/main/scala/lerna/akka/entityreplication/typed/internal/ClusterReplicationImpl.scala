@@ -29,7 +29,7 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
     }
     val extractShardId: untyped.ReplicationRegion.ExtractShardId = {
       case ReplicationEnvelope(entityId, _) =>
-        (Math.abs(entityId.hashCode) % settings.raftSettings.numberOfShards).toString
+        Math.abs(entityId.hashCode % settings.raftSettings.numberOfShards).toString
     }
     val interceptor = new BehaviorInterceptor[RaftProtocol.EntityCommand, Any] {
       override def aroundReceive(
