@@ -17,5 +17,5 @@ private[entityreplication] object NormalizedEntityId {
 
 private[entityreplication] final case class NormalizedEntityId private (underlying: String) extends AnyVal {
 
-  def decoded: String = URLDecoder.decode(underlying, ByteString.UTF_8)
+  def raw: EntityId = URLDecoder.decode(underlying, ByteString.UTF_8)
 }

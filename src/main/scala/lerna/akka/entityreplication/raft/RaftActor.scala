@@ -155,7 +155,7 @@ private[raft] class RaftActor(
         currentState,
         entityId,
       )
-      val props = replicationActorProps(new ReplicationActorContext(entityId.decoded, self))
+      val props = replicationActorProps(new ReplicationActorContext(entityId.raw, self))
       context.actorOf(props, entityId.underlying)
     }
   }
