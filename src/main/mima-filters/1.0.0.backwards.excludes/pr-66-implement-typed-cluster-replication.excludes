@@ -1,0 +1,8 @@
+# [ClusterReplication(system): ClusterReplication] can be used as before.
+#
+# static method apply(akka.actor.ActorSystem)lerna.akka.entityreplication.ClusterReplication in class lerna.akka.entityreplication.ClusterReplication has a different result type in current version, where it is akka.actor.Extension rather than lerna.akka.entityreplication.ClusterReplication
+ProblemFilters.exclude[IncompatibleResultTypeProblem]("lerna.akka.entityreplication.ClusterReplication.apply")
+# method this(akka.actor.ActorSystem)Unit in class lerna.akka.entityreplication.ClusterReplication's type is different in current version, where it is (akka.actor.ExtendedActorSystem)Unit instead of (akka.actor.ActorSystem)Unit
+ProblemFilters.exclude[IncompatibleMethTypeProblem]("lerna.akka.entityreplication.ClusterReplication.this")
+# method apply(akka.actor.ActorSystem)lerna.akka.entityreplication.ClusterReplication in object lerna.akka.entityreplication.ClusterReplication has a different result type in current version, where it is akka.actor.Extension rather than lerna.akka.entityreplication.ClusterReplication
+ProblemFilters.exclude[IncompatibleResultTypeProblem]("lerna.akka.entityreplication.ClusterReplication.apply")

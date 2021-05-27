@@ -42,6 +42,7 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
 }
 import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager.{ SyncCompleted, SyncProgress }
 import lerna.akka.entityreplication.testkit.KryoSerializable
+import lerna.akka.entityreplication.typed.ReplicationEnvelope
 
 import java.io.NotSerializableException
 import java.util.UUID
@@ -243,6 +244,8 @@ final class ClusterReplicationSerializerSpec
     // raft.model
     checkSerialization(NoOp)
 
+    // typed
+    checkSerialization(ReplicationEnvelope("entity/jp:user:1275", NoOp))
   }
 
   "manifest" when {

@@ -3,6 +3,7 @@ package lerna.akka.entityreplication.raft
 import akka.actor.{ ActorRef, Cancellable, Props, Stash }
 import akka.persistence.RuntimePluginConfig
 import com.typesafe.config.{ Config, ConfigFactory }
+import lerna.akka.entityreplication.ClusterReplication.EntityPropsProvider
 import lerna.akka.entityreplication.ReplicationRegion.Msg
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, _ }
@@ -14,14 +15,14 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshotMetadata
 import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 import lerna.akka.entityreplication.util.ActorIds
-import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ReplicationRegion }
+import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ReplicationActorContext, ReplicationRegion }
 
 private[entityreplication] object RaftActor {
 
   def props(
       typeName: TypeName,
       extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
-      replicationActorProps: Props,
+      replicationActorProps: EntityPropsProvider,
       region: ActorRef,
       shardSnapshotStoreProps: Props,
       selfMemberIndex: MemberIndex,
@@ -97,7 +98,7 @@ private[entityreplication] object RaftActor {
 private[raft] class RaftActor(
     typeName: TypeName,
     val extractEntityId: PartialFunction[Msg, (NormalizedEntityId, Msg)],
-    replicationActorProps: Props,
+    replicationActorProps: EntityPropsProvider,
     _region: ActorRef,
     shardSnapshotStoreProps: Props,
     _selfMemberIndex: MemberIndex,
@@ -154,7 +155,8 @@ private[raft] class RaftActor(
         currentState,
         entityId,
       )
-      context.actorOf(replicationActorProps, entityId.underlying)
+      val props = replicationActorProps(new ReplicationActorContext(entityId.raw, self))
+      context.actorOf(props, entityId.underlying)
     }
   }
 

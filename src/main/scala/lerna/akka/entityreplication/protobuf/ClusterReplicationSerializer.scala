@@ -4,7 +4,7 @@ import akka.actor.ExtendedActorSystem
 import akka.persistence.query.{ NoOffset, Offset, Sequence, TimeBasedUUID }
 import akka.serialization.{ BaseSerializer, SerializationExtension, SerializerWithStringManifest, Serializers }
 import com.google.protobuf.ByteString
-import lerna.akka.entityreplication.{ model, raft, ClusterReplicationSerializable }
+import lerna.akka.entityreplication.{ model, raft, typed, ClusterReplicationSerializable }
 
 import java.io.NotSerializableException
 import java.util.UUID
@@ -52,6 +52,8 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   private val TimeBasedUUIDManifest = "EE"
   // raft.model
   private val NoOpManifest = "FA"
+  // typed
+  private val ReplicationEnvelopeManifest = "GA"
 
   // Manifest -> fromBinary
   private val fromBinaryMap = HashMap[String, Array[Byte] => ClusterReplicationSerializable](
@@ -90,6 +92,8 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     TimeBasedUUIDManifest -> timeBasedUUIDEnvelopeFromBinary,
     // raft.model
     NoOpManifest -> noOpFromBinary,
+    // typed
+    ReplicationEnvelopeManifest -> replicationEnvelopeFromBinary,
   )
 
   override def manifest(o: AnyRef): String = {
@@ -156,6 +160,8 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     case _: TimeBasedUUIDEnvelope                                => TimeBasedUUIDManifest
     // raft.model
     case _: raft.model.NoOp.type => NoOpManifest
+    // typed
+    case _: typed.ReplicationEnvelope[_] => ReplicationEnvelopeManifest
   }
 
   private val serializableToBinary: PartialFunction[ClusterReplicationSerializable, Array[Byte]] = {
@@ -194,6 +200,8 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     case m: TimeBasedUUIDEnvelope                                => timeBasedUUIDEnvelopeToBinary(m)
     // raft.model
     case m: raft.model.NoOp.type => noOpToBinary(m)
+    // typed
+    case m: typed.ReplicationEnvelope[_] => replicationEnvelopeToBinary(m)
   }
 
   // ===
@@ -904,6 +912,26 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   private def memberIndexFromProto(proto: msg.MemberIndex): raft.routing.MemberIndex = {
     raft.routing.MemberIndex.fromEncodedValue(
       encodedRole = proto.role,
+    )
+  }
+
+  // ===
+  // typed
+  // ===
+
+  private def replicationEnvelopeToBinary(message: typed.ReplicationEnvelope[_]): Array[Byte] = {
+    msg.ReplicationEnvelope
+      .of(
+        entityId = message.entityId,
+        message = payloadToProto(message.message),
+      ).toByteArray
+  }
+
+  private def replicationEnvelopeFromBinary(bytes: Array[Byte]): typed.ReplicationEnvelope[_] = {
+    val proto = msg.ReplicationEnvelope.parseFrom(bytes)
+    typed.ReplicationEnvelope(
+      proto.entityId,
+      message = payloadFromProto(proto.message),
     )
   }
 

@@ -6,6 +6,7 @@ import akka.cluster.sharding.ShardRegion.{ GracefulShutdown, HashCodeMessageExtr
 import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings, ShardRegion }
 import akka.cluster.{ Cluster, Member, MemberStatus }
 import akka.routing.{ ActorRefRoutee, ConsistentHashingRouter, ConsistentHashingRoutingLogic, Router }
+import lerna.akka.entityreplication.ClusterReplication.EntityPropsProvider
 import lerna.akka.entityreplication.ReplicationRegion.{ ExtractEntityId, ExtractShardId }
 import lerna.akka.entityreplication.model._
 import lerna.akka.entityreplication.raft.RaftActor
@@ -54,7 +55,7 @@ object ReplicationRegion {
 
   private[entityreplication] def props(
       typeName: String,
-      entityProps: Props,
+      entityProps: EntityPropsProvider,
       settings: ClusterReplicationSettings,
       extractEntityId: ExtractEntityId,
       extractShardId: ExtractShardId,
@@ -81,7 +82,7 @@ object ReplicationRegion {
 
 private[entityreplication] class ReplicationRegion(
     typeName: String,
-    entityProps: Props,
+    entityProps: EntityPropsProvider,
     settings: ClusterReplicationSettings,
     extractEntityId: ExtractEntityId,
     extractShardId: ExtractShardId,
