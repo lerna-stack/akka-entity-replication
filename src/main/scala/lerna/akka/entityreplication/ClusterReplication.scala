@@ -85,7 +85,7 @@ private[entityreplication] class ClusterReplicationGuardian extends Actor {
     case Start(typeName, entityProps, settings, extractEntityId, extractShardId) =>
       try {
         val _typeName  = TypeName.from(typeName)
-        val regionName = ActorIds.actorName("replicationRegion", _typeName.underlying)
+        val regionName = ActorIds.actorName(_typeName.underlying)
 
         val maybeCommitLogStore: Option[CommitLogStore] = {
           // TODO: RMUの有効無効をconfigから指定
