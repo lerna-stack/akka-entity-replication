@@ -34,6 +34,8 @@ object ReplicatedEntityBehaviorSpec {
     final case object Stop                                                   extends Command
     final case object SimulateFailure                                        extends Command
     final case object Unhandled                                              extends Command
+    final case object Lock                                                   extends Command
+    final case object Unlock                                                 extends Command
     final case class Deposit(amount: Int, replyTo: ActorRef[DepositReply])   extends Command
     final case class Withdraw(amount: Int, replyTo: ActorRef[WithdrawReply]) extends Command
     final case class GetBalance(replyTo: ActorRef[AccountBalance])           extends Command
@@ -50,6 +52,8 @@ object ReplicatedEntityBehaviorSpec {
     sealed trait Event
     final case class Deposited(amount: Int) extends Event
     final case class Withdrawn(amount: Int) extends Event
+    final case class Locked()               extends Event
+    final case class Unlocked()             extends Event
 
     final case object PostStopReceived
 
@@ -101,12 +105,38 @@ object ReplicatedEntityBehaviorSpec {
 
           case Unhandled =>
             Effect.unhandled.thenNoReply()
+
+          case Lock =>
+            Effect.replicate(Locked()).thenNoReply()
+
+          case Unlock =>
+            Effect.noReply
         }
 
       override def applyEvent(event: Event, context: ActorContext[Command]): State =
         event match {
           case Deposited(amount) => deposit(amount)
           case Withdrawn(amount) => withdraw(amount)
+          case Locked()          => Locking(balance)
+          case Unlocked()        => this
+        }
+    }
+
+    final case class Locking(balance: Int) extends State {
+      override def applyCommand(command: Command, context: ActorContext[Command]): Effect =
+        command match {
+          case Unlock =>
+            Effect.replicate(Unlocked()).thenUnstashAll().thenNoReply()
+          case _ =>
+            Effect.stash()
+        }
+
+      override def applyEvent(event: Event, context: ActorContext[Command]): State =
+        event match {
+          case Deposited(_) => throw new UnsupportedOperationException()
+          case Withdrawn(_) => throw new UnsupportedOperationException()
+          case Locked()     => this
+          case Unlocked()   => Account(balance)
         }
     }
 
@@ -505,6 +535,36 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       }
 
       testkit.system.eventStream ! EventStream.Unsubscribe(eventStreamSubscriber.ref)
+      testkit.stop(bankAccount)
+    }
+
+    "stash a user defined command when stash effect is used" in {
+      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+
+      // recover the entity
+      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
+      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+
+      bankAccount ! BankAccountBehavior.Lock
+      val r1 = shardProbe.expectMessageType[RaftProtocol.Replicate]
+      r1.event shouldBe a[BankAccountBehavior.Locked]
+      r1.replyTo ! RaftProtocol.ReplicationSucceeded(r1.event, nextLogEntryIndex(), r1.instanceId)
+
+      val replyProbe: TestProbe[BankAccountBehavior.DepositReply] =
+        bankAccount.askWithTestProbe(BankAccountBehavior.Deposit(1000, _)) // this command will be stashed
+      shardProbe.expectNoMessage()
+      replyProbe.expectNoMessage()
+
+      bankAccount ! BankAccountBehavior.Unlock // induces unstashAll
+      val r2 = shardProbe.expectMessageType[RaftProtocol.Replicate]
+      r2.event shouldBe a[BankAccountBehavior.Unlocked]
+      r2.replyTo ! RaftProtocol.ReplicationSucceeded(r2.event, nextLogEntryIndex(), r2.instanceId)
+
+      val r3 = shardProbe.expectMessageType[RaftProtocol.Replicate]
+      r3.event shouldBe a[BankAccountBehavior.Deposited]
+      r3.replyTo ! RaftProtocol.ReplicationSucceeded(r3.event, nextLogEntryIndex(), r3.instanceId)
+      replyProbe.receiveMessage()
+
       testkit.stop(bankAccount)
     }
   }
