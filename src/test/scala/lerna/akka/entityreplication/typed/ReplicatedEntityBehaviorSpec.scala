@@ -481,6 +481,20 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       testkit.stop(bankAccount)
     }
 
+    "stop when illegal any settings exist" in {
+      val config = ConfigFactory
+        .parseString("lerna.akka.entityreplication.raft.number-of-shards = 0")
+        .withFallback(this.testkit.config)
+
+      val localTestkit = ActorTestKit(config)
+      val bankAccount  = localTestkit.spawn(BankAccountBehavior(entityContext))
+
+      shardProbe.expectTerminated(bankAccount)
+
+      localTestkit.stop(bankAccount)
+      localTestkit.shutdownTestKit()
+    }
+
     "reboot and request Recovery again after recovery-entity-timeout" in {
       val config = ConfigFactory
         .parseString("lerna.akka.entityreplication.recovery-entity-timeout = 0.5s")
