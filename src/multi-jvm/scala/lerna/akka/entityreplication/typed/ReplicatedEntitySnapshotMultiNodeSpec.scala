@@ -103,8 +103,8 @@ class ReplicatedEntitySnapshotMultiNodeSpec
 
       var actorRef: ActorRef[DummyEntity.Command] = null
       runOn(node1, node2, node3) {
-        actorRef = findEntityActorRef()
         awaitAssert {
+          actorRef = findEntityActorRef()
           actorRef ! DummyEntity.GetState(replyTo.ref)
           replyTo.receiveMessage(1.seconds).count should be(1)
         }
