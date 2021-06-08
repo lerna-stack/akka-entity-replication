@@ -237,6 +237,7 @@ object ReplicatedEntityMultiNodeSpec {
               }.thenNoReply()
           case UnsafeGetState(replyTo) =>
             replyTo ! this // unsafe! This is implemented for showing this entity status directly
+            // If we use Effect.reply, we are going to receive only the Leader state (for ensuring consistency)
             Effect.noReply
         }
 
