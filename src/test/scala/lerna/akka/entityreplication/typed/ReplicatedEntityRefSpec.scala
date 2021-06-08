@@ -2,7 +2,7 @@ package lerna.akka.entityreplication.typed
 
 import akka.Done
 import akka.actor.testkit.typed.scaladsl.{ ActorTestKit, TestProbe }
-import akka.actor.typed.ActorRef
+import akka.actor.typed.{ ActorRef, RecipientRef, Scheduler }
 import akka.pattern.StatusReply
 import akka.util.Timeout
 import lerna.akka.entityreplication.typed.internal.ReplicatedEntityRefImpl
@@ -61,6 +61,23 @@ class ReplicatedEntityRefSpec extends WordSpec with Matchers with Inside with Sc
     "ask a message that requires reply wrapped in ReplicationEnvelope to ReplicationRegion" in {
       val entityRef                 = createEntityRef()
       implicit val timeout: Timeout = Timeout(3.seconds)
+
+      val reply: Future[Done] = entityRef ? AskMessage
+
+      inside(replicationRegion.expectMessageType[ReplicationEnvelope[Command]]) {
+        case ReplicationEnvelope(envelopeEntityId, AskMessage(replyTo)) =>
+          envelopeEntityId should be(entityId)
+          replyTo ! Done
+      }
+
+      reply.futureValue should be(Done)
+    }
+
+    "be a RecipientRef to use ask pattern APIs" in {
+      import akka.actor.typed.scaladsl.AskPattern._
+      val entityRef: RecipientRef[Command] = createEntityRef()
+      implicit val timeout: Timeout        = Timeout(3.seconds)
+      implicit val scheduler: Scheduler    = testkit.scheduler
 
       val reply: Future[Done] = entityRef ? AskMessage
 

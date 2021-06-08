@@ -42,6 +42,8 @@ lazy val lerna = (project in file("."))
         // 恐らく akka-persistence-inmemory の影響である。
         "com.typesafe.akka" %% "akka-persistence-query"   % akkaVersion,
         "com.typesafe.akka" %% "akka-actor-testkit-typed" % akkaVersion % Optional,
+        // multi-jvm:test can't resolve [Optional] dependency
+        "com.typesafe.akka" %% "akka-actor-testkit-typed" % akkaVersion % Test,
         "io.altoo"          %% "akka-kryo-serialization"  % "1.1.5"     % Test,
         "com.typesafe.akka" %% "akka-slf4j"               % akkaVersion % Test,
         "ch.qos.logback"     % "logback-classic"          % "1.2.3"     % Test,
