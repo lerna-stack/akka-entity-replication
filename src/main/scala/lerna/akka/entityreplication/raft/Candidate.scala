@@ -1,6 +1,5 @@
 package lerna.akka.entityreplication.raft
 
-import lerna.akka.entityreplication.ReplicationActor
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.protocol.{ SuspendEntity, TryCreateEntity }
@@ -42,7 +41,7 @@ private[raft] trait Candidate { this: RaftActor =>
     case response: SnapshotProtocol.FetchSnapshotResponse => receiveFetchSnapshotResponse(response)
     case SuspendEntity(_, entityId, stopMessage)          => suspendEntity(entityId, stopMessage)
     case SnapshotTick                                     => handleSnapshotTick()
-    case response: ReplicationActor.Snapshot              => receiveEntitySnapshotResponse(response)
+    case response: Snapshot                               => receiveEntitySnapshotResponse(response)
     case response: SnapshotProtocol.SaveSnapshotResponse  => receiveSaveSnapshotResponse(response)
     case _: akka.persistence.SaveSnapshotSuccess          => // ignore
     case _: akka.persistence.SaveSnapshotFailure          => // ignore: no problem because events exist even if snapshot saving failed

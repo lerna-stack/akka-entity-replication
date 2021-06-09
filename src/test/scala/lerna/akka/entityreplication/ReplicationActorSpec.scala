@@ -148,7 +148,7 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec", c
       }
       // Do not send RecoveryState to replicationActor
       raftActorProbe.expectMsgType[RequestRecovery]
-      testProbe.expectMsgType[ReplicationActor.EntityRecoveryTimeoutException]
+      testProbe.expectMsgType[EntityRecoveryTimeoutException]
       raftActorProbe.expectMsgType[RequestRecovery]
     }
   }

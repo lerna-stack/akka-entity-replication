@@ -55,7 +55,7 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
         new RaftActor(
           typeName,
           extractEntityId = extractEntityId,
-          replicationActorProps,
+          _ => replicationActorProps,
           region,
           shardSnapshotStoreProps = shardSnapshotStoreProps,
           selfMemberIndex,

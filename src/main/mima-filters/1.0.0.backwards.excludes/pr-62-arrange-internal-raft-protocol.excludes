@@ -1,0 +1,26 @@
+#  Following classes and objects will be package private in next release
+# 
+# object lerna.akka.entityreplication.ReplicationActor#EntityRecoveryTimeoutException does not have a correspondent in current version
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.ReplicationActor$EntityRecoveryTimeoutException$")
+# class lerna.akka.entityreplication.ReplicationActor#Snapshot does not have a correspondent in current version
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.ReplicationActor$Snapshot")
+# object lerna.akka.entityreplication.ReplicationActor#TakeSnapshot does not have a correspondent in current version
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.ReplicationActor$TakeSnapshot$")
+# class lerna.akka.entityreplication.ReplicationActor#EntityRecoveryTimeoutException does not have a correspondent in current version
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.ReplicationActor$EntityRecoveryTimeoutException")
+# object lerna.akka.entityreplication.ReplicationActor#RecoveryTimeout does not have a correspondent in current version
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.ReplicationActor$RecoveryTimeout$")
+# object lerna.akka.entityreplication.ReplicationActor#Snapshot does not have a correspondent in current version
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.ReplicationActor$Snapshot$")
+# class lerna.akka.entityreplication.ReplicationActor#TakeSnapshot does not have a correspondent in current version
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.ReplicationActor$TakeSnapshot")
+# class lerna.akka.entityreplication.raft.RaftProtocol#ReplicationSucceeded is declared final in current version
+ProblemFilters.exclude[FinalClassProblem]("lerna.akka.entityreplication.raft.RaftProtocol$ReplicationSucceeded")
+# class lerna.akka.entityreplication.raft.RaftProtocol#Command is declared final in current version
+ProblemFilters.exclude[FinalClassProblem]("lerna.akka.entityreplication.raft.RaftProtocol$Command")
+# class lerna.akka.entityreplication.raft.RaftProtocol#Replicate is declared final in current version
+ProblemFilters.exclude[FinalClassProblem]("lerna.akka.entityreplication.raft.RaftProtocol$Replicate")
+# class lerna.akka.entityreplication.raft.RaftProtocol#ForwardedCommand is declared final in current version
+ProblemFilters.exclude[FinalClassProblem]("lerna.akka.entityreplication.raft.RaftProtocol$ForwardedCommand")
+# class lerna.akka.entityreplication.raft.RaftProtocol#Replica is declared final in current version
+ProblemFilters.exclude[FinalClassProblem]("lerna.akka.entityreplication.raft.RaftProtocol$Replica")

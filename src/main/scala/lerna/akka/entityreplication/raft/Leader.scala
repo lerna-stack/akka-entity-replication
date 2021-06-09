@@ -8,7 +8,7 @@ import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.protocol.{ SuspendEntity, TryCreateEntity }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
-import lerna.akka.entityreplication.{ ReplicationActor, ReplicationRegion }
+import lerna.akka.entityreplication.ReplicationRegion
 
 private[raft] trait Leader { this: RaftActor =>
   import RaftActor._
@@ -35,7 +35,7 @@ private[raft] trait Leader { this: RaftActor =>
     case response: SnapshotProtocol.FetchSnapshotResponse     => receiveFetchSnapshotResponse(response)
     case SuspendEntity(_, entityId, stopMessage)              => suspendEntity(entityId, stopMessage)
     case SnapshotTick                                         => handleSnapshotTick()
-    case response: ReplicationActor.Snapshot                  => receiveEntitySnapshotResponse(response)
+    case response: Snapshot                                   => receiveEntitySnapshotResponse(response)
     case response: SnapshotProtocol.SaveSnapshotResponse      => receiveSaveSnapshotResponse(response)
     case _: akka.persistence.SaveSnapshotSuccess              => // ignore
     case _: akka.persistence.SaveSnapshotFailure              => // ignore: no problem because events exist even if snapshot saving failed
@@ -177,7 +177,7 @@ private[raft] trait Leader { this: RaftActor =>
         if (currentData.currentTermIsCommitted) {
           val (entityId, cmd) = extractEntityId(message)
           broadcast(TryCreateEntity(shardId, entityId))
-          replicationActor(entityId) forward Command(cmd)
+          replicationActor(entityId) forward ProcessCommand(cmd)
         } else {
           // The commands will be released after initial NoOp event was committed
           stash()

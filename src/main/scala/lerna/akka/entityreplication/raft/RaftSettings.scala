@@ -53,6 +53,13 @@ class RaftSettings private[raft] (root: Config) {
 
   val quorumSize: Int = (replicationFactor / 2) + 1
 
+  val numberOfShards: Int = config.getInt("number-of-shards")
+
+  require(
+    numberOfShards > 0,
+    s"number-of-shards ($numberOfShards) should be larger than 0",
+  )
+
   val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
 
   val maxAppendEntriesBatchSize: Int = config.getInt("max-append-entries-batch-size")

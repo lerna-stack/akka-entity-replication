@@ -6,6 +6,7 @@ import akka.cluster.sharding.ShardRegion.{ GracefulShutdown, HashCodeMessageExtr
 import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings, ShardRegion }
 import akka.cluster.{ Cluster, Member, MemberStatus }
 import akka.routing.{ ActorRefRoutee, ConsistentHashingRouter, ConsistentHashingRoutingLogic, Router }
+import lerna.akka.entityreplication.ClusterReplication.EntityPropsProvider
 import lerna.akka.entityreplication.ReplicationRegion.{ ExtractEntityId, ExtractShardId }
 import lerna.akka.entityreplication.model._
 import lerna.akka.entityreplication.raft.RaftActor
@@ -14,6 +15,7 @@ import lerna.akka.entityreplication.raft.eventsourced.CommitLogStore
 import lerna.akka.entityreplication.raft.protocol.ShardRequest
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.ShardSnapshotStore
+import lerna.akka.entityreplication.typed.ClusterReplication.ShardCommand
 
 import scala.collection.mutable
 
@@ -53,7 +55,7 @@ object ReplicationRegion {
 
   private[entityreplication] def props(
       typeName: String,
-      entityProps: Props,
+      entityProps: EntityPropsProvider,
       settings: ClusterReplicationSettings,
       extractEntityId: ExtractEntityId,
       extractShardId: ExtractShardId,
@@ -63,7 +65,7 @@ object ReplicationRegion {
 
   private[entityreplication] case class CreateShard(shardId: NormalizedShardId) extends ShardRequest
 
-  final case class Passivate(entityPath: ActorPath, stopMessage: Any)
+  final case class Passivate(entityPath: ActorPath, stopMessage: Any) extends ShardCommand
 
   private[entityreplication] sealed trait RoutingCommand
   private[entityreplication] final case class Broadcast(message: Any)                     extends RoutingCommand
@@ -80,7 +82,7 @@ object ReplicationRegion {
 
 private[entityreplication] class ReplicationRegion(
     typeName: String,
-    entityProps: Props,
+    entityProps: EntityPropsProvider,
     settings: ClusterReplicationSettings,
     extractEntityId: ExtractEntityId,
     extractShardId: ExtractShardId,

@@ -1,19 +1,23 @@
 package lerna.akka.entityreplication.raft
 
-import akka.actor.ActorRef
+import akka.actor.{ ActorPath, ActorRef }
 import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.model.{ LogEntry, LogEntryIndex }
-import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshot
+import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
+  EntitySnapshot,
+  EntitySnapshotMetadata,
+  EntityState,
+}
+import lerna.akka.entityreplication.typed.ClusterReplication.ShardCommand
 
 private[entityreplication] object RaftProtocol {
 
-  final case class RequestRecovery(entityId: NormalizedEntityId)
-  final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot])
-
-  case class Command(command: Any)              extends ClusterReplicationSerializable
-  case class ForwardedCommand(command: Command) extends ClusterReplicationSerializable
-  case class Replica(logEntry: LogEntry)
+  sealed trait RaftActorCommand                                                   extends ShardCommand
+  final case class RequestRecovery(entityId: NormalizedEntityId)                  extends RaftActorCommand
+  final case class Command(command: Any)                                          extends RaftActorCommand with ClusterReplicationSerializable
+  final case class ForwardedCommand(command: Command)                             extends RaftActorCommand with ClusterReplicationSerializable
+  final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState) extends RaftActorCommand
 
   object Replicate {
     def apply(
@@ -31,16 +35,27 @@ private[entityreplication] object RaftProtocol {
     }
   }
 
-  case class Replicate(
+  final case class Replicate(
       event: Any,
       replyTo: ActorRef,
       entityId: Option[NormalizedEntityId],
       instanceId: Option[EntityInstanceId],
       originSender: Option[ActorRef],
-  )
+  ) extends RaftActorCommand
+
+  sealed trait EntityCommand
+
+  final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot]) extends EntityCommand
+  final case class ProcessCommand(command: Any)                                           extends EntityCommand
+  final case class Replica(logEntry: LogEntry)                                            extends EntityCommand
+  final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef)      extends EntityCommand
+  final case object RecoveryTimeout                                                       extends EntityCommand
 
   sealed trait ReplicationResponse
 
-  case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex, instanceId: Option[EntityInstanceId])
+  final case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex, instanceId: Option[EntityInstanceId])
       extends ReplicationResponse
+      with EntityCommand
+
+  final case class EntityRecoveryTimeoutException(entityPath: ActorPath) extends RuntimeException
 }

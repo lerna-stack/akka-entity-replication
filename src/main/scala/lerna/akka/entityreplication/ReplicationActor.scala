@@ -2,7 +2,7 @@ package lerna.akka.entityreplication
 
 import java.util.concurrent.atomic.AtomicInteger
 
-import akka.actor.{ Actor, ActorPath, ActorRef, Cancellable, Stash }
+import akka.actor.{ Actor, Cancellable, Stash }
 import akka.event.Logging
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.RaftProtocol._
@@ -15,18 +15,9 @@ private[entityreplication] object ReplicationActor {
   private[this] val instanceIdCounter = new AtomicInteger(1)
 
   private def generateInstanceId(): EntityInstanceId = EntityInstanceId(instanceIdCounter.getAndIncrement())
-
-  private[entityreplication] final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef)
-  private[entityreplication] final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState)
-
-  private final case object RecoveryTimeout
-
-  private[entityreplication] final case class EntityRecoveryTimeoutException(entityPath: ActorPath)
-      extends RuntimeException
 }
 
 trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.StashFactory {
-  import ReplicationActor._
   import context.dispatcher
 
   private val internalStash = createStash()
@@ -92,7 +83,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
 
     override def stateReceive(receive: Receive, message: Any): Unit =
       message match {
-        case Command(command) =>
+        case ProcessCommand(command) =>
           receive.applyOrElse[Any, Unit](
             command,
             command => {
