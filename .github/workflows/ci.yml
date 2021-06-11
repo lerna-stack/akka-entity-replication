@@ -47,7 +47,7 @@ jobs:
 
     - name: Run integration tests
       continue-on-error: true # results are reported by action-junit-report
-      run: sh ./scripts/run-multijvm-test.sh 5
+      run: sh ./scripts/run-multijvm-test.sh 3
 
     - name: Publish test report
       uses: mikepenz/action-junit-report@v2
