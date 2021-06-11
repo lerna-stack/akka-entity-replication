@@ -1,10 +1,12 @@
 package lerna.akka.entityreplication
 
-import akka.actor.{ ActorRef, ExtendedActorSystem, Extension, ExtensionId, Props }
+import akka.actor.{ ActorRef, ExtendedActorSystem, Extension, ExtensionId, ExtensionIdProvider, Props }
 import lerna.akka.entityreplication.model.TypeName
 import lerna.akka.entityreplication.raft.eventsourced.{ CommitLogStore, ShardedCommitLogStore }
 
-object ClusterReplication extends ExtensionId[ClusterReplication] {
+object ClusterReplication extends ExtensionId[ClusterReplication] with ExtensionIdProvider {
+
+  override def lookup: ExtensionId[_ <: Extension] = ClusterReplication
 
   override def createExtension(system: ExtendedActorSystem): ClusterReplication = new ClusterReplication(system)
 
