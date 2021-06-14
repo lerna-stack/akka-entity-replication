@@ -1,5 +1,14 @@
 # Implementation Guide
 
+---
+**Warning**
+
+This API is no longer actively improved.
+We will focus to develop [Typed API](./typed/implementation_guide.md).
+It is not recommended using this API to build new applications.
+
+---
+
 akka-entity-replication supports *Event Sourcing* and *Command Query Responsibility Segregation* (CQRS). There are differences between command side implementation and query side implementation, which we will discuss in the respective chapters.
 
 ## Command Side
