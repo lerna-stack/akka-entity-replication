@@ -1,5 +1,14 @@
 # Testing Guide
 
+---
+**Warning**
+
+This API is no longer actively improved.
+We will focus to develop [Typed API](./typed/testing_guide.md).
+It is not recommended using this API to build new applications.
+
+---
+
 ## Testing ReplicationActors
 
 `akka-entity-replication` requires implementing your Entities with special trait `ReplicationActor`.
