@@ -53,8 +53,8 @@ Please see [build.sbt](./build.sbt) for the version of Akka that akka-entity-rep
 
 For more information on how to implement an application using this library, please refer to the following documents.
 
-- [Implementation Guide](docs/implementation_guide.md)
-- [Testing Guide](docs/testing_guide.md)
+- [Implementation Guide](docs/typed/implementation_guide.md)
+- [Testing Guide](docs/typed/testing_guide.md)
 
 ## For Contributors
 
