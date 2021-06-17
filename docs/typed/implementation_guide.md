@@ -179,6 +179,8 @@ object BankAccountBehavior {
 
   def apply(entityContext: ReplicatedEntityContext[Command]): Behavior[Command] = {
     Behaviors.setup { context =>
+      // This is highly recommended to identify the source of log outputs
+      context.setLoggerName(BankAccountBehavior.getClass)
       // ReceiveTimeout will trigger Effect.passivate()
       context.setReceiveTimeout(1.minute, ReceiveTimeout())
       ReplicatedEntityBehavior[Command, DomainEvent, Account](
@@ -266,6 +268,24 @@ use `ActorContext.setReceiveTimeout` and handles the command that is emitted by 
 By default, the entity implicitly stop with `PoisonPill`.
 If you want to hold off on stopping the entity depending on its status (e.g. waiting for a response from external system),
 you can define application specific message to stop entities with `ReplicatedEntityBehavior.withStopMessage`.
+
+### Logger name
+
+By default, you can't identify an entity class from log output.
+Also, logging libraries such as logback allow you to adjust the log output individually by the logger name.
+It is highly recommended to set custom logger name with `ActorContext.setLoggerName`.
+
+```scala
+def apply(entityContext: ReplicatedEntityContext[Command]): Behavior[Command] = {
+  Behaviors.setup { context =>
+    // This is highly recommended to identify the source of log outputs
+    context.setLoggerName(MyReplicatedEntity.getClass)
+    ReplicatedEntityBehavior[Command, DomainEvent, Account](
+      ...
+    )
+  }
+}
+```
 
 ### Reliable command delivery
 
