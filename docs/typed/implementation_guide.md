@@ -574,9 +574,9 @@ akka {
       jackson-json = "akka.serialization.jackson.JacksonJsonSerializer"
     }
     serialization-bindings {
-      "BankAccountActor.Command" = jackson-json
-      "BankAccountActor.DomainEvent" = jackson-json
-      "BankAccountActor.Account" = jackson-json
+      "example.BankAccountBehavior$Command" = jackson-json
+      "example.BankAccountBehavior$DomainEvent" = jackson-json
+      "example.BankAccountBehavior$Account" = jackson-json
     }
   }
 }
