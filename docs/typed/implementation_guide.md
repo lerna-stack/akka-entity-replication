@@ -433,7 +433,7 @@ akka-entity-replication.eventsourced.persistence.cassandra.journal {
   }
   event-adapter-bindings {
     // bank-account-tagging takes events which mixins BankAccount$DomainEvent
-    "com.example.BankAccount$DomainEvent" = bank-account-tagging
+    "com.example.BankAccountBehavior$DomainEvent" = bank-account-tagging
   }
 }
 ```
@@ -574,9 +574,9 @@ akka {
       jackson-json = "akka.serialization.jackson.JacksonJsonSerializer"
     }
     serialization-bindings {
-      "example.BankAccountBehavior$Command" = jackson-json
-      "example.BankAccountBehavior$DomainEvent" = jackson-json
-      "example.BankAccountBehavior$Account" = jackson-json
+      "com.example.BankAccountBehavior$Command" = jackson-json
+      "com.example.BankAccountBehavior$DomainEvent" = jackson-json
+      "com.example.BankAccountBehavior$Account" = jackson-json
     }
   }
 }
