@@ -105,4 +105,6 @@ class RaftSettings private[raft] (root: Config) {
   val snapshotStorePluginId: String = config.getString("persistence.snapshot-store.plugin")
 
   val queryPluginId: String = config.getString("persistence.query.plugin")
+
+  val eventSourcedJournalPluginId: String = config.getString("eventsourced.persistence.journal.plugin")
 }
