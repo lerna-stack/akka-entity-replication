@@ -6,7 +6,7 @@ import akka.cluster.sharding.ShardRegion.HashCodeMessageExtractor
 import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings }
 import akka.persistence.{ PersistentActor, RecoveryCompleted }
 import akka.util.ByteString
-import lerna.akka.entityreplication.ClusterReplicationSerializable
+import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ClusterReplicationSettings }
 import lerna.akka.entityreplication.model.{ NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
 import lerna.akka.entityreplication.util.ActorIds
@@ -21,7 +21,7 @@ private[entityreplication] final case class Save(
 
 private[entityreplication] object CommitLogStoreActor {
 
-  def startClusterSharding(typeName: TypeName, system: ActorSystem): ActorRef = {
+  def startClusterSharding(typeName: TypeName, system: ActorSystem, settings: ClusterReplicationSettings): ActorRef = {
     val clusterSharding         = ClusterSharding(system)
     val clusterShardingSettings = ClusterShardingSettings(system)
 
@@ -35,20 +35,20 @@ private[entityreplication] object CommitLogStoreActor {
 
     clusterSharding.start(
       typeName = s"raft-committed-event-store-${typeName.underlying}",
-      entityProps = CommitLogStoreActor.props(typeName),
+      entityProps = CommitLogStoreActor.props(typeName, settings),
       settings = clusterShardingSettings,
       messageExtractor = messageExtractor,
     )
   }
 
-  private def props(typeName: TypeName): Props = Props(new CommitLogStoreActor(typeName))
+  private def props(typeName: TypeName, settings: ClusterReplicationSettings): Props =
+    Props(new CommitLogStoreActor(typeName, settings))
 }
 
-private[entityreplication] class CommitLogStoreActor(typeName: TypeName) extends PersistentActor {
-  // TODO: 複数 Raft(typeName) に対応するために typeName ごとに cassandra-journal.keyspace を分ける
-  override def journalPluginId: String =
-    context.system.settings.config
-      .getString("lerna.akka.entityreplication.raft.eventsourced.persistence.journal.plugin")
+private[entityreplication] class CommitLogStoreActor(typeName: TypeName, settings: ClusterReplicationSettings)
+    extends PersistentActor {
+
+  override def journalPluginId: String = settings.raftSettings.eventSourcedJournalPluginId
 
   // TODO: Use snapshot for efficient recovery after reboot
   override def snapshotPluginId: String = "akka.persistence.no-snapshot-store"
