@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication
 
 import com.typesafe.config.{ Config, ConfigFactory }
+import lerna.akka.entityreplication.internal.ClusterReplicationSettingsImpl
 import org.scalatest.{ Matchers, WordSpec }
 
 class ClusterReplicationSettingsSpec extends WordSpec with Matchers {
@@ -17,14 +18,14 @@ class ClusterReplicationSettingsSpec extends WordSpec with Matchers {
       "not throw any exceptions when clusterRoles is appropriate" in {
         val clusterRoles: Set[String] = Set("dummy", "group-1") // one of the multi-raft-roles is included
 
-        new ClusterReplicationSettings(config, clusterRoles) // no thrown
+        ClusterReplicationSettingsImpl(config, clusterRoles) // no thrown
       }
 
       "throw an exception when does not include any of the multi-raft-roles" in {
         val clusterRoles: Set[String] = Set("dummy")
 
         val exception = intercept[IllegalStateException] {
-          new ClusterReplicationSettings(config, clusterRoles)
+          ClusterReplicationSettingsImpl(config, clusterRoles)
         }
         exception.getMessage should be("requires one of Set(group-1, group-2, group-3) role")
       }
@@ -33,7 +34,7 @@ class ClusterReplicationSettingsSpec extends WordSpec with Matchers {
         val clusterRoles: Set[String] = Set("dummy", "group-1", "group-2")
 
         val exception = intercept[IllegalStateException] {
-          new ClusterReplicationSettings(config, clusterRoles)
+          ClusterReplicationSettingsImpl(config, clusterRoles)
         }
         exception.getMessage should be(
           "requires one of Set(group-1, group-2, group-3) role, should not have multiply roles: [group-1,group-2]",
@@ -49,7 +50,7 @@ class ClusterReplicationSettingsSpec extends WordSpec with Matchers {
           """).withFallback(config)
 
         val exception = intercept[IllegalArgumentException] {
-          new ClusterReplicationSettings(cfg, correctClusterRoles)
+          ClusterReplicationSettingsImpl(cfg, correctClusterRoles)
         }
         exception.getMessage should be(
           "requirement failed: number-of-shards (0) should be larger than 0",
