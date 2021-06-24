@@ -318,6 +318,30 @@ val reply: Future[DepositSucceeded] =
 Note that `AtLeastOnceComplete` may cause that the entity receives again the command that has already completed.
 The `BankAccountBehavior` example implements uses `transactionId` to avoid duplicate commands.
 
+### Change persistence plugins programmatically
+
+```scala
+import akka.actor.typed.ActorSystem
+import lerna.akka.entityreplication.typed._
+
+val system: ActorSystem[_] = ???
+val clusterReplication = ClusterReplication(system)
+
+// specify persistence plugin ids
+val settings =
+  ClusterReplicationSettings(system)
+    .withRaftJournalPluginId("my.special.raft.journal")
+    .withRaftSnapshotPluginId("my.special.raft.snapshot-store")
+    .withRaftQueryPluginId("my.special.raft.query")
+    .withEventSourcedJournalPluginId("my.special.eventsourced.journal")
+
+val entity = 
+  ReplicatedEntity(BankAccountBehavior.TypeKey)(entityContext => BankAccountBehavior(entityContext))
+    .withSettings(settings)
+    
+clusterReplication.init(entity)
+```
+
 ### Configuration
 
 On the command side, there are the following settings.
