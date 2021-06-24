@@ -49,20 +49,16 @@ class RaftActorMultiNodeSpecMultiJvmNode2      extends RaftActorMultiNodeSpec
 class RaftActorMultiNodeSpecMultiJvmNode3      extends RaftActorMultiNodeSpec
 
 object RaftActorMultiNodeSpec {
-  import scala.jdk.CollectionConverters._
-  import scala.jdk.DurationConverters._
-  class RaftSettingsForTest(root: Config)(
+
+  def createRaftSettingsForTest(root: Config)(
       overrideElectionTimeout: Option[FiniteDuration] = None,
       overrideHeartbeatInterval: Option[FiniteDuration] = None,
-  ) extends RaftSettings(
-        ConfigFactory
-          .parseMap(
-            (
-              overrideElectionTimeout.map("lerna.akka.entityreplication.raft.election-timeout" -> _.toJava).toMap
-              ++ overrideHeartbeatInterval.map("lerna.akka.entityreplication.raft.heartbeat-interval" -> _.toJava)
-            ).asJava,
-          ).withFallback(root),
-      )
+  ): RaftSettings = {
+    var settings = RaftSettingsImpl(root)
+    settings = overrideElectionTimeout.fold(settings)(v => settings.copy(electionTimeout = v))
+    settings = overrideHeartbeatInterval.fold(settings)(v => settings.copy(heartbeatInterval = v))
+    settings
+  }
 }
 
 class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STMultiNodeSpec {
@@ -72,7 +68,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
   import RaftActorSpecConfig._
 
   private[this] val config = system.settings.config
-  private[this] val defaultRaftSettings = new RaftSettingsForTest(config)(
+  private[this] val defaultRaftSettings = createRaftSettingsForTest(config)(
     // テスト中はデフォルトで各種タイマーが作動しないようにする
     overrideElectionTimeout = Option(999.seconds),
     overrideHeartbeatInterval = Option(99.seconds),
@@ -126,7 +122,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node1) {
         followerMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             // 確実にリーダーになるように仕向けるため
             overrideElectionTimeout = Option(99.seconds),
           ),
@@ -136,7 +132,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node2) {
         followerMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             // 確実にリーダーになるように仕向けるため
             overrideElectionTimeout = Option(99.seconds),
           ),
@@ -146,7 +142,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node3) {
         leaderMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             // 確実にリーダーになるように仕向けるため
             overrideElectionTimeout = Option(1.seconds),
           ),
@@ -180,7 +176,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node1) {
         candidateMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             overrideElectionTimeout = Option(6.seconds),
           ),
         )
@@ -190,7 +186,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node2) {
         candidateMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             overrideElectionTimeout = Option(6.seconds),
           ),
         )
@@ -200,7 +196,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node3) {
         candidateMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             // 確実にリーダーになるように仕向けるため
             overrideElectionTimeout = Option(3.seconds),
           ),
@@ -222,7 +218,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node1) {
         leaderMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             // リーダーとして選出させるため
             overrideElectionTimeout = Option(500.millis),
             overrideHeartbeatInterval = Option(100.millis),
@@ -270,7 +266,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node1) {
         leaderMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             // リーダーとして選出させるため
             overrideElectionTimeout = Option(500.millis),
             overrideHeartbeatInterval = Option(100.millis),
@@ -322,7 +318,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node1) {
         leaderMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             // リーダーとして選出させるため
             overrideElectionTimeout = Option(3.seconds),
             overrideHeartbeatInterval = Option(1.seconds),
@@ -423,7 +419,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node1) {
         nodeMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             // to make it be a leader
             overrideElectionTimeout = Option(1.seconds),
             overrideHeartbeatInterval = Option(0.5.seconds),
@@ -438,7 +434,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node3) {
         nodeMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             // to make it be a leader
             overrideElectionTimeout = Option(6.seconds),
             overrideHeartbeatInterval = Option(0.5.seconds),
@@ -529,7 +525,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       runOn(node1) {
         raftMember = createRaftActor(
           shardId,
-          new RaftSettingsForTest(config)(
+          createRaftSettingsForTest(config)(
             // リーダーになりやすくするため
             overrideElectionTimeout = Option(1.seconds),
             overrideHeartbeatInterval = Option(0.5.seconds),

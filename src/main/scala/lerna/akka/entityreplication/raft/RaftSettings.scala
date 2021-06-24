@@ -1,110 +1,60 @@
 package lerna.akka.entityreplication.raft
 
-import java.util.concurrent.TimeUnit.NANOSECONDS
-import com.typesafe.config.{ Config, ConfigFactory }
+import com.typesafe.config.Config
 
-import scala.jdk.CollectionConverters._
-import scala.jdk.DurationConverters._
 import scala.concurrent.duration.{ Duration, FiniteDuration }
-import scala.util.Random
 
 private[entityreplication] object RaftSettings {
-  def apply(root: Config) = new RaftSettings(root)
+  def apply(root: Config): RaftSettings = RaftSettingsImpl(root)
 }
 
-class RaftSettings private[raft] (root: Config) {
+trait RaftSettings {
 
-  val config: Config = root.getConfig("lerna.akka.entityreplication.raft")
+  def config: Config
 
-  val electionTimeout: FiniteDuration = config.getDuration("election-timeout").toScala
+  def electionTimeout: FiniteDuration
 
-  private[raft] def randomizedElectionTimeout(): FiniteDuration = randomized(electionTimeout)
+  private[raft] def randomizedElectionTimeout(): FiniteDuration
 
-  val heartbeatInterval: FiniteDuration = config.getDuration("heartbeat-interval").toScala
+  def heartbeatInterval: FiniteDuration
 
-  private[this] val randomizedMinFactor = 0.75
+  def electionTimeoutMin: Duration
 
-  private[this] val randomizedMaxFactor = 0.75
+  def multiRaftRoles: Set[String]
 
-  /**
-    * 75% - 150% of duration
-    */
-  private[this] def randomized(duration: FiniteDuration): FiniteDuration = {
-    val randomizedDuration = duration * (randomizedMinFactor + randomizedMaxFactor * Random.nextDouble())
-    FiniteDuration(randomizedDuration.toNanos, NANOSECONDS)
-  }
+  def replicationFactor: Int
 
-  val electionTimeoutMin: Duration = electionTimeout * randomizedMinFactor
+  def quorumSize: Int
 
-  // heartbeatInterval < electionTimeout < MTBF が満たせないと可用性が損なわれるため
-  require(
-    electionTimeoutMin > heartbeatInterval,
-    s"electionTimeout (${electionTimeout.toMillis} ms) * $randomizedMinFactor must be larger than heartbeatInterval (${heartbeatInterval.toMillis} ms)",
-  )
+  def numberOfShards: Int
 
-  val multiRaftRoles: Set[String] = config.getStringList("multi-raft-roles").asScala.toSet
+  def maxAppendEntriesSize: Int
 
-  require(
-    multiRaftRoles.size >= 3,
-    s"multi-raft-roles should have size 3 or more for availability",
-  )
+  def maxAppendEntriesBatchSize: Int
 
-  val replicationFactor: Int = multiRaftRoles.size
+  def compactionSnapshotCacheTimeToLive: FiniteDuration
 
-  val quorumSize: Int = (replicationFactor / 2) + 1
+  def compactionLogSizeThreshold: Int
 
-  val numberOfShards: Int = config.getInt("number-of-shards")
+  def compactionPreserveLogSize: Int
 
-  require(
-    numberOfShards > 0,
-    s"number-of-shards ($numberOfShards) should be larger than 0",
-  )
+  def compactionLogSizeCheckInterval: FiniteDuration
 
-  val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
+  private[raft] def randomizedCompactionLogSizeCheckInterval(): FiniteDuration
 
-  val maxAppendEntriesBatchSize: Int = config.getInt("max-append-entries-batch-size")
+  def snapshotSyncCopyingParallelism: Int
 
-  val compactionSnapshotCacheTimeToLive: FiniteDuration =
-    config.getDuration("compaction.snapshot-cache-time-to-live").toScala
+  def snapshotSyncPersistenceOperationTimeout: FiniteDuration
 
-  val compactionLogSizeThreshold: Int = config.getInt("compaction.log-size-threshold")
+  def clusterShardingConfig: Config
 
-  require(
-    0 < compactionLogSizeThreshold,
-    s"log-size-threshold ($compactionLogSizeThreshold) should be larger than 0",
-  )
+  def journalPluginId: String
 
-  val compactionPreserveLogSize: Int = config.getInt("compaction.preserve-log-size")
+  def journalPluginAdditionalConfig: Config
 
-  require(
-    0 < compactionPreserveLogSize,
-    s"preserve-log-size ($compactionPreserveLogSize) should be larger than 0",
-  )
+  def snapshotStorePluginId: String
 
-  val compactionLogSizeCheckInterval: FiniteDuration = config.getDuration("compaction.log-size-check-interval").toScala
+  def queryPluginId: String
 
-  private[raft] def randomizedCompactionLogSizeCheckInterval(): FiniteDuration =
-    randomized(compactionLogSizeCheckInterval)
-
-  val snapshotSyncCopyingParallelism: Int = config.getInt("snapshot-sync.snapshot-copying-parallelism")
-
-  val snapshotSyncPersistenceOperationTimeout: FiniteDuration =
-    config.getDuration("snapshot-sync.persistence-operation-timeout").toScala
-
-  val clusterShardingConfig: Config = config.getConfig("sharding")
-
-  val journalPluginId: String = config.getString("persistence.journal.plugin")
-
-  val journalPluginAdditionalConfig: Config =
-    ConfigFactory.parseMap {
-      Map(
-        journalPluginId -> config.getObject("persistence.journal-plugin-additional"),
-      ).asJava
-    }
-
-  val snapshotStorePluginId: String = config.getString("persistence.snapshot-store.plugin")
-
-  val queryPluginId: String = config.getString("persistence.query.plugin")
-
-  val eventSourcedJournalPluginId: String = config.getString("eventsourced.persistence.journal.plugin")
+  def eventSourcedJournalPluginId: String
 }
