@@ -1,0 +1,5 @@
+# ClusterReplicationSettings constructor doesn't expose to users.
+# Also, they can still create the instance by [ClusterReplicationSettings(system)].
+#
+# declaration of class lerna.akka.entityreplication.ClusterReplicationSettings is interface lerna.akka.entityreplication.ClusterReplicationSettings in current version; changing class to interface breaks client code
+ProblemFilters.exclude[IncompatibleTemplateDefProblem]("lerna.akka.entityreplication.ClusterReplicationSettings")
