@@ -2,6 +2,7 @@ package lerna.akka.entityreplication.internal
 
 import com.typesafe.config.Config
 import lerna.akka.entityreplication.ClusterReplicationSettings
+import lerna.akka.entityreplication.typed
 import lerna.akka.entityreplication.raft.RaftSettings
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
@@ -14,20 +15,22 @@ private[entityreplication] final case class ClusterReplicationSettingsImpl(
     raftSettings: RaftSettings,
     allMemberIndexes: Set[MemberIndex],
     selfMemberIndex: MemberIndex,
-) extends ClusterReplicationSettings {
+) extends ClusterReplicationSettings
+    with typed.ClusterReplicationSettings {
 
-  override def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettings =
+  override def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettingsImpl =
     copy(raftSettings = raftSettings.withJournalPluginId(pluginId))
 
-  override def withRaftSnapshotPluginId(pluginId: String): ClusterReplicationSettings =
+  override def withRaftSnapshotPluginId(pluginId: String): ClusterReplicationSettingsImpl =
     copy(raftSettings = raftSettings.withSnapshotPluginId(pluginId))
 
-  override def withRaftQueryPluginId(pluginId: String): ClusterReplicationSettings =
+  override def withRaftQueryPluginId(pluginId: String): ClusterReplicationSettingsImpl =
     copy(raftSettings = raftSettings.withQueryPluginId(pluginId))
 
-  override def withEventSourcedJournalPluginId(pluginId: String): ClusterReplicationSettings =
+  override def withEventSourcedJournalPluginId(pluginId: String): ClusterReplicationSettingsImpl =
     copy(raftSettings = raftSettings.withEventSourcedJournalPluginId(pluginId))
 
+  override private[entityreplication] def toClassic: ClusterReplicationSettings = this
 }
 
 private[entityreplication] object ClusterReplicationSettingsImpl {
