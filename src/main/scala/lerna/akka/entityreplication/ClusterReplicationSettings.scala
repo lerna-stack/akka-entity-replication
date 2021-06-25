@@ -29,4 +29,12 @@ trait ClusterReplicationSettings {
 
   def selfMemberIndex: MemberIndex
 
+  def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettings
+
+  def withRaftSnapshotPluginId(pluginId: String): ClusterReplicationSettings
+
+  def withRaftQueryPluginId(pluginId: String): ClusterReplicationSettings
+
+  def withEventSourcedJournalPluginId(pluginId: String): ClusterReplicationSettings
+
 }

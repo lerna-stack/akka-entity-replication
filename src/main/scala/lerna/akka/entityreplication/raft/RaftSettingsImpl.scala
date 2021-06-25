@@ -39,6 +39,18 @@ private[entityreplication] final case class RaftSettingsImpl(
   override private[raft] def randomizedCompactionLogSizeCheckInterval(): FiniteDuration =
     RaftSettingsImpl.randomized(compactionLogSizeCheckInterval)
 
+  override private[entityreplication] def withJournalPluginId(pluginId: String): RaftSettings =
+    copy(journalPluginId = pluginId)
+
+  override private[entityreplication] def withSnapshotPluginId(pluginId: String): RaftSettings =
+    copy(snapshotStorePluginId = pluginId)
+
+  override private[entityreplication] def withQueryPluginId(pluginId: String): RaftSettings =
+    copy(queryPluginId = pluginId)
+
+  override private[entityreplication] def withEventSourcedJournalPluginId(pluginId: String): RaftSettings =
+    copy(eventSourcedJournalPluginId = pluginId)
+
 }
 
 private[entityreplication] object RaftSettingsImpl {
