@@ -56,7 +56,34 @@ class ClusterReplicationSettingsSpec extends WordSpec with Matchers {
           "requirement failed: number-of-shards (0) should be larger than 0",
         )
       }
-    }
 
+      "change value of raftSettings.journalPluginId by withRaftJournalPluginId" in {
+        val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
+        val expectedPluginId = "new-raft-journal-plugin-id"
+        val modifiedSettings = settings.withRaftJournalPluginId(expectedPluginId)
+        modifiedSettings.raftSettings.journalPluginId should be(expectedPluginId)
+      }
+
+      "change value of raftSettings.snapshotStorePluginId by withRaftSnapshotPluginId" in {
+        val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
+        val expectedPluginId = "new-raft-snapshot-plugin-id"
+        val modifiedSettings = settings.withRaftSnapshotPluginId(expectedPluginId)
+        modifiedSettings.raftSettings.snapshotStorePluginId should be(expectedPluginId)
+      }
+
+      "change value of raftSettings.queryPluginId by withRaftQueryPluginId" in {
+        val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
+        val expectedPluginId = "new-raft-query-plugin-id"
+        val modifiedSettings = settings.withRaftQueryPluginId(expectedPluginId)
+        modifiedSettings.raftSettings.queryPluginId should be(expectedPluginId)
+      }
+
+      "change value of raftSettings.eventSourcedJournalPluginId by withEventSourcedJournalPluginId" in {
+        val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
+        val expectedPluginId = "new-event-sourced-journal-plugin-id"
+        val modifiedSettings = settings.withEventSourcedJournalPluginId(expectedPluginId)
+        modifiedSettings.raftSettings.eventSourcedJournalPluginId should be(expectedPluginId)
+      }
+    }
   }
 }
