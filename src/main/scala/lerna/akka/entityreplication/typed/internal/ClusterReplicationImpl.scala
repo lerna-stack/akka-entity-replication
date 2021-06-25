@@ -23,7 +23,7 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
 
   private[this] def internalInit[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E] = {
     val classicSystem = system.toClassic
-    val settings      = untyped.ClusterReplicationSettings(classicSystem)
+    val settings      = entity.settings.map(_.toClassic).getOrElse(untyped.ClusterReplicationSettings(classicSystem))
     val extractEntityId: untyped.ReplicationRegion.ExtractEntityId = {
       case ReplicationEnvelope(entityId, message) => (entityId, message)
     }

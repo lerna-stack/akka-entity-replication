@@ -21,4 +21,8 @@ trait ReplicatedEntity[M, E] {
   def createBehavior: ReplicatedEntityContext[M] => Behavior[M]
 
   def typeKey: ReplicatedEntityTypeKey[M]
+
+  def withSettings(settings: ClusterReplicationSettings): ReplicatedEntity[M, E]
+
+  private[entityreplication] def settings: Option[ClusterReplicationSettings]
 }
