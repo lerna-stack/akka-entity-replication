@@ -17,7 +17,7 @@ jobs:
     strategy:
       matrix:
         java: [ '8', '11' ]
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
     - uses: actions/checkout@v2
       with:
@@ -51,7 +51,7 @@ jobs:
 
     - name: Run integration tests
       continue-on-error: true # results are reported by action-junit-report
-      run: sh ./scripts/run-multijvm-test.sh 3
+      run: sh ./scripts/run-multijvm-test.sh 6
 
     - name: Publish test report
       uses: mikepenz/action-junit-report@v2
