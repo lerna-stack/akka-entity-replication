@@ -14,7 +14,7 @@ import lerna.akka.entityreplication.typed.internal.behavior.ReplicatedEntityBeha
 import java.util.concurrent.atomic.AtomicInteger
 import scala.util.control.NonFatal
 
-object ReplicatedEntityBehaviorImpl {
+private[entityreplication] object ReplicatedEntityBehaviorImpl {
 
   private[this] val instanceIdCounter = new AtomicInteger(1)
 

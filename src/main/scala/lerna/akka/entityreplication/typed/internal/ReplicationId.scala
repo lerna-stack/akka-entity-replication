@@ -9,7 +9,7 @@ private[entityreplication] object ReplicationId {
     ReplicationIdImpl(entityTypeKey, NormalizedEntityId.from(entityId))
 }
 
-trait ReplicationId[Command] {
+private[entityreplication] trait ReplicationId[Command] {
 
   def entityTypeKey: ReplicatedEntityTypeKey[Command]
 
