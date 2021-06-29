@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 [Unreleased]: https://github.com/lerna-stack/akka-entity-replication/compare/.v1.0.0...master
 
+### Added
+- Java11 support
+
 ### Removed
 
 - Made internal APIs private
