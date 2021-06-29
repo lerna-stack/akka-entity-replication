@@ -6,7 +6,7 @@ import lerna.akka.entityreplication.typed.{ Effect, EffectBuilder }
 
 import scala.collection.immutable
 
-object EffectBuilderImpl {
+private[entityreplication] object EffectBuilderImpl {
 
   def unhandled[Event, State](mainEffect: MainEffect[Event, State]): EffectBuilder[Event, State] =
     new EffectBuilderImpl(mainEffect, immutable.Seq(new UnhandledEffect[State]))
