@@ -20,6 +20,12 @@ object ClusterReplicationSettings {
 
 trait ClusterReplicationSettings {
 
+  /*
+   * NOTE:
+   * When you changed this API,
+   * make sure that we don't have to also change [lerna.akka.entityreplication.ClusterReplicationSettings].
+   */
+
   def config: Config
 
   def recoveryEntityTimeout: FiniteDuration
