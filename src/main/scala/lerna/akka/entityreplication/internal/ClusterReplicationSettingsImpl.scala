@@ -17,20 +17,19 @@ private[entityreplication] final case class ClusterReplicationSettingsImpl(
     selfMemberIndex: MemberIndex,
 ) extends ClusterReplicationSettings
     with typed.ClusterReplicationSettings {
+  override type Self = ClusterReplicationSettingsImpl
 
-  override def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettingsImpl =
+  override def withRaftJournalPluginId(pluginId: String): Self =
     copy(raftSettings = raftSettings.withJournalPluginId(pluginId))
 
-  override def withRaftSnapshotPluginId(pluginId: String): ClusterReplicationSettingsImpl =
+  override def withRaftSnapshotPluginId(pluginId: String): Self =
     copy(raftSettings = raftSettings.withSnapshotPluginId(pluginId))
 
-  override def withRaftQueryPluginId(pluginId: String): ClusterReplicationSettingsImpl =
+  override def withRaftQueryPluginId(pluginId: String): Self =
     copy(raftSettings = raftSettings.withQueryPluginId(pluginId))
 
-  override def withEventSourcedJournalPluginId(pluginId: String): ClusterReplicationSettingsImpl =
+  override def withEventSourcedJournalPluginId(pluginId: String): Self =
     copy(raftSettings = raftSettings.withEventSourcedJournalPluginId(pluginId))
-
-  override private[entityreplication] def toClassic: ClusterReplicationSettings = this
 }
 
 private[entityreplication] object ClusterReplicationSettingsImpl {

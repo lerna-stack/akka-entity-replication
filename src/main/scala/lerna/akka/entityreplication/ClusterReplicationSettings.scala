@@ -18,6 +18,7 @@ object ClusterReplicationSettings {
 }
 
 trait ClusterReplicationSettings {
+  type Self <: ClusterReplicationSettings
 
   def config: Config
 
@@ -29,12 +30,12 @@ trait ClusterReplicationSettings {
 
   def selfMemberIndex: MemberIndex
 
-  def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettings
+  def withRaftJournalPluginId(pluginId: String): Self
 
-  def withRaftSnapshotPluginId(pluginId: String): ClusterReplicationSettings
+  def withRaftSnapshotPluginId(pluginId: String): Self
 
-  def withRaftQueryPluginId(pluginId: String): ClusterReplicationSettings
+  def withRaftQueryPluginId(pluginId: String): Self
 
-  def withEventSourcedJournalPluginId(pluginId: String): ClusterReplicationSettings
+  def withEventSourcedJournalPluginId(pluginId: String): Self
 
 }
