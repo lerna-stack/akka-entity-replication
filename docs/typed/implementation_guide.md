@@ -329,7 +329,7 @@ lerna.akka.entityreplication.raft.persistence.query.plugin = ""
 lerna.akka.entityreplication.raft.eventsourced.persistence.journal.plugin = ""
 ```
 
-You can override these settings by `withRaftJournalPluginId`, `withRaftSnapshotPluginId`, `withRaftSnapshotPluginId` and `withEventSourcedJournalPluginId`
+You can override these settings by `withRaftJournalPluginId`, `withRaftSnapshotPluginId`, `withRaftQueryPluginId` and `withEventSourcedJournalPluginId`
 of `ClusterReplicationSettings`.
 
 ```scala
