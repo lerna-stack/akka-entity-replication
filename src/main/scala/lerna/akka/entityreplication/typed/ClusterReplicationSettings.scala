@@ -2,13 +2,8 @@ package lerna.akka.entityreplication.typed
 
 import akka.actor.typed.ActorSystem
 import akka.cluster.Cluster
-import com.typesafe.config.Config
 import lerna.akka.entityreplication.internal.ClusterReplicationSettingsImpl
 import lerna.akka.{ entityreplication => classic }
-import lerna.akka.entityreplication.raft.RaftSettings
-import lerna.akka.entityreplication.raft.routing.MemberIndex
-
-import scala.concurrent.duration.FiniteDuration
 
 object ClusterReplicationSettings {
 
@@ -18,32 +13,24 @@ object ClusterReplicationSettings {
   }
 }
 
-trait ClusterReplicationSettings {
+trait ClusterReplicationSettings extends classic.ClusterReplicationSettings {
 
   /*
    * NOTE:
    * When you changed this API,
    * make sure that we don't have to also change [lerna.akka.entityreplication.ClusterReplicationSettings].
+   *
+   * This API currently has same API with (classic) ClusterReplicationSettings
+   * but 'withXxx' methods override classic one because they should return own type.
+   * This trait allows us to use type API by just importing lerna.akka.entityreplication.typed_.
    */
 
-  def config: Config
+  override def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettings
 
-  def recoveryEntityTimeout: FiniteDuration
+  override def withRaftSnapshotPluginId(pluginId: String): ClusterReplicationSettings
 
-  def raftSettings: RaftSettings
+  override def withRaftQueryPluginId(pluginId: String): ClusterReplicationSettings
 
-  def allMemberIndexes: Set[MemberIndex]
-
-  def selfMemberIndex: MemberIndex
-
-  def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettings
-
-  def withRaftSnapshotPluginId(pluginId: String): ClusterReplicationSettings
-
-  def withRaftQueryPluginId(pluginId: String): ClusterReplicationSettings
-
-  def withEventSourcedJournalPluginId(pluginId: String): ClusterReplicationSettings
-
-  private[entityreplication] def toClassic: classic.ClusterReplicationSettings
+  override def withEventSourcedJournalPluginId(pluginId: String): ClusterReplicationSettings
 
 }
