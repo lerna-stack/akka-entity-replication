@@ -106,6 +106,11 @@ class MultiDataStoreSpec extends MultiNodeSpec(MultiDataStoreSpecConfig) with ST
       clusterReplication.init(PingPongEntity(storageExtensionDataStoreTypeKey, typedSystem))
     }
 
+    /*
+     * Rearranging the order of test cases will cause to fail the test:
+     * https://github.com/lerna-stack/akka-entity-replication/pull/88#discussion_r661128422
+     */
+
     "not persist data to StorageExtension when use default data store which is defined in configuration" in {
 
       runOn(node1) {
