@@ -11,79 +11,76 @@ class ClusterReplicationSettingsSpec extends WordSpec with Matchers {
       |lerna.akka.entityreplication.raft.multi-raft-roles = ["group-1", "group-2", "group-3"]
       |""".stripMargin).withFallback(ConfigFactory.load())
 
-  "ClusterReplicationSettings" when {
+  "ClusterReplicationSettings" should {
 
-    "instantiate" should {
+    "not throw any exceptions when clusterRoles is appropriate" in {
+      val clusterRoles: Set[String] = Set("dummy", "group-1") // one of the multi-raft-roles is included
 
-      "not throw any exceptions when clusterRoles is appropriate" in {
-        val clusterRoles: Set[String] = Set("dummy", "group-1") // one of the multi-raft-roles is included
+      ClusterReplicationSettingsImpl(config, clusterRoles) // no thrown
+    }
 
-        ClusterReplicationSettingsImpl(config, clusterRoles) // no thrown
+    "throw an exception when does not include any of the multi-raft-roles" in {
+      val clusterRoles: Set[String] = Set("dummy")
+
+      val exception = intercept[IllegalStateException] {
+        ClusterReplicationSettingsImpl(config, clusterRoles)
       }
+      exception.getMessage should be("requires one of Set(group-1, group-2, group-3) role")
+    }
 
-      "throw an exception when does not include any of the multi-raft-roles" in {
-        val clusterRoles: Set[String] = Set("dummy")
+    "throw an exception when contains two or more of multi-raft-roles" in {
+      val clusterRoles: Set[String] = Set("dummy", "group-1", "group-2")
 
-        val exception = intercept[IllegalStateException] {
-          ClusterReplicationSettingsImpl(config, clusterRoles)
-        }
-        exception.getMessage should be("requires one of Set(group-1, group-2, group-3) role")
+      val exception = intercept[IllegalStateException] {
+        ClusterReplicationSettingsImpl(config, clusterRoles)
       }
+      exception.getMessage should be(
+        "requires one of Set(group-1, group-2, group-3) role, should not have multiply roles: [group-1,group-2]",
+      )
+    }
 
-      "throw an exception when contains two or more of multi-raft-roles" in {
-        val clusterRoles: Set[String] = Set("dummy", "group-1", "group-2")
+    val correctClusterRoles = Set("group-1", "group-2", "group-3")
 
-        val exception = intercept[IllegalStateException] {
-          ClusterReplicationSettingsImpl(config, clusterRoles)
-        }
-        exception.getMessage should be(
-          "requires one of Set(group-1, group-2, group-3) role, should not have multiply roles: [group-1,group-2]",
-        )
-      }
-
-      val correctClusterRoles = Set("group-1", "group-2", "group-3")
-
-      "throw an exception when number-of-shards less than or equal to 0" in {
-        val cfg = ConfigFactory
-          .parseString("""
+    "throw an exception when number-of-shards less than or equal to 0" in {
+      val cfg = ConfigFactory
+        .parseString("""
           lerna.akka.entityreplication.raft.number-of-shards = 0
           """).withFallback(config)
 
-        val exception = intercept[IllegalArgumentException] {
-          ClusterReplicationSettingsImpl(cfg, correctClusterRoles)
-        }
-        exception.getMessage should be(
-          "requirement failed: number-of-shards (0) should be larger than 0",
-        )
+      val exception = intercept[IllegalArgumentException] {
+        ClusterReplicationSettingsImpl(cfg, correctClusterRoles)
       }
+      exception.getMessage should be(
+        "requirement failed: number-of-shards (0) should be larger than 0",
+      )
+    }
 
-      "change value of raftSettings.journalPluginId by withRaftJournalPluginId" in {
-        val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
-        val expectedPluginId = "new-raft-journal-plugin-id"
-        val modifiedSettings = settings.withRaftJournalPluginId(expectedPluginId)
-        modifiedSettings.raftSettings.journalPluginId should be(expectedPluginId)
-      }
+    "change value of raftSettings.journalPluginId by withRaftJournalPluginId" in {
+      val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
+      val expectedPluginId = "new-raft-journal-plugin-id"
+      val modifiedSettings = settings.withRaftJournalPluginId(expectedPluginId)
+      modifiedSettings.raftSettings.journalPluginId should be(expectedPluginId)
+    }
 
-      "change value of raftSettings.snapshotStorePluginId by withRaftSnapshotPluginId" in {
-        val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
-        val expectedPluginId = "new-raft-snapshot-plugin-id"
-        val modifiedSettings = settings.withRaftSnapshotPluginId(expectedPluginId)
-        modifiedSettings.raftSettings.snapshotStorePluginId should be(expectedPluginId)
-      }
+    "change value of raftSettings.snapshotStorePluginId by withRaftSnapshotPluginId" in {
+      val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
+      val expectedPluginId = "new-raft-snapshot-plugin-id"
+      val modifiedSettings = settings.withRaftSnapshotPluginId(expectedPluginId)
+      modifiedSettings.raftSettings.snapshotStorePluginId should be(expectedPluginId)
+    }
 
-      "change value of raftSettings.queryPluginId by withRaftQueryPluginId" in {
-        val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
-        val expectedPluginId = "new-raft-query-plugin-id"
-        val modifiedSettings = settings.withRaftQueryPluginId(expectedPluginId)
-        modifiedSettings.raftSettings.queryPluginId should be(expectedPluginId)
-      }
+    "change value of raftSettings.queryPluginId by withRaftQueryPluginId" in {
+      val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
+      val expectedPluginId = "new-raft-query-plugin-id"
+      val modifiedSettings = settings.withRaftQueryPluginId(expectedPluginId)
+      modifiedSettings.raftSettings.queryPluginId should be(expectedPluginId)
+    }
 
-      "change value of raftSettings.eventSourcedJournalPluginId by withEventSourcedJournalPluginId" in {
-        val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
-        val expectedPluginId = "new-event-sourced-journal-plugin-id"
-        val modifiedSettings = settings.withEventSourcedJournalPluginId(expectedPluginId)
-        modifiedSettings.raftSettings.eventSourcedJournalPluginId should be(expectedPluginId)
-      }
+    "change value of raftSettings.eventSourcedJournalPluginId by withEventSourcedJournalPluginId" in {
+      val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
+      val expectedPluginId = "new-event-sourced-journal-plugin-id"
+      val modifiedSettings = settings.withEventSourcedJournalPluginId(expectedPluginId)
+      modifiedSettings.raftSettings.eventSourcedJournalPluginId should be(expectedPluginId)
     }
   }
 }
