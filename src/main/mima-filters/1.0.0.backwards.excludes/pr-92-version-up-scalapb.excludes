@@ -1,0 +1,4 @@
+# Automatically generated code
+# It is not supposed to be called by the library user.
+# Serialization compatibility is guaranteed by Protocol Buffers.
+ProblemFilters.exclude[Problem]("lerna.akka.entityreplication.protobuf.msg.*")
