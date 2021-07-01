@@ -91,7 +91,7 @@ private[entityreplication] class ClusterReplicationGuardian extends Actor {
           // TODO: RMUの有効無効をconfigから指定
           val enabled = true // FIXME: settings から取得する (typeName ごとに切り替えられる必要あり)
           // TODO: テストのために差し替え出来るようにする
-          Option.when(enabled)(new ShardedCommitLogStore(_typeName, context.system))
+          Option.when(enabled)(new ShardedCommitLogStore(_typeName, context.system, settings))
         }
 
         val regionRef: ActorRef =

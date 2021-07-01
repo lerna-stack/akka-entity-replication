@@ -3,43 +3,44 @@ package lerna.akka.entityreplication
 import akka.actor.ActorSystem
 import akka.cluster.Cluster
 import com.typesafe.config.Config
+import lerna.akka.entityreplication.internal.ClusterReplicationSettingsImpl
 import lerna.akka.entityreplication.raft.RaftSettings
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
-import scala.jdk.DurationConverters._
 import scala.concurrent.duration.FiniteDuration
 
 object ClusterReplicationSettings {
 
   def apply(system: ActorSystem): ClusterReplicationSettings = {
     val cluster = Cluster(system)
-    new ClusterReplicationSettings(system.settings.config, cluster.settings.Roles)
+    ClusterReplicationSettingsImpl(system.settings.config, cluster.settings.Roles)
   }
 }
 
-// [entityreplication]: for test purpose
-class ClusterReplicationSettings private[entityreplication] (root: Config, clusterRoles: Set[String]) {
+trait ClusterReplicationSettings {
 
-  val config: Config = root.getConfig("lerna.akka.entityreplication")
+  /*
+   * NOTE:
+   * When you changed this API,
+   * make sure that we don't have to also change [lerna.akka.entityreplication.typed.ClusterReplicationSettings].
+   */
 
-  val recoveryEntityTimeout: FiniteDuration = config.getDuration("recovery-entity-timeout").toScala
+  def config: Config
 
-  val raftSettings: RaftSettings = RaftSettings(root)
+  def recoveryEntityTimeout: FiniteDuration
 
-  val allMemberIndexes: Set[MemberIndex] = raftSettings.multiRaftRoles.map(MemberIndex.apply)
+  def raftSettings: RaftSettings
 
-  val selfMemberIndex: MemberIndex =
-    clusterRoles
-      .filter(allMemberIndexes.map(_.role)).map(MemberIndex.apply).toSeq match {
-      case Seq(memberIndex) => memberIndex
-      case Seq() =>
-        throw new IllegalStateException(
-          s"requires one of ${raftSettings.multiRaftRoles} role",
-        )
-      case indexes =>
-        throw new IllegalStateException(
-          s"requires one of ${raftSettings.multiRaftRoles} role, should not have multiply roles: [${indexes.mkString(",")}]",
-        )
-    }
+  def allMemberIndexes: Set[MemberIndex]
+
+  def selfMemberIndex: MemberIndex
+
+  def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettings
+
+  def withRaftSnapshotPluginId(pluginId: String): ClusterReplicationSettings
+
+  def withRaftQueryPluginId(pluginId: String): ClusterReplicationSettings
+
+  def withEventSourcedJournalPluginId(pluginId: String): ClusterReplicationSettings
 
 }

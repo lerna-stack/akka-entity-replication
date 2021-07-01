@@ -318,6 +318,44 @@ val reply: Future[DepositSucceeded] =
 Note that `AtLeastOnceComplete` may cause that the entity receives again the command that has already completed.
 The `BankAccountBehavior` example implements uses `transactionId` to avoid duplicate commands.
 
+### Change persistence plugins programmatically
+
+By default, akka-entity-replication will persist events and snapshots with persistence plugins that is configured in the following sections of the `reference.conf`.
+
+```hocon
+lerna.akka.entityreplication.raft.persistence.journal.plugin = ""
+lerna.akka.entityreplication.raft.persistence.snapshot-store.plugin = ""
+lerna.akka.entityreplication.raft.persistence.query.plugin = ""
+lerna.akka.entityreplication.raft.eventsourced.persistence.journal.plugin = ""
+```
+
+You can override these settings by `withRaftJournalPluginId`, `withRaftSnapshotPluginId`, `withRaftQueryPluginId` and `withEventSourcedJournalPluginId`
+of `ClusterReplicationSettings`.
+
+```scala
+import akka.actor.typed.ActorSystem
+import lerna.akka.entityreplication.typed._
+
+val system: ActorSystem[_] = ???
+val clusterReplication = ClusterReplication(system)
+
+// specify persistence plugin ids
+val settings =
+  ClusterReplicationSettings(system)
+    .withRaftJournalPluginId("my.special.raft.journal")
+    .withRaftSnapshotPluginId("my.special.raft.snapshot-store")
+    .withRaftQueryPluginId("my.special.raft.query")
+    .withEventSourcedJournalPluginId("my.special.eventsourced.journal")
+
+val entity = 
+  ReplicatedEntity(BankAccountBehavior.TypeKey)(entityContext => BankAccountBehavior(entityContext))
+    .withSettings(settings)
+    
+clusterReplication.init(entity)
+```
+
+This is useful when you would like to change the datastore that persists events or snapshots for each type key.
+
 ### Configuration
 
 On the command side, there are the following settings.
