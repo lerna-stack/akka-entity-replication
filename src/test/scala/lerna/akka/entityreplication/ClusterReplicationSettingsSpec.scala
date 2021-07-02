@@ -62,6 +62,21 @@ class ClusterReplicationSettingsSpec extends WordSpec with Matchers {
       modifiedSettings.raftSettings.journalPluginId should be(expectedPluginId)
     }
 
+    "return config which contains settings of journal-plugin-additional by raftSettings.journalPluginAdditionalConfig after overriding RaftJournalPluginId" in {
+      val localConfig = ConfigFactory
+        .parseString("""
+        lerna.akka.entityreplication.raft.persistence.journal-plugin-additional {
+          additional-setting = "ok"
+        }               
+        """).withFallback(config)
+      val settings         = ClusterReplicationSettingsImpl(localConfig, correctClusterRoles.headOption.toSet)
+      val expectedPluginId = "new-raft-journal-plugin-id"
+      val modifiedSettings = settings.withRaftJournalPluginId(expectedPluginId)
+      modifiedSettings.raftSettings.journalPluginAdditionalConfig.getString(
+        "new-raft-journal-plugin-id.additional-setting",
+      ) should be("ok")
+    }
+
     "change value of raftSettings.snapshotStorePluginId by withRaftSnapshotPluginId" in {
       val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
       val expectedPluginId = "new-raft-snapshot-plugin-id"
