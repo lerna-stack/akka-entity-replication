@@ -27,7 +27,6 @@ private[entityreplication] final case class RaftSettingsImpl(
     snapshotSyncPersistenceOperationTimeout: FiniteDuration,
     clusterShardingConfig: Config,
     journalPluginId: String,
-    journalPluginAdditionalConfig: Config,
     snapshotStorePluginId: String,
     queryPluginId: String,
     eventSourcedJournalPluginId: String,
@@ -38,6 +37,13 @@ private[entityreplication] final case class RaftSettingsImpl(
 
   override private[raft] def randomizedCompactionLogSizeCheckInterval(): FiniteDuration =
     RaftSettingsImpl.randomized(compactionLogSizeCheckInterval)
+
+  override def journalPluginAdditionalConfig: Config =
+    ConfigFactory.parseMap {
+      Map(
+        journalPluginId -> config.getObject("persistence.journal-plugin-additional"),
+      ).asJava
+    }
 
   override private[entityreplication] def withJournalPluginId(pluginId: String): RaftSettings =
     copy(journalPluginId = pluginId)
@@ -122,13 +128,6 @@ private[entityreplication] object RaftSettingsImpl {
 
     val journalPluginId: String = config.getString("persistence.journal.plugin")
 
-    val journalPluginAdditionalConfig: Config =
-      ConfigFactory.parseMap {
-        Map(
-          journalPluginId -> config.getObject("persistence.journal-plugin-additional"),
-        ).asJava
-      }
-
     val snapshotStorePluginId: String = config.getString("persistence.snapshot-store.plugin")
 
     val queryPluginId: String = config.getString("persistence.query.plugin")
@@ -154,7 +153,6 @@ private[entityreplication] object RaftSettingsImpl {
       snapshotSyncPersistenceOperationTimeout = snapshotSyncPersistenceOperationTimeout,
       clusterShardingConfig = clusterShardingConfig,
       journalPluginId = journalPluginId,
-      journalPluginAdditionalConfig = journalPluginAdditionalConfig,
       snapshotStorePluginId = snapshotStorePluginId,
       queryPluginId = queryPluginId,
       eventSourcedJournalPluginId = eventSourcedJournalPluginId,
