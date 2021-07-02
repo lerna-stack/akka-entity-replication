@@ -128,7 +128,7 @@ class ReplicatedEntityBehaviorTestKitSpec extends FlatSpec with Matchers with Be
     it should "throw AssertionError if the entity reply the another type message" in {
       intercept[AssertionError] {
         commandResult.replyOfType[InvalidReply]
-      }
+      }.getMessage should be(s"Expected reply class [${invalidReply.getName}], but was [${expectedReply.getName}]")
     }
   }
 
@@ -137,12 +137,14 @@ class ReplicatedEntityBehaviorTestKitSpec extends FlatSpec with Matchers with Be
   ): Unit = {
 
     it should "throw AssertionError if the entity no reply any messages" in {
+      val expectedMessage = "No reply"
       intercept[AssertionError] {
         commandResult.reply
-      }
+      }.getMessage should be(expectedMessage)
+
       intercept[AssertionError] {
         commandResult.replyOfType[Reply]
-      }
+      }.getMessage should be(expectedMessage)
     }
   }
 
@@ -181,7 +183,9 @@ class ReplicatedEntityBehaviorTestKitSpec extends FlatSpec with Matchers with Be
     it should "throw AssertionError if the entity replicated the another type event" in {
       intercept[AssertionError] {
         commandResult.eventOfType[InvalidEvent]
-      }
+      }.getMessage should be(
+        s"Expected event class [${invalidEvent.getName}], but was [${expectedEvent.getName}]",
+      )
     }
 
     it should "provide the state of the entity" in {
@@ -195,7 +199,9 @@ class ReplicatedEntityBehaviorTestKitSpec extends FlatSpec with Matchers with Be
     it should "throw AssertionError if the entity has the another type state" in {
       intercept[AssertionError] {
         commandResult.stateOfType[InvalidState]
-      }
+      }.getMessage should be(
+        s"Expected state class [${invalidState.getName}], but was [${expectedState.getName}]",
+      )
     }
   }
 
@@ -208,13 +214,14 @@ class ReplicatedEntityBehaviorTestKitSpec extends FlatSpec with Matchers with Be
     }
 
     it should "throw AssertionError when user try to get event" in {
-
+      val expectedMessage = "No event"
       intercept[AssertionError] {
         commandResult.event
-      }
+      }.getMessage should be(expectedMessage)
+
       intercept[AssertionError] {
         commandResult.eventOfType[Event]
-      }
+      }.getMessage should be(expectedMessage)
     }
   }
 }
