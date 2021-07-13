@@ -61,15 +61,15 @@ private[entityreplication] class ReplicatedEntityBehaviorTestKitImpl[Command, Ev
     val newState = state
     val reply =
       try {
-        replyProbe.receiveMessage()
+        Option(replyProbe.receiveMessage())
       } catch {
-        case NonFatal(_) => throw new AssertionError(s"Missing expected reply for command [$command]")
+        case NonFatal(_) => None
       } finally {
         replyProbe.stop()
       }
 
-    verifyPostRunCommand(newEvent, newState, Option(reply))
-    CommandResultImpl(command, newEvent, newState, Option(reply))
+    verifyPostRunCommand(newEvent, newState, reply)
+    CommandResultImpl(command, newEvent, newState, reply)
   }
 
   override def state: State = {
