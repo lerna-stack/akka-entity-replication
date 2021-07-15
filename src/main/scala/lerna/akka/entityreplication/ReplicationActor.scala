@@ -17,6 +17,7 @@ private[entityreplication] object ReplicationActor {
   private def generateInstanceId(): EntityInstanceId = EntityInstanceId(instanceIdCounter.getAndIncrement())
 }
 
+@deprecated(message = "Use typed.ReplicatedEntityBehavior instead", since = "2.0.0")
 trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.StashFactory {
   import context.dispatcher
 

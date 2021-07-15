@@ -9,6 +9,7 @@ import lerna.akka.entityreplication.raft.routing.MemberIndex
 
 import scala.concurrent.duration.FiniteDuration
 
+@deprecated(message = "Use typed.ClusterReplicationSettings instead", since = "2.0.0")
 object ClusterReplicationSettings {
 
   def apply(system: ActorSystem): ClusterReplicationSettings = {
@@ -17,6 +18,7 @@ object ClusterReplicationSettings {
   }
 }
 
+@deprecated(message = "Use typed.ClusterReplicationSettings instead", since = "2.0.0")
 trait ClusterReplicationSettings {
 
   /*

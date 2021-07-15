@@ -6,6 +6,7 @@ import lerna.akka.entityreplication.ReplicationActor
 /**
   * The [[TestReplicationActorProps]] allows to test [[ReplicationActor]] like a normal Actor.
   */
+@deprecated(message = "Use typed.testkit.ReplicatedEntityBehaviorTestKit instead", since = "2.0.0")
 object TestReplicationActorProps {
 
   def apply(replicationActorProps: Props): Props = {
