@@ -48,7 +48,7 @@ object ReplicationRegionSpec {
     }
   }
 
-  @nowarn // for deprecated ReplicationActor
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class DummyReplicationActor(probe: TestProbe) extends DiagnosticActorLogging with ReplicationActor[Int] {
 
     import DummyReplicationActor._
@@ -116,7 +116,7 @@ object ReplicationRegionSpecConfig extends MultiNodeConfig {
       .withFallback(ConfigFactory.parseString(s"""
       akka.actor.provider = cluster
       akka.test.single-expect-default = 15s
-      
+
       lerna.akka.entityreplication.raft.compaction.log-size-threshold = 2
       lerna.akka.entityreplication.raft.compaction.preserve-log-size = 1
       lerna.akka.entityreplication.raft.compaction.log-size-check-interval = 0.1s
@@ -178,7 +178,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
 
     val raftActorProbe = TestProbe("RaftActor")
 
-    @nowarn // for deprecated ClusterReplication(system).start
+    @nowarn("msg=method start in class ClusterReplication is deprecated")
     def createReplication(typeName: String): ActorRef =
       planAutoKill {
         ClusterReplication(system).start(

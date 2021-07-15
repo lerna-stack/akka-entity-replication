@@ -24,7 +24,7 @@ object TestReplicationActorPropsSpec {
     final case class Counted(wordCount: Int) extends DomainEvent
   }
 
-  @nowarn // for deprecated ReplicationActor
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class WordCountReplicationActor extends ReplicationActor[Int] {
     import WordCountReplicationActor._
 
@@ -57,13 +57,13 @@ object TestReplicationActorPropsSpec {
   }
 }
 
+@nowarn("msg=Use typed.testkit.ReplicatedEntityBehaviorTestKit instead")
 class TestReplicationActorPropsSpec extends TestKit(ActorSystem()) with WordSpecLike with Matchers with ImplicitSender {
   import WordCountReplicationActor._
 
   "TestReplicationActorProps" should {
 
     "take in only ReplicationActor Props" in {
-      @nowarn // for deprecated TestReplicationActorProps
       val ex = intercept[IllegalArgumentException] {
         TestReplicationActorProps(Props.default)
       }
@@ -71,14 +71,12 @@ class TestReplicationActorPropsSpec extends TestKit(ActorSystem()) with WordSpec
     }
 
     "forward commands to ReplicationActor" in {
-      @nowarn // for deprecated TestReplicationActorProps
       val actor = system.actorOf(TestReplicationActorProps(WordCountReplicationActor.props))
       actor ! CountWord("hello")
       expectMsg(Counted(wordCount = "hello".length))
     }
 
     "allow that ReplicationActor process ensureConsistency" in {
-      @nowarn // for deprecated TestReplicationActorProps
       val actor = system.actorOf(TestReplicationActorProps(WordCountReplicationActor.props))
       actor ! CountWord("hello")
       expectMsgType[Counted]
@@ -87,7 +85,6 @@ class TestReplicationActorPropsSpec extends TestKit(ActorSystem()) with WordSpec
     }
 
     "allow to check ReplicationActor passivation" in {
-      @nowarn // for deprecated TestReplicationActorProps
       val actor = watch(system.actorOf(TestReplicationActorProps(WordCountReplicationActor.props)))
       actor ! Stop() // Passivate
 

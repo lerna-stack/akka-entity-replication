@@ -71,7 +71,7 @@ object ReplicationActorMultiNodeSpec {
     }
   }
 
-  @nowarn // for deprecated ReplicationActor
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class PingPongReplicationActor extends ReplicationActor[Int] {
 
     import PingPongReplicationActor._
@@ -125,7 +125,7 @@ object ReplicationActorMultiNodeSpec {
     }
   }
 
-  @nowarn // for deprecated ReplicationActor
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class LockReplicationActor extends ReplicationActor[NotUsed] {
     import LockReplicationActor._
 
@@ -185,7 +185,7 @@ object ReplicationActorMultiNodeSpec {
     }
   }
 
-  @nowarn // for deprecated ReplicationActor
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class EphemeralReplicationActor extends ReplicationActor[Int] {
 
     import EphemeralReplicationActor._
@@ -223,7 +223,7 @@ class ReplicationActorMultiNodeSpecMultiJvmNode1 extends ReplicationActorMultiNo
 class ReplicationActorMultiNodeSpecMultiJvmNode2 extends ReplicationActorMultiNodeSpec
 class ReplicationActorMultiNodeSpecMultiJvmNode3 extends ReplicationActorMultiNodeSpec
 
-@nowarn // for deprecated ClusterReplication(system).start
+@nowarn("msg=method start in class ClusterReplication is deprecated")
 class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecConfig) with STMultiNodeSpec {
   import ReplicationActorMultiNodeSpec._
   import ReplicationActorSpecConfig._

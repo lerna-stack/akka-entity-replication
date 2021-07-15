@@ -31,7 +31,7 @@ object ReplicationActorSpec {
     case class Counted() extends Event
   }
 
-  @nowarn // for deprecated ReplicationActor
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class ExampleReplicationActor extends ReplicationActor[Int] {
     import ExampleReplicationActor._
 

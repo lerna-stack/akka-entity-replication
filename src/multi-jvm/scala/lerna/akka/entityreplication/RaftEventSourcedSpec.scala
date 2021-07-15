@@ -25,7 +25,7 @@ object RaftEventSourcedSpecConfig extends MultiNodeConfig {
       akka.test.single-expect-default = 15s
       lerna.akka.entityreplication.raft.multi-raft-roles = ["member-1", "member-2", "member-3"]
       lerna.akka.entityreplication.recovery-entity-timeout = 1s
-      
+
       inmemory-journal {
         event-adapters {
           dummy-event-adapter = "lerna.akka.entityreplication.RaftEventSourcedSpec$DummyEventAdapter"
@@ -92,7 +92,7 @@ object RaftEventSourcedSpec {
 
   import DummyReplicationActor._
 
-  @nowarn // for deprecated ReplicationActor
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class DummyReplicationActor extends ReplicationActor[State] {
 
     private[this] var state: State = State(count = 0, knownRequestId = Set.empty)
@@ -152,7 +152,7 @@ object RaftEventSourcedSpec {
   }
 }
 
-@nowarn // for deprecated ClusterReplication(system).start
+@nowarn("msg=method start in class ClusterReplication is deprecated")
 class RaftEventSourcedSpec extends MultiNodeSpec(RaftEventSourcedSpecConfig) with STMultiNodeSpec {
 
   import RaftEventSourcedSpec._

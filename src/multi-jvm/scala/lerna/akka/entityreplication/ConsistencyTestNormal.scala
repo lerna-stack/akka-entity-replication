@@ -15,7 +15,7 @@ class ConsistencyTestNormalMultiJvmNode3 extends ConsistencyTestNormal
 class ConsistencyTestNormalMultiJvmNode4 extends ConsistencyTestNormal
 class ConsistencyTestNormalMultiJvmNode5 extends ConsistencyTestNormal
 
-@nowarn // for deprecated ClusterReplication(system).start
+@nowarn("msg=method start in class ClusterReplication is deprecated")
 class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) with STMultiNodeSpec with Inside {
 
   import ConsistencyTestBaseConfig._

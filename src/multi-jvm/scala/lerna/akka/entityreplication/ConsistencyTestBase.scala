@@ -73,7 +73,7 @@ object ConsistencyTestBase {
     }
   }
 
-  @nowarn // for deprecated ReplicationActor
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class ConsistencyTestReplicationActor() extends ReplicationActor[Int] {
 
     import ConsistencyTestReplicationActor._
