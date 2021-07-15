@@ -18,6 +18,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add new typed API based on Akka Typed [PR#79](https://github.com/lerna-stack/akka-entity-replication/pull/79)
   - This API reduces runtime errors and increases productivity.
 
+### Changed
+
+- Untyped (classic) API has been deprecated [PR#96](https://github.com/lerna-stack/akka-entity-replication/pull/96)
+
+  ⚠️ This API will be removed in the next major version release.
+
 ### Removed
 
 - Made internal APIs private
