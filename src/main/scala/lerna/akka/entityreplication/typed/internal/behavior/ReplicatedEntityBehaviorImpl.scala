@@ -32,7 +32,7 @@ private[entityreplication] final case class ReplicatedEntityBehaviorImpl[Command
 
   override def apply(ctx: TypedActorContext[Command]): Behavior[Command] = {
     try {
-      val settings = ClusterReplicationSettings(ctx.asScala.system.toClassic)
+      val settings = ClusterReplicationSettings.create(ctx.asScala.system.toClassic)
       Behaviors.intercept(() => interceptor)(createBehavior(entityContext.shard, settings)).narrow
     } catch {
       case NonFatal(e) =>

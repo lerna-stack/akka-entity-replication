@@ -11,7 +11,11 @@ import scala.concurrent.duration.FiniteDuration
 
 object ClusterReplicationSettings {
 
-  def apply(system: ActorSystem): ClusterReplicationSettings = {
+  @deprecated("Use typed.ClusterReplicationSettings instead", since = "2.0.0")
+  def apply(system: ActorSystem): ClusterReplicationSettings = create(system)
+
+  // for internal use
+  private[entityreplication] def create(system: ActorSystem): ClusterReplicationSettings = {
     val cluster = Cluster(system)
     ClusterReplicationSettingsImpl(system.settings.config, cluster.settings.Roles)
   }

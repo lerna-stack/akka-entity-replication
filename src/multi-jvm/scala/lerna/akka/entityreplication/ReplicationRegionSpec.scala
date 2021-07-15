@@ -184,7 +184,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
         ClusterReplication(system).start(
           typeName = typeName,
           entityProps = DummyReplicationActor.props(entityProbe),
-          settings = ClusterReplicationSettings(system),
+          settings = ClusterReplicationSettings.create(system),
           extractEntityId = DummyReplicationActor.extractEntityId,
           extractShardId = DummyReplicationActor.extractShardId,
         )
@@ -197,7 +197,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
             new ReplicationRegion(
               typeName = typeName,
               _ => DummyReplicationActor.props(entityProbe),
-              ClusterReplicationSettings(system),
+              ClusterReplicationSettings.create(system),
               DummyReplicationActor.extractEntityId,
               DummyReplicationActor.extractShardId,
               maybeCommitLogStore = None,

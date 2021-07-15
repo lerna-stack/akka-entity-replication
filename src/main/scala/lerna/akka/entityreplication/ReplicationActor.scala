@@ -25,7 +25,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
 
   private val instanceId = ReplicationActor.generateInstanceId()
 
-  private[this] val settings = ClusterReplicationSettings(context.system)
+  private[this] val settings = ClusterReplicationSettings.create(context.system)
 
   private[this] val log = Logging(context.system, this)
 

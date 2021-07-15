@@ -592,7 +592,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
         new ReplicationRegion(
           typeName = typeName,
           _ => replicationActorProps,
-          ClusterReplicationSettings(system),
+          ClusterReplicationSettings.create(system),
           extractEntityId,
           extractShardId,
           maybeCommitLogStore = None,

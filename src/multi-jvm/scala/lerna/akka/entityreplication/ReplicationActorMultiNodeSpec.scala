@@ -256,7 +256,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
           ClusterReplication(system).start(
             typeName = "ping-pong-sample",
             entityProps = Props[PingPongReplicationActor](),
-            settings = ClusterReplicationSettings(system),
+            settings = ClusterReplicationSettings.create(system),
             extractEntityId = PingPongReplicationActor.extractEntityId,
             extractShardId = PingPongReplicationActor.extractShardId,
           )
@@ -285,7 +285,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
           ClusterReplication(system).start(
             typeName = "ping-pong-sample-2",
             entityProps = Props[PingPongReplicationActor](),
-            settings = ClusterReplicationSettings(system),
+            settings = ClusterReplicationSettings.create(system),
             extractEntityId = PingPongReplicationActor.extractEntityId,
             extractShardId = PingPongReplicationActor.extractShardId,
           )
@@ -319,7 +319,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
           ClusterReplication(system).start(
             typeName = "lock-sample",
             entityProps = Props[LockReplicationActor](),
-            settings = ClusterReplicationSettings(system),
+            settings = ClusterReplicationSettings.create(system),
             extractEntityId = LockReplicationActor.extractEntityId,
             extractShardId = LockReplicationActor.extractShardId,
           )
@@ -356,7 +356,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
           ClusterReplication(system).start(
             typeName = "passivate-sample",
             entityProps = Props[EphemeralReplicationActor](),
-            settings = ClusterReplicationSettings(system),
+            settings = ClusterReplicationSettings.create(system),
             extractEntityId = EphemeralReplicationActor.extractEntityId,
             extractShardId = EphemeralReplicationActor.extractShardId,
           )
@@ -396,7 +396,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
         ClusterReplication(system).start(
           typeName = "recovery-sample",
           entityProps = Props[EphemeralReplicationActor](),
-          settings = ClusterReplicationSettings(system),
+          settings = ClusterReplicationSettings.create(system),
           extractEntityId = EphemeralReplicationActor.extractEntityId,
           extractShardId = EphemeralReplicationActor.extractShardId,
         )

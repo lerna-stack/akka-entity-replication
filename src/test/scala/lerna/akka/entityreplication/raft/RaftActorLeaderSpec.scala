@@ -332,7 +332,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
     }
   }
 
-  private[this] val settings = ClusterReplicationSettings(system)
+  private[this] val settings = ClusterReplicationSettings.create(system)
 
   private[this] val eventStore = system.actorOf(EventStore.props(settings), "eventStore")
 

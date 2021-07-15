@@ -176,7 +176,7 @@ class RaftEventSourcedSpec extends MultiNodeSpec(RaftEventSourcedSpecConfig) wit
           ClusterReplication(system).start(
             typeName,
             entityProps = DummyReplicationActor.props(),
-            settings = ClusterReplicationSettings(system),
+            settings = ClusterReplicationSettings.create(system),
             DummyReplicationActor.extractEntityId,
             DummyReplicationActor.extractShardId,
           )

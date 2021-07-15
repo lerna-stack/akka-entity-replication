@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger
 
 class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with BeforeAndAfterEach {
 
-  private[this] val settings = ClusterReplicationSettings(system)
+  private[this] val settings = ClusterReplicationSettings.create(system)
 
   private[this] val shardId = NormalizedShardId("test-shard")
 

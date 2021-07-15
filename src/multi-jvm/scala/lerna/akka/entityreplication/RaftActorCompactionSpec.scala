@@ -215,7 +215,7 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
       ClusterReplication(system).start(
         typeName = typeName,
         entityProps = DummyReplicationActor.props(),
-        settings = ClusterReplicationSettings(system),
+        settings = ClusterReplicationSettings.create(system),
         extractEntityId = DummyReplicationActor.extractEntityId,
         extractShardId = DummyReplicationActor.extractShardId,
       )
