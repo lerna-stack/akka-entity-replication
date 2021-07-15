@@ -8,6 +8,7 @@ import lerna.akka.entityreplication.RaftActorCompactionSpec.DummyReplicationActo
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 
 import java.util.concurrent.atomic.AtomicInteger
+import scala.annotation.nowarn
 import scala.concurrent.duration._
 
 object RaftActorCompactionSpecConfig extends MultiNodeConfig {
@@ -79,6 +80,7 @@ object RaftActorCompactionSpec {
 
   import DummyReplicationActor._
 
+  @nowarn // for deprecated ReplicationActor
   class DummyReplicationActor extends ReplicationActor[State] {
 
     private[this] var state: State = State(0)
@@ -207,6 +209,7 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
     }
   }
 
+  @nowarn // for deprecated ClusterReplication(system).start
   def createReplication(typeName: String): ActorRef =
     planAutoKill {
       ClusterReplication(system).start(

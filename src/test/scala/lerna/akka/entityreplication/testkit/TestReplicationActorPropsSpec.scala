@@ -6,6 +6,8 @@ import lerna.akka.entityreplication.{ ReplicationActor, ReplicationRegion }
 import lerna.akka.entityreplication.testkit.TestReplicationActorPropsSpec.WordCountReplicationActor
 import org.scalatest.{ Matchers, WordSpecLike }
 
+import scala.annotation.nowarn
+
 object TestReplicationActorPropsSpec {
 
   object WordCountReplicationActor {
@@ -22,6 +24,7 @@ object TestReplicationActorPropsSpec {
     final case class Counted(wordCount: Int) extends DomainEvent
   }
 
+  @nowarn // for deprecated ReplicationActor
   class WordCountReplicationActor extends ReplicationActor[Int] {
     import WordCountReplicationActor._
 
@@ -60,6 +63,7 @@ class TestReplicationActorPropsSpec extends TestKit(ActorSystem()) with WordSpec
   "TestReplicationActorProps" should {
 
     "take in only ReplicationActor Props" in {
+      @nowarn // for deprecated TestReplicationActorProps
       val ex = intercept[IllegalArgumentException] {
         TestReplicationActorProps(Props.default)
       }
@@ -67,12 +71,14 @@ class TestReplicationActorPropsSpec extends TestKit(ActorSystem()) with WordSpec
     }
 
     "forward commands to ReplicationActor" in {
+      @nowarn // for deprecated TestReplicationActorProps
       val actor = system.actorOf(TestReplicationActorProps(WordCountReplicationActor.props))
       actor ! CountWord("hello")
       expectMsg(Counted(wordCount = "hello".length))
     }
 
     "allow that ReplicationActor process ensureConsistency" in {
+      @nowarn // for deprecated TestReplicationActorProps
       val actor = system.actorOf(TestReplicationActorProps(WordCountReplicationActor.props))
       actor ! CountWord("hello")
       expectMsgType[Counted]
@@ -81,6 +87,7 @@ class TestReplicationActorPropsSpec extends TestKit(ActorSystem()) with WordSpec
     }
 
     "allow to check ReplicationActor passivation" in {
+      @nowarn // for deprecated TestReplicationActorProps
       val actor = watch(system.actorOf(TestReplicationActorProps(WordCountReplicationActor.props)))
       actor ! Stop() // Passivate
 

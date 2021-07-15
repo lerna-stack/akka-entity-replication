@@ -8,7 +8,9 @@ import lerna.akka.entityreplication.ReplicationActorSpec.{ config, ExampleReplic
 import lerna.akka.entityreplication.model.EntityInstanceId
 import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, Term }
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftProtocol }
+
 import java.util.concurrent.atomic.AtomicInteger
+import scala.annotation.nowarn
 
 object ReplicationActorSpec {
 
@@ -29,6 +31,7 @@ object ReplicationActorSpec {
     case class Counted() extends Event
   }
 
+  @nowarn // for deprecated ReplicationActor
   class ExampleReplicationActor extends ReplicationActor[Int] {
     import ExampleReplicationActor._
 

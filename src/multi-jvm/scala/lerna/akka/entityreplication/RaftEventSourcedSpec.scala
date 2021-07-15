@@ -11,6 +11,7 @@ import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 
 import java.util.concurrent.atomic.AtomicInteger
+import scala.annotation.nowarn
 
 object RaftEventSourcedSpecConfig extends MultiNodeConfig {
   val node1: RoleName = role("node1")
@@ -91,6 +92,7 @@ object RaftEventSourcedSpec {
 
   import DummyReplicationActor._
 
+  @nowarn // for deprecated ReplicationActor
   class DummyReplicationActor extends ReplicationActor[State] {
 
     private[this] var state: State = State(count = 0, knownRequestId = Set.empty)
@@ -150,6 +152,7 @@ object RaftEventSourcedSpec {
   }
 }
 
+@nowarn // for deprecated ClusterReplication(system).start
 class RaftEventSourcedSpec extends MultiNodeSpec(RaftEventSourcedSpecConfig) with STMultiNodeSpec {
 
   import RaftEventSourcedSpec._

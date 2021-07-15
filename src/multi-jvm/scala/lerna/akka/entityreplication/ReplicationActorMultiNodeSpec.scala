@@ -1,7 +1,6 @@
 package lerna.akka.entityreplication
 
 import java.util.concurrent.atomic.AtomicInteger
-
 import akka.{ Done, NotUsed }
 import akka.actor.{ ActorRef, PoisonPill, Props }
 import akka.cluster.Cluster
@@ -13,6 +12,7 @@ import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
+import scala.annotation.nowarn
 import scala.concurrent.duration._
 import scala.collection.Set
 
@@ -71,6 +71,7 @@ object ReplicationActorMultiNodeSpec {
     }
   }
 
+  @nowarn // for deprecated ReplicationActor
   class PingPongReplicationActor extends ReplicationActor[Int] {
 
     import PingPongReplicationActor._
@@ -124,6 +125,7 @@ object ReplicationActorMultiNodeSpec {
     }
   }
 
+  @nowarn // for deprecated ReplicationActor
   class LockReplicationActor extends ReplicationActor[NotUsed] {
     import LockReplicationActor._
 
@@ -183,6 +185,7 @@ object ReplicationActorMultiNodeSpec {
     }
   }
 
+  @nowarn // for deprecated ReplicationActor
   class EphemeralReplicationActor extends ReplicationActor[Int] {
 
     import EphemeralReplicationActor._
@@ -220,6 +223,7 @@ class ReplicationActorMultiNodeSpecMultiJvmNode1 extends ReplicationActorMultiNo
 class ReplicationActorMultiNodeSpecMultiJvmNode2 extends ReplicationActorMultiNodeSpec
 class ReplicationActorMultiNodeSpecMultiJvmNode3 extends ReplicationActorMultiNodeSpec
 
+@nowarn // for deprecated ClusterReplication(system).start
 class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecConfig) with STMultiNodeSpec {
   import ReplicationActorMultiNodeSpec._
   import ReplicationActorSpecConfig._

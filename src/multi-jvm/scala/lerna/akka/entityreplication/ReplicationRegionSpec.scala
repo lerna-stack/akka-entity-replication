@@ -14,6 +14,7 @@ import lerna.akka.entityreplication.raft.RaftProtocol.Command
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
+import scala.annotation.nowarn
 import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 import scala.concurrent.duration._
@@ -47,6 +48,7 @@ object ReplicationRegionSpec {
     }
   }
 
+  @nowarn // for deprecated ReplicationActor
   class DummyReplicationActor(probe: TestProbe) extends DiagnosticActorLogging with ReplicationActor[Int] {
 
     import DummyReplicationActor._
@@ -176,6 +178,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
 
     val raftActorProbe = TestProbe("RaftActor")
 
+    @nowarn // for deprecated ClusterReplication(system).start
     def createReplication(typeName: String): ActorRef =
       planAutoKill {
         ClusterReplication(system).start(
