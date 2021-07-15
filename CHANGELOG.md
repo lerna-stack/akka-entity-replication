@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 [Unreleased]: https://github.com/lerna-stack/akka-entity-replication/compare/.v1.0.0...master
 
+### Breaking Change
+
+- Change the shard-distribution-strategy to distribute shard (`RaftActor`) more evenly [PR#82](https://github.com/lerna-stack/akka-entity-replication/pull/82)
+
+  ⚠️ This change does not allow rolling updates. You have to update your system by stopping the whole cluster.
+
 ### Added
 - Java11 support
 - Add new typed API based on Akka Typed [PR#79](https://github.com/lerna-stack/akka-entity-replication/pull/79)

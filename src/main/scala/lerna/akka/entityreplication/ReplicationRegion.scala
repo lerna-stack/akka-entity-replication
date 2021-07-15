@@ -2,7 +2,7 @@ package lerna.akka.entityreplication
 
 import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, OneForOneStrategy, Props, Stash, SupervisorStrategy }
 import akka.cluster.ClusterEvent._
-import akka.cluster.sharding.ShardRegion.{ GracefulShutdown, HashCodeMessageExtractor }
+import akka.cluster.sharding.ShardRegion.GracefulShutdown
 import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings, ShardRegion }
 import akka.cluster.{ Cluster, Member, MemberStatus }
 import akka.routing.{ ActorRefRoutee, ConsistentHashingRouter, ConsistentHashingRoutingLogic, Router }
@@ -118,15 +118,20 @@ private[entityreplication] class ReplicationRegion(
 
   // TODO 変数名を実態にあったものに変更
   private[this] val shardingRouters: Map[MemberIndex, ActorRef] = allMemberIndexes.map { memberIndex =>
+    def clusterReplicationShardId(message: Any): String = extractNormalizedShardIdInternal(message).raw
+    val extractEntityId: ShardRegion.ExtractEntityId    = message => (clusterReplicationShardId(message), message)
+    val extractShardId: ShardRegion.ExtractShardId = {
+      case ShardRegion.StartEntity(id) => id
+      case message                     => clusterReplicationShardId(message)
+    }
     memberIndex -> {
       ClusterSharding(context.system).start(
         typeName = s"raft-shard-$typeName-${memberIndex.role}",
         entityProps = createRaftActorProps(),
         settings = ClusterShardingSettings(settings.raftSettings.clusterShardingConfig)
           .withRole(memberIndex.role),
-        messageExtractor = new HashCodeMessageExtractor(maxNumberOfShards = 50) {
-          override def entityId(message: Any): String = extractNormalizedShardIdInternal(message).raw
-        },
+        extractEntityId,
+        extractShardId,
       )
     }
   }.toMap
