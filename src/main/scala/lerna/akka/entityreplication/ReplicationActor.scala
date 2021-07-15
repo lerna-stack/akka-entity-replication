@@ -17,6 +17,7 @@ private[entityreplication] object ReplicationActor {
   private def generateInstanceId(): EntityInstanceId = EntityInstanceId(instanceIdCounter.getAndIncrement())
 }
 
+@deprecated(message = "Use typed.ReplicatedEntityBehavior instead", since = "2.0.0")
 trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.StashFactory {
   import context.dispatcher
 
@@ -24,7 +25,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
 
   private val instanceId = ReplicationActor.generateInstanceId()
 
-  private[this] val settings = ClusterReplicationSettings(context.system)
+  private[this] val settings = ClusterReplicationSettings.create(context.system)
 
   private[this] val log = Logging(context.system, this)
 

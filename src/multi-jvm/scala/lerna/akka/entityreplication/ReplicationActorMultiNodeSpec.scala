@@ -1,7 +1,6 @@
 package lerna.akka.entityreplication
 
 import java.util.concurrent.atomic.AtomicInteger
-
 import akka.{ Done, NotUsed }
 import akka.actor.{ ActorRef, PoisonPill, Props }
 import akka.cluster.Cluster
@@ -13,6 +12,7 @@ import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
+import scala.annotation.nowarn
 import scala.concurrent.duration._
 import scala.collection.Set
 
@@ -71,6 +71,7 @@ object ReplicationActorMultiNodeSpec {
     }
   }
 
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class PingPongReplicationActor extends ReplicationActor[Int] {
 
     import PingPongReplicationActor._
@@ -124,6 +125,7 @@ object ReplicationActorMultiNodeSpec {
     }
   }
 
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class LockReplicationActor extends ReplicationActor[NotUsed] {
     import LockReplicationActor._
 
@@ -183,6 +185,7 @@ object ReplicationActorMultiNodeSpec {
     }
   }
 
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class EphemeralReplicationActor extends ReplicationActor[Int] {
 
     import EphemeralReplicationActor._
@@ -220,6 +223,7 @@ class ReplicationActorMultiNodeSpecMultiJvmNode1 extends ReplicationActorMultiNo
 class ReplicationActorMultiNodeSpecMultiJvmNode2 extends ReplicationActorMultiNodeSpec
 class ReplicationActorMultiNodeSpecMultiJvmNode3 extends ReplicationActorMultiNodeSpec
 
+@nowarn("msg=method start in class ClusterReplication is deprecated")
 class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecConfig) with STMultiNodeSpec {
   import ReplicationActorMultiNodeSpec._
   import ReplicationActorSpecConfig._
@@ -252,7 +256,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
           ClusterReplication(system).start(
             typeName = "ping-pong-sample",
             entityProps = Props[PingPongReplicationActor](),
-            settings = ClusterReplicationSettings(system),
+            settings = ClusterReplicationSettings.create(system),
             extractEntityId = PingPongReplicationActor.extractEntityId,
             extractShardId = PingPongReplicationActor.extractShardId,
           )
@@ -281,7 +285,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
           ClusterReplication(system).start(
             typeName = "ping-pong-sample-2",
             entityProps = Props[PingPongReplicationActor](),
-            settings = ClusterReplicationSettings(system),
+            settings = ClusterReplicationSettings.create(system),
             extractEntityId = PingPongReplicationActor.extractEntityId,
             extractShardId = PingPongReplicationActor.extractShardId,
           )
@@ -315,7 +319,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
           ClusterReplication(system).start(
             typeName = "lock-sample",
             entityProps = Props[LockReplicationActor](),
-            settings = ClusterReplicationSettings(system),
+            settings = ClusterReplicationSettings.create(system),
             extractEntityId = LockReplicationActor.extractEntityId,
             extractShardId = LockReplicationActor.extractShardId,
           )
@@ -352,7 +356,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
           ClusterReplication(system).start(
             typeName = "passivate-sample",
             entityProps = Props[EphemeralReplicationActor](),
-            settings = ClusterReplicationSettings(system),
+            settings = ClusterReplicationSettings.create(system),
             extractEntityId = EphemeralReplicationActor.extractEntityId,
             extractShardId = EphemeralReplicationActor.extractShardId,
           )
@@ -392,7 +396,7 @@ class ReplicationActorMultiNodeSpec extends MultiNodeSpec(ReplicationActorSpecCo
         ClusterReplication(system).start(
           typeName = "recovery-sample",
           entityProps = Props[EphemeralReplicationActor](),
-          settings = ClusterReplicationSettings(system),
+          settings = ClusterReplicationSettings.create(system),
           extractEntityId = EphemeralReplicationActor.extractEntityId,
           extractShardId = EphemeralReplicationActor.extractShardId,
         )

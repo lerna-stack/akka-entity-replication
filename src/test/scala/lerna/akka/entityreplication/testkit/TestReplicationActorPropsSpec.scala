@@ -6,6 +6,8 @@ import lerna.akka.entityreplication.{ ReplicationActor, ReplicationRegion }
 import lerna.akka.entityreplication.testkit.TestReplicationActorPropsSpec.WordCountReplicationActor
 import org.scalatest.{ Matchers, WordSpecLike }
 
+import scala.annotation.nowarn
+
 object TestReplicationActorPropsSpec {
 
   object WordCountReplicationActor {
@@ -22,6 +24,7 @@ object TestReplicationActorPropsSpec {
     final case class Counted(wordCount: Int) extends DomainEvent
   }
 
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class WordCountReplicationActor extends ReplicationActor[Int] {
     import WordCountReplicationActor._
 
@@ -54,6 +57,7 @@ object TestReplicationActorPropsSpec {
   }
 }
 
+@nowarn("msg=Use typed.testkit.ReplicatedEntityBehaviorTestKit instead")
 class TestReplicationActorPropsSpec extends TestKit(ActorSystem()) with WordSpecLike with Matchers with ImplicitSender {
   import WordCountReplicationActor._
 

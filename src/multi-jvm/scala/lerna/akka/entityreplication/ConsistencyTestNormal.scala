@@ -1,11 +1,12 @@
 package lerna.akka.entityreplication
 
 import java.util.concurrent.atomic.AtomicInteger
-
 import akka.actor.{ ActorRef, Props }
 import akka.remote.testkit.MultiNodeSpec
 import lerna.akka.entityreplication.ConsistencyTestBase.{ ConsistencyTestBaseConfig, ConsistencyTestReplicationActor }
 import org.scalatest.Inside
+
+import scala.annotation.nowarn
 import scala.concurrent.duration._
 
 class ConsistencyTestNormalMultiJvmNode1 extends ConsistencyTestNormal
@@ -14,6 +15,7 @@ class ConsistencyTestNormalMultiJvmNode3 extends ConsistencyTestNormal
 class ConsistencyTestNormalMultiJvmNode4 extends ConsistencyTestNormal
 class ConsistencyTestNormalMultiJvmNode5 extends ConsistencyTestNormal
 
+@nowarn("msg=method start in class ClusterReplication is deprecated")
 class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) with STMultiNodeSpec with Inside {
 
   import ConsistencyTestBaseConfig._
@@ -38,7 +40,7 @@ class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) wit
     clusterReplication = ClusterReplication(system).start(
       typeName = "sample",
       entityProps = Props[ConsistencyTestReplicationActor](),
-      settings = ClusterReplicationSettings(system),
+      settings = ClusterReplicationSettings.create(system),
       extractEntityId = ConsistencyTestReplicationActor.extractEntityId,
       extractShardId = ConsistencyTestReplicationActor.extractShardId,
     )

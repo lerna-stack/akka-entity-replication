@@ -29,6 +29,7 @@ class ClusterReplication private (system: ExtendedActorSystem) extends Extension
   private[this] lazy val guardian: ActorRef =
     system.systemActorOf(ClusterReplicationGuardian.props(), "clusterReplicationGuardian")
 
+  @deprecated(message = "Use typed.ClusterReplication.init() instead", since = "2.0.0")
   def start(
       typeName: String,
       entityProps: Props,

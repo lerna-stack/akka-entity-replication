@@ -11,6 +11,7 @@ import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 
 import java.util.concurrent.atomic.AtomicInteger
+import scala.annotation.nowarn
 
 object RaftEventSourcedSpecConfig extends MultiNodeConfig {
   val node1: RoleName = role("node1")
@@ -24,7 +25,7 @@ object RaftEventSourcedSpecConfig extends MultiNodeConfig {
       akka.test.single-expect-default = 15s
       lerna.akka.entityreplication.raft.multi-raft-roles = ["member-1", "member-2", "member-3"]
       lerna.akka.entityreplication.recovery-entity-timeout = 1s
-      
+
       inmemory-journal {
         event-adapters {
           dummy-event-adapter = "lerna.akka.entityreplication.RaftEventSourcedSpec$DummyEventAdapter"
@@ -91,6 +92,7 @@ object RaftEventSourcedSpec {
 
   import DummyReplicationActor._
 
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class DummyReplicationActor extends ReplicationActor[State] {
 
     private[this] var state: State = State(count = 0, knownRequestId = Set.empty)
@@ -150,6 +152,7 @@ object RaftEventSourcedSpec {
   }
 }
 
+@nowarn("msg=method start in class ClusterReplication is deprecated")
 class RaftEventSourcedSpec extends MultiNodeSpec(RaftEventSourcedSpecConfig) with STMultiNodeSpec {
 
   import RaftEventSourcedSpec._
@@ -173,7 +176,7 @@ class RaftEventSourcedSpec extends MultiNodeSpec(RaftEventSourcedSpecConfig) wit
           ClusterReplication(system).start(
             typeName,
             entityProps = DummyReplicationActor.props(),
-            settings = ClusterReplicationSettings(system),
+            settings = ClusterReplicationSettings.create(system),
             DummyReplicationActor.extractEntityId,
             DummyReplicationActor.extractShardId,
           )

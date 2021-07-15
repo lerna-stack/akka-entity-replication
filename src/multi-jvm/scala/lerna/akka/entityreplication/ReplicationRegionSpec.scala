@@ -14,6 +14,7 @@ import lerna.akka.entityreplication.raft.RaftProtocol.Command
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 
+import scala.annotation.nowarn
 import scala.concurrent.Future
 import scala.jdk.CollectionConverters._
 import scala.concurrent.duration._
@@ -47,6 +48,7 @@ object ReplicationRegionSpec {
     }
   }
 
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class DummyReplicationActor(probe: TestProbe) extends DiagnosticActorLogging with ReplicationActor[Int] {
 
     import DummyReplicationActor._
@@ -114,7 +116,7 @@ object ReplicationRegionSpecConfig extends MultiNodeConfig {
       .withFallback(ConfigFactory.parseString(s"""
       akka.actor.provider = cluster
       akka.test.single-expect-default = 15s
-      
+
       lerna.akka.entityreplication.raft.compaction.log-size-threshold = 2
       lerna.akka.entityreplication.raft.compaction.preserve-log-size = 1
       lerna.akka.entityreplication.raft.compaction.log-size-check-interval = 0.1s
@@ -176,12 +178,13 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
 
     val raftActorProbe = TestProbe("RaftActor")
 
+    @nowarn("msg=method start in class ClusterReplication is deprecated")
     def createReplication(typeName: String): ActorRef =
       planAutoKill {
         ClusterReplication(system).start(
           typeName = typeName,
           entityProps = DummyReplicationActor.props(entityProbe),
-          settings = ClusterReplicationSettings(system),
+          settings = ClusterReplicationSettings.create(system),
           extractEntityId = DummyReplicationActor.extractEntityId,
           extractShardId = DummyReplicationActor.extractShardId,
         )
@@ -194,7 +197,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
             new ReplicationRegion(
               typeName = typeName,
               _ => DummyReplicationActor.props(entityProbe),
-              ClusterReplicationSettings(system),
+              ClusterReplicationSettings.create(system),
               DummyReplicationActor.extractEntityId,
               DummyReplicationActor.extractShardId,
               maybeCommitLogStore = None,

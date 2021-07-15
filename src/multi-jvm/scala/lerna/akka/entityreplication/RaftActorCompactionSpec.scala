@@ -8,6 +8,7 @@ import lerna.akka.entityreplication.RaftActorCompactionSpec.DummyReplicationActo
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 
 import java.util.concurrent.atomic.AtomicInteger
+import scala.annotation.nowarn
 import scala.concurrent.duration._
 
 object RaftActorCompactionSpecConfig extends MultiNodeConfig {
@@ -23,9 +24,9 @@ object RaftActorCompactionSpecConfig extends MultiNodeConfig {
       .withFallback(ConfigFactory.parseString("""
       akka.actor.provider = cluster
       akka.test.single-expect-default = 15s
-      
+
       lerna.akka.entityreplication.raft.multi-raft-roles = ["replica-group-1", "replica-group-2", "replica-group-3"]
-      
+
       // triggers compaction each event replications
       lerna.akka.entityreplication.raft.compaction.log-size-threshold = 2
       lerna.akka.entityreplication.raft.compaction.preserve-log-size = 1
@@ -79,6 +80,7 @@ object RaftActorCompactionSpec {
 
   import DummyReplicationActor._
 
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class DummyReplicationActor extends ReplicationActor[State] {
 
     private[this] var state: State = State(0)
@@ -207,12 +209,13 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
     }
   }
 
+  @nowarn("msg=method start in class ClusterReplication is deprecated")
   def createReplication(typeName: String): ActorRef =
     planAutoKill {
       ClusterReplication(system).start(
         typeName = typeName,
         entityProps = DummyReplicationActor.props(),
-        settings = ClusterReplicationSettings(system),
+        settings = ClusterReplicationSettings.create(system),
         extractEntityId = DummyReplicationActor.extractEntityId,
         extractShardId = DummyReplicationActor.extractShardId,
       )

@@ -3,9 +3,8 @@
 ---
 **Warning**
 
-This API is no longer actively improved.
-We will focus to develop [Typed API](./typed/testing_guide.md).
-It is not recommended using this API to build new applications.
+This API has been deprecated.
+Use [Typed API](./typed/implementation_guide.md) instead to build new applications.
 
 ---
 

@@ -4,6 +4,8 @@ import akka.remote.testconductor.RoleName
 import akka.remote.testkit.MultiNodeConfig
 import com.typesafe.config.ConfigFactory
 
+import scala.annotation.nowarn
+
 object ConsistencyTestBase {
 
   object ConsistencyTestBaseConfig extends MultiNodeConfig {
@@ -71,6 +73,7 @@ object ConsistencyTestBase {
     }
   }
 
+  @nowarn("msg=Use typed.ReplicatedEntityBehavior instead")
   class ConsistencyTestReplicationActor() extends ReplicationActor[Int] {
 
     import ConsistencyTestReplicationActor._
