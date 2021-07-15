@@ -13,26 +13,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   ⚠️ This change does not allow rolling updates. You have to update your system by stopping the whole cluster.
 
+- Made internal APIs private
+
+  If you are only using the APIs using in the implementation guide, this change does not affect your application.
+  Otherwise, some APIs may be unavailable.
+  Please see [PR#47](https://github.com/lerna-stack/akka-entity-replication/pull/47) to check APIs that will no longer be available. 
+  
 ### Added
 - Java11 support
 - Add new typed API based on Akka Typed [PR#79](https://github.com/lerna-stack/akka-entity-replication/pull/79)
   - This API reduces runtime errors and increases productivity.
 
-### Changed
+### Deprecated
 
 - Untyped (classic) API has been deprecated [PR#96](https://github.com/lerna-stack/akka-entity-replication/pull/96)
 
   ⚠️ This API will be removed in the next major version release.
-
-### Removed
-
-- Made internal APIs private
-  
-  ⚠️ If you are only using the APIs using in the implementation guide, this change does not affect your application. 
-  Otherwise, some APIs may be unavailable.
-  Please see the following PR to check APIs that will no longer be available.
-
-  https://github.com/lerna-stack/akka-entity-replication/pull/47
 
 ## [v1.0.0] - 2021-03-29
 [v1.0.0]: https://github.com/lerna-stack/akka-entity-replication/compare/v0.1.1...v1.0.0
