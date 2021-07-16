@@ -31,7 +31,7 @@ To use this library, you must add a dependency into your sbt project, add the fo
 
 [![Maven Central](https://img.shields.io/maven-central/v/com.lerna-stack/akka-entity-replication_2.13?color=%23005cb2&label=stable)](https://mvnrepository.com/artifact/com.lerna-stack/akka-entity-replication) 
 
-⚠️ `v2.0.0` will contain breaking changes. For more details see [CHANGELOG](./CHANGELOG.md).
+⚠️ `v2.0.0` contains breaking changes. For more details see [CHANGELOG](./CHANGELOG.md).
 
 ```scala
 libraryDependencies += "com.lerna-stack" %% "akka-entity-replication" % "X.X.X"
