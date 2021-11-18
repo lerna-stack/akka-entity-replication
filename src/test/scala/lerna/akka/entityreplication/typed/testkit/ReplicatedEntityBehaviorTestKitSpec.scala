@@ -72,6 +72,17 @@ class ReplicatedEntityBehaviorTestKitSpec extends FlatSpec with Matchers with Be
 
   behavior of "ReplicatedEntityBehaviorTestKit"
 
+  it should "still work after passivation which is triggered by handling message with 'tell' pattern" in {
+    // check no exception raised
+    replicatedEntityTestKit.runCommand(TellAndPassivate())
+    replicatedEntityTestKit.runCommand(TellAndReplicateAEventAndPassivate(inc = 10))
+    replicatedEntityTestKit.runCommand(TellAndReplicateAEvent(inc = 10))
+  }
+  it should "still work after passivation which is triggered by handling message with 'ask' pattern" in {
+    // check no exception raised
+    replicatedEntityTestKit.runCommand(AskAndReplicateAEventAndPassivate(inc = 10, _))
+    replicatedEntityTestKit.runCommand(AskAndReplicateAEvent(inc = 10, _))
+  }
   it should "report the command that could not be serialized" in {
     val ex = intercept[AssertionError] {
       replicatedEntityTestKit.runCommand(FailCommandSerialization())
@@ -237,14 +248,19 @@ object ReplicatedEntityBehaviorTestKitSpec {
 
     sealed trait Command
     final case class AskAndReplicateAEvent(inc: Int, replyTo: ActorRef[Reply]) extends Command with KryoSerializable
-    final case class AskAndNoReply(replyTo: ActorRef[Reply])                   extends Command with KryoSerializable
-    final case class AskAndNoEvents(replyTo: ActorRef[Reply])                  extends Command with KryoSerializable
-    final case class TellAndNoEvents()                                         extends Command with KryoSerializable
-    final case class TellAndReplicateAEvent(inc: Int)                          extends Command with KryoSerializable
-    final case class FailCommandSerialization()                                extends Command
-    final case class FailReplySerialization(replyTo: ActorRef[Reply])          extends Command with KryoSerializable
-    final case class FailStateSerialization()                                  extends Command with KryoSerializable
-    final case class FailEventSerialization()                                  extends Command with KryoSerializable
+    final case class AskAndReplicateAEventAndPassivate(inc: Int, replyTo: ActorRef[Reply])
+        extends Command
+        with KryoSerializable
+    final case class AskAndNoReply(replyTo: ActorRef[Reply])          extends Command with KryoSerializable
+    final case class AskAndNoEvents(replyTo: ActorRef[Reply])         extends Command with KryoSerializable
+    final case class TellAndNoEvents()                                extends Command with KryoSerializable
+    final case class TellAndPassivate()                               extends Command with KryoSerializable
+    final case class TellAndReplicateAEvent(inc: Int)                 extends Command with KryoSerializable
+    final case class TellAndReplicateAEventAndPassivate(inc: Int)     extends Command with KryoSerializable
+    final case class FailCommandSerialization()                       extends Command
+    final case class FailReplySerialization(replyTo: ActorRef[Reply]) extends Command with KryoSerializable
+    final case class FailStateSerialization()                         extends Command with KryoSerializable
+    final case class FailEventSerialization()                         extends Command with KryoSerializable
 
     trait Reply
     final case class SerializableReply(inc: Int, total: Int) extends Reply with KryoSerializable
@@ -277,6 +293,15 @@ object ReplicatedEntityBehaviorTestKitSpec {
               }
               .thenReply(replyTo)(state => SerializableReply(inc, state.total))
 
+          case AskAndReplicateAEventAndPassivate(inc, replyTo) =>
+            Effect
+              .replicate(SerializableEvent(inc))
+              .thenRun { _: State =>
+                context.log.info("complete depositing")
+              }
+              .thenPassivate()
+              .thenReply(replyTo)(state => SerializableReply(inc, state.total))
+
           case AskAndNoReply(_) =>
             Effect.noReply
 
@@ -289,8 +314,14 @@ object ReplicatedEntityBehaviorTestKitSpec {
                 context.log.info("receive a command")
               }.thenNoReply()
 
+          case TellAndPassivate() =>
+            Effect.passivate().thenNoReply()
+
           case TellAndReplicateAEvent(inc: Int) =>
             Effect.replicate(SerializableEvent(inc)).thenNoReply()
+
+          case TellAndReplicateAEventAndPassivate(inc: Int) =>
+            Effect.replicate(SerializableEvent(inc)).thenPassivate().thenNoReply()
 
           case FailCommandSerialization() =>
             Effect.noReply
