@@ -3,6 +3,7 @@ package lerna.akka.entityreplication.typed.internal.testkit
 import akka.actor.testkit.typed.scaladsl.{ ActorTestKit, SerializationTestKit }
 import akka.actor.typed.{ ActorRef, Behavior }
 import akka.actor.typed.scaladsl.adapter._
+import lerna.akka.entityreplication.ReplicationRegion
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol
 import lerna.akka.entityreplication.raft.model.{ EntityEvent, NoOp, ReplicatedLog, Term }
@@ -11,6 +12,7 @@ import lerna.akka.entityreplication.typed.ClusterReplication.ShardCommand
 import lerna.akka.entityreplication.typed.{ ReplicatedEntityContext, ReplicatedEntityTypeKey }
 import lerna.akka.entityreplication.typed.testkit.ReplicatedEntityBehaviorTestKit
 
+import scala.annotation.tailrec
 import scala.util.control.NonFatal
 
 private[entityreplication] class ReplicatedEntityBehaviorTestKitImpl[Command, Event, State](
@@ -103,18 +105,22 @@ private[entityreplication] class ReplicatedEntityBehaviorTestKitImpl[Command, Ev
   }
 
   private[this] def handleReplicatedEvent(): Option[Event] = {
-    val shardCommand: Option[ShardCommand] =
-      try {
-        Option(shardProbe.receiveMessage())
-      } catch {
-        case NonFatal(_) => None // It wasn't replicated until the timeout
-      }
-    val replicateCommand =
+    @tailrec
+    def findReplicateCommand(): Option[RaftProtocol.Replicate] = {
+      val shardCommand: Option[ShardCommand] =
+        try {
+          Option(shardProbe.receiveMessage())
+        } catch {
+          case NonFatal(_) => None // It wasn't replicated until the timeout
+        }
       shardCommand match {
-        case Some(r: RaftProtocol.Replicate) => Option(r)
-        case Some(m)                         => throw new IllegalStateException(s"Shard received unexpected message [$m]")
-        case None                            => None
+        case Some(r: RaftProtocol.Replicate)      => Option(r)
+        case Some(r: ReplicationRegion.Passivate) => findReplicateCommand() // retry
+        case Some(m)                              => throw new IllegalStateException(s"Shard received unexpected message [$m]")
+        case None                                 => None
       }
+    }
+    val replicateCommand = findReplicateCommand()
     replicateCommand.foreach { replicate =>
       // side effects
       replicatedLog = replicatedLog.append(EntityEvent(Option(normalizedEntityId), replicate.event), term)
