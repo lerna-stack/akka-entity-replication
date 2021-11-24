@@ -62,13 +62,14 @@ private[raft] trait RaftActorBase extends PersistentActor with ActorLogging {
             if (persistingTimeMillis > settings.electionTimeoutMin.toMillis) {
               if (log.isWarningEnabled)
                 log.warning(
-                  s"[{}] persisting time ({} ms) is grater than minimum of election-timeout ({} ms)",
+                  "[{}] persisting time ({} ms) is grater than minimum of election-timeout ({} ms)",
                   currentState,
                   persistingTimeMillis,
                   electionTimeoutMinMillis,
                 )
             } else {
-              if (log.isDebugEnabled) log.debug(s"=== [$currentState] persisting time: $persistingTimeMillis ms ===")
+              if (log.isDebugEnabled)
+                log.debug("=== [{}] persisting time: {} ms ===", currentState, persistingTimeMillis)
             }
             _currentData = updateState(event)
             f(domainEvent)

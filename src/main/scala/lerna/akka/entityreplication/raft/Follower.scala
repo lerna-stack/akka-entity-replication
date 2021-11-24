@@ -14,7 +14,7 @@ private[raft] trait Follower { this: RaftActor =>
 
     case ElectionTimeout =>
       if (currentData.leaderMember.isEmpty) {
-        if (log.isDebugEnabled) log.debug(s"=== [Follower] election timeout ===")
+        if (log.isDebugEnabled) log.debug("=== [Follower] election timeout ===")
       } else {
         if (log.isWarningEnabled) log.warning("[{}] election timeout. Leader will be changed", currentState)
       }
@@ -42,12 +42,12 @@ private[raft] trait Follower { this: RaftActor =>
     request match {
 
       case request: RequestVote if request.term.isOlderThan(currentData.currentTerm) =>
-        if (log.isDebugEnabled) log.debug(s"=== [Follower] deny $request ===")
+        if (log.isDebugEnabled) log.debug("=== [Follower] deny {} ===", request)
         sender() ! RequestVoteDenied(currentData.currentTerm)
 
       case request: RequestVote
           if request.lastLogTerm < currentData.replicatedLog.lastLogTerm || request.lastLogIndex < currentData.replicatedLog.lastLogIndex =>
-        if (log.isDebugEnabled) log.debug(s"=== [Follower] deny $request ===")
+        if (log.isDebugEnabled) log.debug("=== [Follower] deny {} ===", request)
         if (request.term.isNewerThan(currentData.currentTerm)) {
           applyDomainEvent(DetectedNewTerm(request.term)) { _ =>
             sender() ! RequestVoteDenied(currentData.currentTerm)
@@ -57,7 +57,7 @@ private[raft] trait Follower { this: RaftActor =>
         }
 
       case request: RequestVote if request.term.isNewerThan(currentData.currentTerm) =>
-        if (log.isDebugEnabled) log.debug(s"=== [Follower] accept $request ===")
+        if (log.isDebugEnabled) log.debug("=== [Follower] accept {} ===", request)
         cancelElectionTimeoutTimer()
         applyDomainEvent(Voted(request.term, request.candidate)) { domainEvent =>
           sender() ! RequestVoteAccepted(domainEvent.term, selfMemberIndex)
@@ -65,7 +65,7 @@ private[raft] trait Follower { this: RaftActor =>
         }
 
       case request: RequestVote if !currentData.alreadyVotedOthers(request.candidate) =>
-        if (log.isDebugEnabled) log.debug(s"=== [Follower] accept $request ===")
+        if (log.isDebugEnabled) log.debug("=== [Follower] accept {} ===", request)
         cancelElectionTimeoutTimer()
         applyDomainEvent(Voted(request.term, request.candidate)) { domainEvent =>
           sender() ! RequestVoteAccepted(domainEvent.term, selfMemberIndex)
@@ -73,7 +73,7 @@ private[raft] trait Follower { this: RaftActor =>
         }
 
       case request: RequestVote =>
-        if (log.isDebugEnabled) log.debug(s"=== [Follower] deny $request ===")
+        if (log.isDebugEnabled) log.debug("=== [Follower] deny {} ===", request)
         sender() ! RequestVoteDenied(currentData.currentTerm)
     }
 
@@ -85,7 +85,7 @@ private[raft] trait Follower { this: RaftActor =>
 
       case appendEntries: AppendEntries =>
         if (currentData.hasMatchLogEntry(appendEntries.prevLogIndex, appendEntries.prevLogTerm)) {
-          if (log.isDebugEnabled) log.debug(s"=== [Follower] append $appendEntries ===")
+          if (log.isDebugEnabled) log.debug("=== [Follower] append {} ===", appendEntries)
           cancelElectionTimeoutTimer()
           if (appendEntries.entries.isEmpty && appendEntries.term == currentData.currentTerm) {
             // do not persist event when no need
@@ -111,7 +111,7 @@ private[raft] trait Follower { this: RaftActor =>
             }
           }
         } else { // prevLogIndex と prevLogTerm がマッチするエントリが無かった
-          if (log.isDebugEnabled) log.debug(s"=== [Follower] could not append $appendEntries ===")
+          if (log.isDebugEnabled) log.debug("=== [Follower] could not append {} ===", appendEntries)
           cancelElectionTimeoutTimer()
           if (appendEntries.term == currentData.currentTerm) {
             applyDomainEvent(DetectedLeaderMember(appendEntries.leader)) { _ =>
@@ -132,7 +132,7 @@ private[raft] trait Follower { this: RaftActor =>
   private[this] def handleCommand(command: Command): Unit =
     (currentData.leaderMember, currentData.votedFor) match {
       case (Some(leader), _) =>
-        if (log.isDebugEnabled) log.debug(s"=== [Follower] forward $command to $leader ===")
+        if (log.isDebugEnabled) log.debug("=== [Follower] forward {} to {} ===", command, leader)
         region forward ReplicationRegion.DeliverTo(leader, ForwardedCommand(command))
       case (None, _) =>
         stash()

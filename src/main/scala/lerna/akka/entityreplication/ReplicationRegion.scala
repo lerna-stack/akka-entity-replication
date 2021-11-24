@@ -100,7 +100,7 @@ private[entityreplication] class ReplicationRegion(
       val decide = super.supervisorStrategy.decider(e)
       decide match {
         case directive =>
-          if (log.isErrorEnabled) log.error(e, s"$directive")
+          if (log.isErrorEnabled) log.error(e, "{}", directive)
       }
       decide
   }

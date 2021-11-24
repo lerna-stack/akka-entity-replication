@@ -182,9 +182,9 @@ private[entityreplication] class SnapshotSyncManager(
       )
       if (log.isInfoEnabled)
         log.info(
-          "Snapshot synchronization already completed: " +
-          s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
-          s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+          "Snapshot synchronization already completed: {} -> {}",
+          s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)",
+          s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
         )
       context.stop(self)
 
@@ -207,9 +207,9 @@ private[entityreplication] class SnapshotSyncManager(
       context.become(synchronizing(replyTo, dstLatestSnapshotLastLogTerm, dstLatestSnapshotLastLogIndex))
       if (log.isInfoEnabled)
         log.info(
-          "Snapshot synchronization started: " +
-          s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
-          s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+          "Snapshot synchronization started: {} -> {}",
+          s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)",
+          s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
         )
 
     case _: akka.persistence.SaveSnapshotSuccess =>
@@ -241,9 +241,9 @@ private[entityreplication] class SnapshotSyncManager(
             )
             if (log.isInfoEnabled)
               log.info(
-                "Snapshot synchronization completed: " +
-                s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
-                s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+                "Snapshot synchronization completed: {} -> {}",
+                s"(typeName: $typeName, memberIndex: $srcMemberIndex)",
+                s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
               )
           }
         case _: SyncIncomplete =>
@@ -251,9 +251,9 @@ private[entityreplication] class SnapshotSyncManager(
           replyTo ! SyncSnapshotFailed()
           if (log.isInfoEnabled)
             log.info(
-              "Snapshot synchronization is incomplete: " +
-              s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
-              s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+              "Snapshot synchronization is incomplete: {} -> {}",
+              s"(typeName: $typeName, memberIndex: $srcMemberIndex)",
+              s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
             )
           context.stop(self)
       }
@@ -263,10 +263,10 @@ private[entityreplication] class SnapshotSyncManager(
       replyTo ! SyncSnapshotFailed()
       if (log.isWarningEnabled)
         log.warning(
-          "Snapshot synchronization aborted: " +
-          s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
-          s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)" +
-          s" cause: $e",
+          "Snapshot synchronization aborted: {} -> {} cause: {}",
+          s"(typeName: $typeName, memberIndex: $srcMemberIndex)",
+          s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+          e,
         )
       context.stop(self)
 

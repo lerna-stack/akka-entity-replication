@@ -231,7 +231,8 @@ private[raft] class RaftActor(
             })
             entries.foreach {
               case (logEntry, Some(client)) =>
-                if (log.isDebugEnabled) log.debug(s"=== [Leader] committed $logEntry and will notify it to $client ===")
+                if (log.isDebugEnabled)
+                  log.debug("=== [Leader] committed {} and will notify it to {} ===", logEntry, client)
                 client.ref.tell(
                   ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId),
                   client.originSender.getOrElse(ActorRef.noSender),
@@ -310,7 +311,7 @@ private[raft] class RaftActor(
   }
 
   def suspendEntity(entityId: NormalizedEntityId, stopMessage: Any): Unit = {
-    if (log.isDebugEnabled) log.debug(s"=== [$currentState] suspend entity '$entityId' with $stopMessage ===")
+    if (log.isDebugEnabled) log.debug("=== [{}] suspend entity '{}' with {} ===", currentState, entityId, stopMessage)
     replicationActor(entityId) ! stopMessage
   }
 
@@ -335,7 +336,7 @@ private[raft] class RaftActor(
   def resetElectionTimeoutTimer(): Unit = {
     cancelElectionTimeoutTimer()
     val timeout = settings.randomizedElectionTimeout()
-    if (log.isDebugEnabled) log.debug(s"=== [$currentState] election-timeout after ${timeout.toMillis} ms ===")
+    if (log.isDebugEnabled) log.debug("=== [{}] election-timeout after {} ms ===", currentState, timeout.toMillis)
     electionTimeoutTimer = Some(context.system.scheduler.scheduleOnce(timeout, self, ElectionTimeout))
   }
 
@@ -348,7 +349,7 @@ private[raft] class RaftActor(
   def resetHeartbeatTimeoutTimer(): Unit = {
     cancelHeartbeatTimeoutTimer()
     val timeout = settings.heartbeatInterval
-    if (log.isDebugEnabled) log.debug(s"=== [Leader] Heartbeat after ${settings.heartbeatInterval.toMillis} ms ===")
+    if (log.isDebugEnabled) log.debug("=== [Leader] Heartbeat after {} ms ===", settings.heartbeatInterval.toMillis)
     heartbeatTimeoutTimer = Some(context.system.scheduler.scheduleOnce(timeout, self, HeartbeatTimeout))
   }
 
@@ -365,7 +366,7 @@ private[raft] class RaftActor(
   }
 
   def broadcast(message: Any): Unit = {
-    if (log.isDebugEnabled) log.debug(s"=== [$currentState] broadcast $message ===")
+    if (log.isDebugEnabled) log.debug("=== [{}] broadcast {} ===", currentState, message)
     region ! ReplicationRegion.Broadcast(message)
   }
 
@@ -373,11 +374,11 @@ private[raft] class RaftActor(
     logEntry.event match {
       case EntityEvent(_, NoOp) => // NoOp は replicationActor には関係ないので転送しない
       case EntityEvent(Some(entityId), event) =>
-        if (log.isDebugEnabled) log.debug(s"=== [$currentState] applying $event to ReplicationActor ===")
+        if (log.isDebugEnabled) log.debug("=== [{}] applying {} to ReplicationActor ===", currentState, event)
         replicationActor(entityId) ! Replica(logEntry)
       case EntityEvent(None, event) =>
         if (log.isWarningEnabled)
-          log.warning(s"=== [$currentState] $event was not applied, because it is not assigned any entity ===")
+          log.warning("=== [{}] {} was not applied, because it is not assigned any entity ===", currentState, event)
     }
 
   def handleSnapshotTick(): Unit = {

@@ -87,7 +87,8 @@ private[entityreplication] class SnapshotStore(
         case cmd: SaveSnapshot =>
           if (log.isWarningEnabled)
             log.warning(
-              s"Saving snapshot for an entity (${cmd.entityId}) currently. Consider to increase log-size-threshold or log-size-check-interval.",
+              "Saving snapshot for an entity ({}) currently. Consider to increase log-size-threshold or log-size-check-interval.",
+              cmd.entityId,
             )
         case FetchSnapshot(_, replyTo) =>
           prevSnapshot.foreach { s =>
