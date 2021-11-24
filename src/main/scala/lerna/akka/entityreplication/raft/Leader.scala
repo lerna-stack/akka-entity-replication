@@ -48,7 +48,7 @@ private[raft] trait Leader { this: RaftActor =>
           if term.isNewerThan(
             currentData.currentTerm,
           ) && lastLogTerm >= currentData.replicatedLog.lastLogTerm && lastLogIndex >= currentData.replicatedLog.lastLogIndex =>
-        log.debug(s"=== [Leader] accept RequestVote($term, $candidate) ===")
+        if (log.isDebugEnabled) log.debug(s"=== [Leader] accept RequestVote($term, $candidate) ===")
         cancelHeartbeatTimeoutTimer()
         applyDomainEvent(Voted(term, candidate)) { domainEvent =>
           sender() ! RequestVoteAccepted(domainEvent.term, selfMemberIndex)
@@ -56,7 +56,7 @@ private[raft] trait Leader { this: RaftActor =>
         }
 
       case request: RequestVote =>
-        log.debug(s"=== [Leader] deny $request ===")
+        if (log.isDebugEnabled) log.debug(s"=== [Leader] deny $request ===")
         if (request.term.isNewerThan(currentData.currentTerm)) {
           cancelHeartbeatTimeoutTimer()
           applyDomainEvent(DetectedNewTerm(request.term)) { _ =>
@@ -88,7 +88,7 @@ private[raft] trait Leader { this: RaftActor =>
       case appendEntries: AppendEntries if appendEntries.term.isNewerThan(currentData.currentTerm) =>
         if (currentData.hasMatchLogEntry(appendEntries.prevLogIndex, appendEntries.prevLogTerm)) {
           cancelHeartbeatTimeoutTimer()
-          log.debug(s"=== [Leader] append $appendEntries ===")
+          if (log.isDebugEnabled) log.debug(s"=== [Leader] append $appendEntries ===")
           applyDomainEvent(AppendedEntries(appendEntries.term, appendEntries.entries, appendEntries.prevLogIndex)) {
             domainEvent =>
               applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
@@ -101,7 +101,7 @@ private[raft] trait Leader { this: RaftActor =>
               }
           }
         } else { // prevLogIndex と prevLogTerm がマッチするエントリが無かった
-          log.debug(s"=== [Leader] could not append $appendEntries ===")
+          if (log.isDebugEnabled) log.debug(s"=== [Leader] could not append $appendEntries ===")
           cancelHeartbeatTimeoutTimer()
           applyDomainEvent(DetectedNewTerm(appendEntries.term)) { domainEvent =>
             applyDomainEvent(DetectedLeaderMember(appendEntries.leader)) { _ =>
@@ -131,7 +131,7 @@ private[raft] trait Leader { this: RaftActor =>
         }
 
       case succeeded: AppendEntriesSucceeded if succeeded.term.isNewerThan(currentData.currentTerm) =>
-        log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
+        if (log.isWarningEnabled) log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
 
       case succeeded: AppendEntriesSucceeded if succeeded.term.isOlderThan(currentData.currentTerm) =>
       // ignore: Follower always synchronizes Term before replying, so it does not happen normally
@@ -163,7 +163,7 @@ private[raft] trait Leader { this: RaftActor =>
         applyDomainEvent(SucceededAppendEntries(follower, succeeded.dstLatestSnapshotLastLogLogIndex)) { _ => }
 
       case succeeded: InstallSnapshotSucceeded if succeeded.term.isNewerThan(currentData.currentTerm) =>
-        log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
+        if (log.isWarningEnabled) log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
 
       case succeeded: InstallSnapshotSucceeded =>
         assert(succeeded.term.isOlderThan(currentData.currentTerm))
@@ -205,7 +205,7 @@ private[raft] trait Leader { this: RaftActor =>
       // ignore: no-op replication when become leader
 
       case ReplicationSucceeded(unknownEvent, _, _) =>
-        log.warning("unknown event: {}", unknownEvent)
+        if (log.isWarningEnabled) log.warning("unknown event: {}", unknownEvent)
     }
 
   private[this] def startEntityPassivationProcess(entityPath: ActorPath, stopMessage: Any): Unit = {
@@ -264,7 +264,7 @@ private[raft] trait Leader { this: RaftActor =>
               ),
             )
         }
-      log.debug(s"=== [Leader] publish ${messages.mkString(",")} to $memberIndex ===")
+      if (log.isDebugEnabled) log.debug(s"=== [Leader] publish ${messages.mkString(",")} to $memberIndex ===")
       messages.foreach(region ! ReplicationRegion.DeliverTo(memberIndex, _))
     }
   }

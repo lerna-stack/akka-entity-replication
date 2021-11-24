@@ -180,7 +180,7 @@ private[entityreplication] class SnapshotSyncManager(
         dstLatestSnapshotLastLogIndex,
         srcMemberIndex,
       )
-      log.info(
+      if (log.isInfoEnabled) log.info(
         "Snapshot synchronization already completed: " +
         s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
         s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
@@ -204,7 +204,7 @@ private[entityreplication] class SnapshotSyncManager(
       this.killSwitch = Option(killSwitch)
       result pipeTo self
       context.become(synchronizing(replyTo, dstLatestSnapshotLastLogTerm, dstLatestSnapshotLastLogIndex))
-      log.info(
+      if (log.isInfoEnabled) log.info(
         "Snapshot synchronization started: " +
         s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
         s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
@@ -237,7 +237,7 @@ private[entityreplication] class SnapshotSyncManager(
               completeAll.snapshotLastLogIndex,
               srcMemberIndex,
             )
-            log.info(
+            if (log.isInfoEnabled) log.info(
               "Snapshot synchronization completed: " +
               s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
               s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
@@ -246,7 +246,7 @@ private[entityreplication] class SnapshotSyncManager(
         case _: SyncIncomplete =>
           this.killSwitch = None
           replyTo ! SyncSnapshotFailed()
-          log.info(
+          if (log.isInfoEnabled) log.info(
             "Snapshot synchronization is incomplete: " +
             s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
             s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
@@ -257,7 +257,7 @@ private[entityreplication] class SnapshotSyncManager(
     case Status.Failure(e) =>
       this.killSwitch = None
       replyTo ! SyncSnapshotFailed()
-      log.warning(
+      if (log.isWarningEnabled) log.warning(
         "Snapshot synchronization aborted: " +
         s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
         s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)" +

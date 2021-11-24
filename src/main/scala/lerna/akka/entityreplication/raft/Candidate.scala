@@ -12,7 +12,7 @@ private[raft] trait Candidate { this: RaftActor =>
   def candidateBehavior: Receive = {
 
     case ElectionTimeout =>
-      log.info("[Candidate] Election timeout at {}. Retrying leader election.", currentData.currentTerm)
+      if (log.isInfoEnabled) log.info("[Candidate] Election timeout at {}. Retrying leader election.", currentData.currentTerm)
       val newTerm = currentData.currentTerm.next()
       cancelElectionTimeoutTimer()
       broadcast(
@@ -51,7 +51,7 @@ private[raft] trait Candidate { this: RaftActor =>
     request match {
 
       case RequestVote(_, term, candidate, _, _) if term == currentData.currentTerm && candidate == selfMemberIndex =>
-        log.debug(s"=== [Candidate] accept self RequestVote ===")
+        if (log.isDebugEnabled) log.debug(s"=== [Candidate] accept self RequestVote ===")
         applyDomainEvent(Voted(term, selfMemberIndex)) { _ =>
           sender() ! RequestVoteAccepted(term, selfMemberIndex)
         }
@@ -60,7 +60,7 @@ private[raft] trait Candidate { this: RaftActor =>
           if term.isNewerThan(
             currentData.currentTerm,
           ) && lastLogTerm >= currentData.replicatedLog.lastLogTerm && lastLogIndex >= currentData.replicatedLog.lastLogIndex =>
-        log.debug(s"=== [Candidate] accept RequestVote($term, $otherCandidate) ===")
+        if (log.isDebugEnabled) log.debug(s"=== [Candidate] accept RequestVote($term, $otherCandidate) ===")
         cancelElectionTimeoutTimer()
         applyDomainEvent(Voted(term, otherCandidate)) { domainEvent =>
           sender() ! RequestVoteAccepted(domainEvent.term, selfMemberIndex)
@@ -68,7 +68,7 @@ private[raft] trait Candidate { this: RaftActor =>
         }
 
       case request: RequestVote =>
-        log.debug(s"=== [Candidate] deny $request ===")
+        if (log.isDebugEnabled) log.debug(s"=== [Candidate] deny $request ===")
         if (request.term.isNewerThan(currentData.currentTerm)) {
           cancelElectionTimeoutTimer()
           applyDomainEvent(DetectedNewTerm(request.term)) { _ =>
@@ -90,7 +90,7 @@ private[raft] trait Candidate { this: RaftActor =>
       case accepted: RequestVoteAccepted if accepted.term == currentData.currentTerm =>
         cancelElectionTimeoutTimer()
         applyDomainEvent(AcceptedRequestVote(accepted.sender)) { _ =>
-          log.debug("=== [Candidate] accept for {} ===", accepted.sender)
+          if (log.isDebugEnabled) log.debug("=== [Candidate] accept for {} ===", accepted.sender)
           if (currentData.gotAcceptionMajorityOf(numberOfMembers)) {
             become(Leader)
           } else {
@@ -128,7 +128,7 @@ private[raft] trait Candidate { this: RaftActor =>
 
       case appendEntries: AppendEntries =>
         if (currentData.hasMatchLogEntry(appendEntries.prevLogIndex, appendEntries.prevLogTerm)) {
-          log.debug(s"=== [Candidate] append $appendEntries ===")
+          if (log.isDebugEnabled) log.debug(s"=== [Candidate] append $appendEntries ===")
           cancelElectionTimeoutTimer()
           if (appendEntries.entries.isEmpty && appendEntries.term == currentData.currentTerm) {
             // do not persist event when no need
@@ -154,7 +154,7 @@ private[raft] trait Candidate { this: RaftActor =>
             }
           }
         } else { // prevLogIndex と prevLogTerm がマッチするエントリが無かった
-          log.debug(s"=== [Candidate] could not append $appendEntries ===")
+          if (log.isDebugEnabled) log.debug(s"=== [Candidate] could not append $appendEntries ===")
           cancelElectionTimeoutTimer()
           if (appendEntries.term == currentData.currentTerm) {
             applyDomainEvent(DetectedLeaderMember(appendEntries.leader)) { _ =>

@@ -100,7 +100,7 @@ private[entityreplication] class ReplicationRegion(
       val decide = super.supervisorStrategy.decider(e)
       decide match {
         case directive =>
-          log.error(e, s"$directive")
+          if (log.isErrorEnabled) log.error(e, s"$directive")
       }
       decide
   }
@@ -237,7 +237,7 @@ private[entityreplication] class ReplicationRegion(
       )
       handleRoutingCommand(DeliverSomewhere(Command(message)))
     } else {
-      log.warning("The message [{}] was dropped because its shard ID could not be extracted", message)
+      if (log.isWarningEnabled) log.warning("The message [{}] was dropped because its shard ID could not be extracted", message)
     }
   }
 
@@ -245,12 +245,12 @@ private[entityreplication] class ReplicationRegion(
     val availableRegions = regions.filter { case (_, members) => members.nonEmpty }
     stickyRoutingRouter =
       stickyRoutingRouter.withRoutees(availableRegions.keys.map(i => ActorRefRoutee(shardingRouters(i))).toVector)
-    log.info("Available cluster members changed: {}", availableRegions)
+    if (log.isInfoEnabled) log.info("Available cluster members changed: {}", availableRegions)
     // 一度 open になったら、その後は転送先のメンバーを増減させるだけ
     // 想定以上にメッセージが遅延して到着することを避けるため、メンバーが不足していたとしてもメッセージを stash しない
     if (availableRegions.size >= settings.raftSettings.quorumSize) {
       context.become(open)
-      log.debug("=== {} will be open ===", classOf[ReplicationRegion].getSimpleName)
+      if (log.isDebugEnabled) log.debug("=== {} will be open ===", classOf[ReplicationRegion].getSimpleName)
       unstashAll()
     }
   }
@@ -290,7 +290,7 @@ private[entityreplication] class ReplicationRegion(
   private[this] def memberIndexOf(member: Member): Option[MemberIndex] = {
     val maybeMemberIndex = allMemberIndexes.find(i => member.roles.contains(i.role))
     if (maybeMemberIndex.isEmpty) {
-      log.warning(
+      if (log.isWarningEnabled) log.warning(
         "Member {} has no any role of MemberIndexes ({}). This member will be ignored",
         member,
         allMemberIndexes,

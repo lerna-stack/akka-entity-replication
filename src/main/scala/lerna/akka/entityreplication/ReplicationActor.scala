@@ -59,7 +59,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
         case RecoveryTimeout =>
           // to restart
           // TODO: BackoffSupervisor を使ってカスケード障害を回避する
-          log.info("Entity (name: {}) recovering timed out. It will be retried later.", self.path.name)
+          if (log.isInfoEnabled) log.info("Entity (name: {}) recovering timed out. It will be retried later.", self.path.name)
           throw EntityRecoveryTimeoutException(self.path)
 
         case RecoveryState(logEntries, maybeSnapshot) =>
@@ -88,7 +88,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
           receive.applyOrElse[Any, Unit](
             command,
             command => {
-              log.warning("unhandled {} by receiveCommand", command)
+              if (log.isWarningEnabled) log.warning("unhandled {} by receiveCommand", command)
             },
           )
 
@@ -161,7 +161,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
       receiveReplica.applyOrElse[Any, Unit](
         event,
         event => {
-          log.warning("unhandled {} by receiveReplica", event)
+          if (log.isWarningEnabled) log.warning("unhandled {} by receiveReplica", event)
         },
       )
       lastAppliedLogEntryIndex = logEntryIndex
