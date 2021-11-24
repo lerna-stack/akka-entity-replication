@@ -237,7 +237,8 @@ private[entityreplication] class ReplicationRegion(
       )
       handleRoutingCommand(DeliverSomewhere(Command(message)))
     } else {
-      if (log.isWarningEnabled) log.warning("The message [{}] was dropped because its shard ID could not be extracted", message)
+      if (log.isWarningEnabled)
+        log.warning("The message [{}] was dropped because its shard ID could not be extracted", message)
     }
   }
 
@@ -290,11 +291,12 @@ private[entityreplication] class ReplicationRegion(
   private[this] def memberIndexOf(member: Member): Option[MemberIndex] = {
     val maybeMemberIndex = allMemberIndexes.find(i => member.roles.contains(i.role))
     if (maybeMemberIndex.isEmpty) {
-      if (log.isWarningEnabled) log.warning(
-        "Member {} has no any role of MemberIndexes ({}). This member will be ignored",
-        member,
-        allMemberIndexes,
-      )
+      if (log.isWarningEnabled)
+        log.warning(
+          "Member {} has no any role of MemberIndexes ({}). This member will be ignored",
+          member,
+          allMemberIndexes,
+        )
     }
     maybeMemberIndex
   }

@@ -180,11 +180,12 @@ private[entityreplication] class SnapshotSyncManager(
         dstLatestSnapshotLastLogIndex,
         srcMemberIndex,
       )
-      if (log.isInfoEnabled) log.info(
-        "Snapshot synchronization already completed: " +
-        s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
-        s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
-      )
+      if (log.isInfoEnabled)
+        log.info(
+          "Snapshot synchronization already completed: " +
+          s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
+          s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+        )
       context.stop(self)
 
     case SyncSnapshot(
@@ -204,11 +205,12 @@ private[entityreplication] class SnapshotSyncManager(
       this.killSwitch = Option(killSwitch)
       result pipeTo self
       context.become(synchronizing(replyTo, dstLatestSnapshotLastLogTerm, dstLatestSnapshotLastLogIndex))
-      if (log.isInfoEnabled) log.info(
-        "Snapshot synchronization started: " +
-        s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
-        s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
-      )
+      if (log.isInfoEnabled)
+        log.info(
+          "Snapshot synchronization started: " +
+          s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)" +
+          s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+        )
 
     case _: akka.persistence.SaveSnapshotSuccess =>
       context.stop(self)
@@ -237,32 +239,35 @@ private[entityreplication] class SnapshotSyncManager(
               completeAll.snapshotLastLogIndex,
               srcMemberIndex,
             )
-            if (log.isInfoEnabled) log.info(
-              "Snapshot synchronization completed: " +
-              s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
-              s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
-            )
+            if (log.isInfoEnabled)
+              log.info(
+                "Snapshot synchronization completed: " +
+                s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
+                s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+              )
           }
         case _: SyncIncomplete =>
           this.killSwitch = None
           replyTo ! SyncSnapshotFailed()
-          if (log.isInfoEnabled) log.info(
-            "Snapshot synchronization is incomplete: " +
-            s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
-            s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
-          )
+          if (log.isInfoEnabled)
+            log.info(
+              "Snapshot synchronization is incomplete: " +
+              s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
+              s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+            )
           context.stop(self)
       }
 
     case Status.Failure(e) =>
       this.killSwitch = None
       replyTo ! SyncSnapshotFailed()
-      if (log.isWarningEnabled) log.warning(
-        "Snapshot synchronization aborted: " +
-        s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
-        s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)" +
-        s" cause: $e",
-      )
+      if (log.isWarningEnabled)
+        log.warning(
+          "Snapshot synchronization aborted: " +
+          s"(typeName: $typeName, memberIndex: $srcMemberIndex)" +
+          s" -> (typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)" +
+          s" cause: $e",
+        )
       context.stop(self)
 
     case _: akka.persistence.SaveSnapshotSuccess => // ignore: previous execution result

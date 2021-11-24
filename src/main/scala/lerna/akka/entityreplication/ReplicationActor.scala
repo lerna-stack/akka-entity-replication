@@ -59,7 +59,8 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
         case RecoveryTimeout =>
           // to restart
           // TODO: BackoffSupervisor を使ってカスケード障害を回避する
-          if (log.isInfoEnabled) log.info("Entity (name: {}) recovering timed out. It will be retried later.", self.path.name)
+          if (log.isInfoEnabled)
+            log.info("Entity (name: {}) recovering timed out. It will be retried later.", self.path.name)
           throw EntityRecoveryTimeoutException(self.path)
 
         case RecoveryState(logEntries, maybeSnapshot) =>

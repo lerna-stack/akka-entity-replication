@@ -150,11 +150,12 @@ private[raft] class RaftActor(
 
   protected[this] def replicationActor(entityId: NormalizedEntityId): ActorRef = {
     context.child(entityId.underlying).getOrElse {
-      if (log.isDebugEnabled) log.debug(
-        "=== [{}] created an entity ({}) ===",
-        currentState,
-        entityId,
-      )
+      if (log.isDebugEnabled)
+        log.debug(
+          "=== [{}] created an entity ({}) ===",
+          currentState,
+          entityId,
+        )
       val props = replicationActorProps(new ReplicationActorContext(entityId.raw, self))
       context.actorOf(props, entityId.underlying)
     }
@@ -193,12 +194,13 @@ private[raft] class RaftActor(
       case BecameCandidate() =>
         currentData.initializeCandidateData()
       case BecameLeader() =>
-        if (log.isInfoEnabled) log.info(
-          "[Leader] New leader was elected (term: {}, lastLogTerm: {}, lastLogIndex: {})",
-          currentData.currentTerm,
-          currentData.replicatedLog.lastLogTerm,
-          currentData.replicatedLog.lastLogIndex,
-        )
+        if (log.isInfoEnabled)
+          log.info(
+            "[Leader] New leader was elected (term: {}, lastLogTerm: {}, lastLogIndex: {})",
+            currentData.currentTerm,
+            currentData.replicatedLog.lastLogTerm,
+            currentData.replicatedLog.lastLogIndex,
+          )
         currentData.initializeLeaderData()
       case DetectedLeaderMember(leaderMember) =>
         currentData.detectLeaderMember(leaderMember)
@@ -253,12 +255,13 @@ private[raft] class RaftActor(
             ),
           ) { _ =>
             saveSnapshot(currentData.persistentState) // Note that this persistence can fail
-            if (log.isInfoEnabled) log.info(
-              "[{}] compaction completed (term: {}, logEntryIndex: {})",
-              currentState,
-              progress.snapshotLastLogTerm,
-              progress.snapshotLastLogIndex,
-            )
+            if (log.isInfoEnabled)
+              log.info(
+                "[{}] compaction completed (term: {}, logEntryIndex: {})",
+                currentState,
+                progress.snapshotLastLogTerm,
+                progress.snapshotLastLogIndex,
+              )
           }
         })
       case CompactionCompleted(_, _, snapshotLastTerm, snapshotLastIndex, _) =>
@@ -373,7 +376,8 @@ private[raft] class RaftActor(
         if (log.isDebugEnabled) log.debug(s"=== [$currentState] applying $event to ReplicationActor ===")
         replicationActor(entityId) ! Replica(logEntry)
       case EntityEvent(None, event) =>
-        if (log.isWarningEnabled) log.warning(s"=== [$currentState] $event was not applied, because it is not assigned any entity ===")
+        if (log.isWarningEnabled)
+          log.warning(s"=== [$currentState] $event was not applied, because it is not assigned any entity ===")
     }
 
   def handleSnapshotTick(): Unit = {
@@ -383,12 +387,13 @@ private[raft] class RaftActor(
     ) {
       val (term, logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
       applyDomainEvent(SnapshottingStarted(term, logEntryIndex, entityIds)) { _ =>
-        if (log.isInfoEnabled) log.info(
-          "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
-          currentState,
-          logEntryIndex,
-          entityIds.size,
-        )
+        if (log.isInfoEnabled)
+          log.info(
+            "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
+            currentState,
+            logEntryIndex,
+            entityIds.size,
+          )
         requestTakeSnapshots(logEntryIndex, entityIds)
       }
     }
@@ -487,10 +492,11 @@ private[raft] class RaftActor(
     context.children.filterNot(c => excludes.exists(c.path.name.startsWith)).foreach { child =>
       context.stop(child)
     }
-    if (log.isDebugEnabled) log.debug(
-      "=== [{}] stopped all entities ===",
-      currentState,
-    )
+    if (log.isDebugEnabled)
+      log.debug(
+        "=== [{}] stopped all entities ===",
+        currentState,
+      )
   }
 
   override def postStop(): Unit = {

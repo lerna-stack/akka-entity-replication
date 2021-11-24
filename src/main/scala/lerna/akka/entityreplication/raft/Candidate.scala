@@ -12,7 +12,8 @@ private[raft] trait Candidate { this: RaftActor =>
   def candidateBehavior: Receive = {
 
     case ElectionTimeout =>
-      if (log.isInfoEnabled) log.info("[Candidate] Election timeout at {}. Retrying leader election.", currentData.currentTerm)
+      if (log.isInfoEnabled)
+        log.info("[Candidate] Election timeout at {}. Retrying leader election.", currentData.currentTerm)
       val newTerm = currentData.currentTerm.next()
       cancelElectionTimeoutTimer()
       broadcast(

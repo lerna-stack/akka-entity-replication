@@ -131,7 +131,8 @@ private[raft] trait Leader { this: RaftActor =>
         }
 
       case succeeded: AppendEntriesSucceeded if succeeded.term.isNewerThan(currentData.currentTerm) =>
-        if (log.isWarningEnabled) log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
+        if (log.isWarningEnabled)
+          log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
 
       case succeeded: AppendEntriesSucceeded if succeeded.term.isOlderThan(currentData.currentTerm) =>
       // ignore: Follower always synchronizes Term before replying, so it does not happen normally
@@ -163,7 +164,8 @@ private[raft] trait Leader { this: RaftActor =>
         applyDomainEvent(SucceededAppendEntries(follower, succeeded.dstLatestSnapshotLastLogLogIndex)) { _ => }
 
       case succeeded: InstallSnapshotSucceeded if succeeded.term.isNewerThan(currentData.currentTerm) =>
-        if (log.isWarningEnabled) log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
+        if (log.isWarningEnabled)
+          log.warning("Unexpected message received: {} (currentTerm: {})", succeeded, currentData.currentTerm)
 
       case succeeded: InstallSnapshotSucceeded =>
         assert(succeeded.term.isOlderThan(currentData.currentTerm))
