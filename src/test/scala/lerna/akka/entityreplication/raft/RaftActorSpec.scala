@@ -292,5 +292,72 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         getState(follower).stateData.replicatedLog.entries.loneElement shouldBe logEntries.last
       }
     }
+
+    "not persist snapshots that have already been persisted in the next compaction" in {
+      val snapshotStore       = TestProbe()
+      val replicationActor    = TestProbe()
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+        shardSnapshotStore = snapshotStore.ref,
+        replicationActor = replicationActor.ref,
+        settings = RaftSettings(raftConfig),
+      )
+
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val term              = Term.initial().next()
+      val entityId1         = NormalizedEntityId.from("test-entity-1")
+      val entityId2         = NormalizedEntityId.from("test-entity-2")
+
+      follower ! createAppendEntries(
+        shardId,
+        term,
+        leaderMemberIndex,
+        entries = Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId1), "a"), term),
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId1), "b"), term),
+          LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId1), "c"), term),
+          LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId1), "d"), term),
+        ),
+        leaderCommit = LogEntryIndex(4),
+      )
+      replicationActor.fishForSpecificMessage() {
+        case msg: TakeSnapshot =>
+          msg.metadata.entityId should be(entityId1)
+          replicationActor.reply(Snapshot(msg.metadata, EntityState(DummyEntityState)))
+      }
+      snapshotStore.receiveWhile(messages = 1) {
+        case msg: SaveSnapshot =>
+          snapshotStore.reply(SaveSnapshotSuccess(msg.snapshot.metadata))
+      }
+
+      // add events that only entity2 persisted
+      follower ! createAppendEntries(
+        shardId,
+        term,
+        leaderMemberIndex,
+        prevLogIndex = LogEntryIndex(4),
+        prevLogTerm = term,
+        entries = Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId2), "e"), term),
+          LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId2), "f"), term),
+          LogEntry(LogEntryIndex(7), EntityEvent(Option(entityId2), "g"), term),
+        ),
+        leaderCommit = LogEntryIndex(7),
+      )
+      // the snapshot should be only for entity2
+      replicationActor.fishForSpecificMessage() {
+        case msg: TakeSnapshot =>
+          msg.metadata.entityId should be(entityId2)
+          replicationActor.reply(Snapshot(msg.metadata, EntityState(DummyEntityState)))
+      }
+      snapshotStore.receiveWhile(messages = 1) {
+        case msg: SaveSnapshot =>
+          msg.snapshot.metadata.entityId should be(entityId2)
+          snapshotStore.reply(SaveSnapshotSuccess(msg.snapshot.metadata))
+      }
+    }
   }
 }
