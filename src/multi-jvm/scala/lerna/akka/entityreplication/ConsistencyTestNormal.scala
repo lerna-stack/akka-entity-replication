@@ -46,14 +46,16 @@ class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) wit
     )
 
     // check the ClusterReplication healthiness
-    val requestId = generateUniqueId()
+    val requestId1 = generateUniqueId()
     awaitAssert {
-      clusterReplication ! GetStatus(id = "check-healthiness", requestId)
+      clusterReplication ! GetStatus(id = "check-healthiness", requestId1)
       expectMsgType[Status](max = 1.seconds)
     }
-    ignoreMsg {
-      // ignore Status messages that were sent for checking healthy
-      case Status(_, `requestId`) => true
+    // drop Status messages that were sent for checking healthy
+    val requestId2 = generateUniqueId()
+    clusterReplication ! GetStatus(id = "check-healthiness", requestId2)
+    fishForSpecificMessage() {
+      case msg @ Status(_, `requestId2`) => msg
     }
   }
 
