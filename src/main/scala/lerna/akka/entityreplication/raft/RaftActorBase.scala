@@ -60,20 +60,22 @@ private[raft] trait RaftActorBase extends PersistentActor with ActorLogging {
             val persistingTimeMillis     = (endNanoTime - startNanoTime) / 1000000
             val electionTimeoutMinMillis = settings.electionTimeoutMin.toMillis
             if (persistingTimeMillis > settings.electionTimeoutMin.toMillis) {
-              log.warning(
-                s"[{}] persisting time ({} ms) is grater than minimum of election-timeout ({} ms)",
-                currentState,
-                persistingTimeMillis,
-                electionTimeoutMinMillis,
-              )
+              if (log.isWarningEnabled)
+                log.warning(
+                  "[{}] persisting time ({} ms) is grater than minimum of election-timeout ({} ms)",
+                  currentState,
+                  persistingTimeMillis,
+                  electionTimeoutMinMillis,
+                )
             } else {
-              log.debug(s"=== [$currentState] persisting time: $persistingTimeMillis ms ===")
+              if (log.isDebugEnabled)
+                log.debug("=== [{}] persisting time: {} ms ===", currentState, persistingTimeMillis)
             }
             _currentData = updateState(event)
             f(domainEvent)
           } catch {
             case e: Exception =>
-              log.error(e, "persisted event handling failed")
+              if (log.isErrorEnabled) log.error(e, "persisted event handling failed")
               throw e
           }
         }
@@ -83,7 +85,7 @@ private[raft] trait RaftActorBase extends PersistentActor with ActorLogging {
     }
 
   protected def become(state: State): Unit = {
-    log.debug("=== Transition: {} -> {} ===", currentState, state)
+    if (log.isDebugEnabled) log.debug("=== Transition: {} -> {} ===", currentState, state)
     if (onTransition.isDefinedAt((currentState, state))) {
       onTransition((currentState, state))
     }

@@ -36,7 +36,7 @@ private[entityreplication] final case class ReplicatedEntityBehaviorImpl[Command
       Behaviors.intercept(() => interceptor)(createBehavior(entityContext.shard, settings)).narrow
     } catch {
       case NonFatal(e) =>
-        ctx.asScala.log.error("ReplicatedEntityBehavior initialization failed", e)
+        if (ctx.asScala.log.isErrorEnabled) ctx.asScala.log.error("ReplicatedEntityBehavior initialization failed", e)
         Behaviors.stopped
     }
   }

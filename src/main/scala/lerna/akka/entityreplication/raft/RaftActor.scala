@@ -150,11 +150,12 @@ private[raft] class RaftActor(
 
   protected[this] def replicationActor(entityId: NormalizedEntityId): ActorRef = {
     context.child(entityId.underlying).getOrElse {
-      log.debug(
-        "=== [{}] created an entity ({}) ===",
-        currentState,
-        entityId,
-      )
+      if (log.isDebugEnabled)
+        log.debug(
+          "=== [{}] created an entity ({}) ===",
+          currentState,
+          entityId,
+        )
       val props = replicationActorProps(new ReplicationActorContext(entityId.raw, self))
       context.actorOf(props, entityId.underlying)
     }
@@ -193,12 +194,13 @@ private[raft] class RaftActor(
       case BecameCandidate() =>
         currentData.initializeCandidateData()
       case BecameLeader() =>
-        log.info(
-          "[Leader] New leader was elected (term: {}, lastLogTerm: {}, lastLogIndex: {})",
-          currentData.currentTerm,
-          currentData.replicatedLog.lastLogTerm,
-          currentData.replicatedLog.lastLogIndex,
-        )
+        if (log.isInfoEnabled)
+          log.info(
+            "[Leader] New leader was elected (term: {}, lastLogTerm: {}, lastLogIndex: {})",
+            currentData.currentTerm,
+            currentData.replicatedLog.lastLogTerm,
+            currentData.replicatedLog.lastLogIndex,
+          )
         currentData.initializeLeaderData()
       case DetectedLeaderMember(leaderMember) =>
         currentData.detectLeaderMember(leaderMember)
@@ -229,7 +231,8 @@ private[raft] class RaftActor(
             })
             entries.foreach {
               case (logEntry, Some(client)) =>
-                log.debug(s"=== [Leader] committed $logEntry and will notify it to $client ===")
+                if (log.isDebugEnabled)
+                  log.debug("=== [Leader] committed {} and will notify it to {} ===", logEntry, client)
                 client.ref.tell(
                   ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId),
                   client.originSender.getOrElse(ActorRef.noSender),
@@ -253,12 +256,13 @@ private[raft] class RaftActor(
             ),
           ) { _ =>
             saveSnapshot(currentData.persistentState) // Note that this persistence can fail
-            log.info(
-              "[{}] compaction completed (term: {}, logEntryIndex: {})",
-              currentState,
-              progress.snapshotLastLogTerm,
-              progress.snapshotLastLogIndex,
-            )
+            if (log.isInfoEnabled)
+              log.info(
+                "[{}] compaction completed (term: {}, logEntryIndex: {})",
+                currentState,
+                progress.snapshotLastLogTerm,
+                progress.snapshotLastLogIndex,
+              )
           }
         })
       case CompactionCompleted(_, _, snapshotLastTerm, snapshotLastIndex, _) =>
@@ -268,7 +272,7 @@ private[raft] class RaftActor(
         currentData.syncSnapshot(snapshotLastLogTerm, snapshotLastLogIndex)
       // TODO: Remove when test code is modified
       case _: NonPersistEventLike =>
-        log.error("must not use NonPersistEventLike in production code")
+        if (log.isErrorEnabled) log.error("must not use NonPersistEventLike in production code")
         currentData // ignore event
     }
 
@@ -307,7 +311,7 @@ private[raft] class RaftActor(
   }
 
   def suspendEntity(entityId: NormalizedEntityId, stopMessage: Any): Unit = {
-    log.debug(s"=== [$currentState] suspend entity '$entityId' with $stopMessage ===")
+    if (log.isDebugEnabled) log.debug("=== [{}] suspend entity '{}' with {} ===", currentState, entityId, stopMessage)
     replicationActor(entityId) ! stopMessage
   }
 
@@ -332,7 +336,7 @@ private[raft] class RaftActor(
   def resetElectionTimeoutTimer(): Unit = {
     cancelElectionTimeoutTimer()
     val timeout = settings.randomizedElectionTimeout()
-    log.debug(s"=== [$currentState] election-timeout after ${timeout.toMillis} ms ===")
+    if (log.isDebugEnabled) log.debug("=== [{}] election-timeout after {} ms ===", currentState, timeout.toMillis)
     electionTimeoutTimer = Some(context.system.scheduler.scheduleOnce(timeout, self, ElectionTimeout))
   }
 
@@ -345,7 +349,7 @@ private[raft] class RaftActor(
   def resetHeartbeatTimeoutTimer(): Unit = {
     cancelHeartbeatTimeoutTimer()
     val timeout = settings.heartbeatInterval
-    log.debug(s"=== [Leader] Heartbeat after ${settings.heartbeatInterval.toMillis} ms ===")
+    if (log.isDebugEnabled) log.debug("=== [Leader] Heartbeat after {} ms ===", settings.heartbeatInterval.toMillis)
     heartbeatTimeoutTimer = Some(context.system.scheduler.scheduleOnce(timeout, self, HeartbeatTimeout))
   }
 
@@ -362,7 +366,7 @@ private[raft] class RaftActor(
   }
 
   def broadcast(message: Any): Unit = {
-    log.debug(s"=== [$currentState] broadcast $message ===")
+    if (log.isDebugEnabled) log.debug("=== [{}] broadcast {} ===", currentState, message)
     region ! ReplicationRegion.Broadcast(message)
   }
 
@@ -370,10 +374,11 @@ private[raft] class RaftActor(
     logEntry.event match {
       case EntityEvent(_, NoOp) => // NoOp は replicationActor には関係ないので転送しない
       case EntityEvent(Some(entityId), event) =>
-        log.debug(s"=== [$currentState] applying $event to ReplicationActor ===")
+        if (log.isDebugEnabled) log.debug("=== [{}] applying {} to ReplicationActor ===", currentState, event)
         replicationActor(entityId) ! Replica(logEntry)
       case EntityEvent(None, event) =>
-        log.warning(s"=== [$currentState] $event was not applied, because it is not assigned any entity ===")
+        if (log.isWarningEnabled)
+          log.warning("=== [{}] {} was not applied, because it is not assigned any entity ===", currentState, event)
     }
 
   def handleSnapshotTick(): Unit = {
@@ -383,12 +388,13 @@ private[raft] class RaftActor(
     ) {
       val (term, logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
       applyDomainEvent(SnapshottingStarted(term, logEntryIndex, entityIds)) { _ =>
-        log.info(
-          "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
-          currentState,
-          logEntryIndex,
-          entityIds.size,
-        )
+        if (log.isInfoEnabled)
+          log.info(
+            "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
+            currentState,
+            logEntryIndex,
+            entityIds.size,
+          )
         requestTakeSnapshots(logEntryIndex, entityIds)
       }
     }
@@ -487,10 +493,11 @@ private[raft] class RaftActor(
     context.children.filterNot(c => excludes.exists(c.path.name.startsWith)).foreach { child =>
       context.stop(child)
     }
-    log.debug(
-      "=== [{}] stopped all entities ===",
-      currentState,
-    )
+    if (log.isDebugEnabled)
+      log.debug(
+        "=== [{}] stopped all entities ===",
+        currentState,
+      )
   }
 
   override def postStop(): Unit = {

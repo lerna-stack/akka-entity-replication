@@ -85,9 +85,11 @@ private[entityreplication] class SnapshotStore(
     case command: Command =>
       command match {
         case cmd: SaveSnapshot =>
-          log.warning(
-            s"Saving snapshot for an entity (${cmd.entityId}) currently. Consider to increase log-size-threshold or log-size-check-interval.",
-          )
+          if (log.isWarningEnabled)
+            log.warning(
+              "Saving snapshot for an entity ({}) currently. Consider to increase log-size-threshold or log-size-check-interval.",
+              cmd.entityId,
+            )
         case FetchSnapshot(_, replyTo) =>
           prevSnapshot.foreach { s =>
             replyTo ! SnapshotProtocol.SnapshotFound(s)
@@ -97,7 +99,12 @@ private[entityreplication] class SnapshotStore(
       replyTo ! SaveSnapshotSuccess(snapshot.metadata)
       context.become(hasSnapshot(snapshot))
     case failure: persistence.SaveSnapshotFailure =>
-      log.warning("Saving snapshot failed - {}: {}", failure.cause.getClass.getCanonicalName, failure.cause.getMessage)
+      if (log.isWarningEnabled)
+        log.warning(
+          "Saving snapshot failed - {}: {}",
+          failure.cause.getClass.getCanonicalName,
+          failure.cause.getMessage,
+        )
       replyTo ! SaveSnapshotFailure(snapshot.metadata)
   }
 
