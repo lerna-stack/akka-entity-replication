@@ -245,7 +245,7 @@ private[raft] class RaftActor(
       case SnapshottingStarted(term, logEntryIndex, entityIds) =>
         currentData.startSnapshotting(term, logEntryIndex, entityIds)
       case EntitySnapshotSaved(metadata) =>
-        currentData.recordSavedSnapshot(metadata, settings.compactionPreserveLogSize)(onComplete = { progress =>
+        currentData.recordSavedSnapshot(metadata)(onComplete = { progress =>
           applyDomainEvent(
             CompactionCompleted(
               selfMemberIndex,
@@ -255,7 +255,6 @@ private[raft] class RaftActor(
               progress.completedEntities,
             ),
           ) { _ =>
-            saveSnapshot(currentData.persistentState) // Note that this persistence can fail
             if (log.isInfoEnabled)
               log.info(
                 "[{}] compaction completed (term: {}, logEntryIndex: {})",
@@ -266,7 +265,12 @@ private[raft] class RaftActor(
           }
         })
       case CompactionCompleted(_, _, snapshotLastTerm, snapshotLastIndex, _) =>
-        currentData.updateLastSnapshotStatus(snapshotLastTerm, snapshotLastIndex)
+        val newData =
+          currentData
+            .updateLastSnapshotStatus(snapshotLastTerm, snapshotLastIndex)
+            .compactReplicatedLog(settings.compactionPreserveLogSize)
+        saveSnapshot(newData.persistentState) // Note that this persistence can fail
+        newData
       case SnapshotSyncCompleted(snapshotLastLogTerm, snapshotLastLogIndex) =>
         stopAllEntities()
         currentData.syncSnapshot(snapshotLastLogTerm, snapshotLastLogIndex)

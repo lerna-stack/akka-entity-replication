@@ -312,9 +312,9 @@ private[entityreplication] trait RaftMemberData
     )
   }
 
-  def recordSavedSnapshot(snapshotMetadata: EntitySnapshotMetadata, preserveLogSize: Int)(
-      onComplete: SnapshottingProgress => Unit,
-  ): RaftMemberData = {
+  def recordSavedSnapshot(
+      snapshotMetadata: EntitySnapshotMetadata,
+  )(onComplete: SnapshottingProgress => Unit): RaftMemberData = {
     if (
       snapshottingProgress.isInProgress && snapshottingProgress.snapshotLastLogIndex == snapshotMetadata.logEntryIndex
     ) {
@@ -323,9 +323,6 @@ private[entityreplication] trait RaftMemberData
       if (newProgress.isCompleted) {
         onComplete(newProgress)
         updateVolatileState(snapshottingProgress = newProgress)
-          .updatePersistentState(replicatedLog =
-            replicatedLog.deleteOldEntries(snapshottingProgress.snapshotLastLogIndex, preserveLogSize),
-          )
       } else {
         updateVolatileState(snapshottingProgress = newProgress)
       }
@@ -336,6 +333,12 @@ private[entityreplication] trait RaftMemberData
 
   def updateLastSnapshotStatus(snapshotLastTerm: Term, snapshotLastIndex: LogEntryIndex): RaftMemberData = {
     updatePersistentState(lastSnapshotStatus = SnapshotStatus(snapshotLastTerm, snapshotLastIndex))
+  }
+
+  def compactReplicatedLog(preserveLogSize: Int): RaftMemberData = {
+    updatePersistentState(
+      replicatedLog = replicatedLog.deleteOldEntries(lastSnapshotStatus.snapshotLastLogIndex, preserveLogSize),
+    )
   }
 
   def syncSnapshot(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex): RaftMemberData = {
