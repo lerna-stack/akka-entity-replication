@@ -245,7 +245,9 @@ private[raft] class RaftActor(
       case SnapshottingStarted(term, logEntryIndex, entityIds) =>
         currentData.startSnapshotting(term, logEntryIndex, entityIds)
       case EntitySnapshotSaved(metadata) =>
-        currentData.recordSavedSnapshot(metadata)(onComplete = { progress =>
+        val newData  = currentData.recordSavedSnapshot(metadata)
+        val progress = newData.snapshottingProgress
+        if (progress.isCompleted) {
           applyDomainEvent(
             CompactionCompleted(
               selfMemberIndex,
@@ -255,7 +257,8 @@ private[raft] class RaftActor(
               progress.completedEntities,
             ),
           ) { _ => }
-        })
+        }
+        newData
       case CompactionCompleted(_, _, snapshotLastTerm, snapshotLastIndex, _) =>
         if (log.isInfoEnabled)
           log.info(

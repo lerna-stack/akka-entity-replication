@@ -312,20 +312,13 @@ private[entityreplication] trait RaftMemberData
     )
   }
 
-  def recordSavedSnapshot(
-      snapshotMetadata: EntitySnapshotMetadata,
-  )(onComplete: SnapshottingProgress => Unit): RaftMemberData = {
+  def recordSavedSnapshot(snapshotMetadata: EntitySnapshotMetadata): RaftMemberData = {
     if (
       snapshottingProgress.isInProgress && snapshottingProgress.snapshotLastLogIndex == snapshotMetadata.logEntryIndex
     ) {
       val newProgress =
         snapshottingProgress.recordSnapshottingComplete(snapshotMetadata.logEntryIndex, snapshotMetadata.entityId)
-      if (newProgress.isCompleted) {
-        onComplete(newProgress)
-        updateVolatileState(snapshottingProgress = newProgress)
-      } else {
-        updateVolatileState(snapshottingProgress = newProgress)
-      }
+      updateVolatileState(snapshottingProgress = newProgress)
     } else {
       this
     }
