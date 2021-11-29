@@ -10,6 +10,7 @@ env:
   SBT_OPTS: >-
     -Dlerna.enable.discipline
     -Dakka.test.timefactor=3.0
+    -Dakka.test.default-timeout=15s
 
 jobs:
   test:
