@@ -254,17 +254,16 @@ private[raft] class RaftActor(
               progress.snapshotLastLogIndex,
               progress.completedEntities,
             ),
-          ) { _ =>
-            if (log.isInfoEnabled)
-              log.info(
-                "[{}] compaction completed (term: {}, logEntryIndex: {})",
-                currentState,
-                progress.snapshotLastLogTerm,
-                progress.snapshotLastLogIndex,
-              )
-          }
+          ) { _ => }
         })
       case CompactionCompleted(_, _, snapshotLastTerm, snapshotLastIndex, _) =>
+        if (log.isInfoEnabled)
+          log.info(
+            "[{}] compaction completed (term: {}, logEntryIndex: {})",
+            currentState,
+            snapshotLastTerm,
+            snapshotLastIndex,
+          )
         val newData =
           currentData
             .updateLastSnapshotStatus(snapshotLastTerm, snapshotLastIndex)
