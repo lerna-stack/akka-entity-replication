@@ -17,13 +17,11 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
   import RaftActor._
 
   protected val config: Config = system.settings.config
-  protected val defaultRaftSettings: RaftSettings = RaftSettings(
-    ConfigFactory
-      .parseString("""
+  protected val defaultRaftConfig: Config = ConfigFactory
+    .parseString("""
     // electionTimeout がテスト中に自動で発生しないようにする
     lerna.akka.entityreplication.raft.election-timeout = 999999s
-    """).withFallback(config),
-  )
+    """).withFallback(config)
 
   type RaftTestFSMRef = ActorRef
 
@@ -33,7 +31,7 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
       region: ActorRef = TestProbe().ref,
       selfMemberIndex: MemberIndex = MemberIndex("test-index"),
       otherMemberIndexes: Set[MemberIndex] = Set(),
-      settings: RaftSettings = defaultRaftSettings,
+      settings: RaftSettings = RaftSettings(defaultRaftConfig),
       replicationActor: ActorRef = Actor.noSender,
       typeName: TypeName = TypeName.from("dummy"),
   ): RaftTestFSMRef = {
