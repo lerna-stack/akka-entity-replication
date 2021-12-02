@@ -3,10 +3,13 @@ package lerna.akka.entityreplication.raft
 import akka.Done
 import akka.actor.{ ActorRef, ActorSystem }
 import akka.testkit.{ TestKit, TestProbe }
+import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion }
-import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId, TypeName }
+import lerna.akka.entityreplication.raft.RaftProtocol.Replicate
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
+import lerna.akka.entityreplication.testkit.CustomTestProbe._
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
   EntitySnapshot,
   EntitySnapshotMetadata,
@@ -14,8 +17,9 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
 }
 import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, SnapshotProtocol }
 import lerna.akka.entityreplication.util.EventStore
+import org.scalatest.Inside
 
-class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
+class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase with Inside {
 
   import RaftActor._
 
@@ -329,6 +333,200 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       // InstallSnapshot is idempotent: InstallSnapshot will succeed again if it has already succeeded
       leader ! installSnapshotCommand
       region.expectMsgType[ReplicationRegion.DeliverTo].message should be(expectedSuccessfulResponse)
+    }
+
+    "send AppendEntries to the follower when the leader has log entries that follower requires" in {
+      val leaderIndex      = createUniqueMemberIndex()
+      val follower1Index   = createUniqueMemberIndex()
+      val follower2Index   = createUniqueMemberIndex()
+      val region           = TestProbe()
+      val replicationActor = TestProbe()
+      val entityId         = NormalizedEntityId("test")
+      val entityInstanceId = EntityInstanceId(1)
+      val leader = createRaftActor(
+        selfMemberIndex = leaderIndex,
+        otherMemberIndexes = Set(follower1Index, follower2Index),
+        region = region.ref,
+        replicationActor = replicationActor.ref,
+        entityId = entityId,
+      )
+      val term       = Term(1)
+      val leaderData = createLeaderData(term)
+      setState(leader, Candidate, leaderData)
+      setState(leader, Leader, leaderData)
+
+      region.fishMatchMessagesWhile(messages = 2) {
+
+        case msg @ ReplicationRegion.DeliverTo(`follower1Index`, cmd: AppendEntries)
+            if cmd.entries.lastOption.exists(_.index == LogEntryIndex(1)) =>
+          cmd.leader should be(leaderIndex)
+          cmd.term should be(term)
+          cmd.prevLogIndex should be(LogEntryIndex.initial())
+          cmd.prevLogTerm should be(Term.initial())
+          inside(cmd.entries) {
+            case Seq(logEntry) =>
+              logEntry.index should be(LogEntryIndex(1))
+              logEntry.event.event should be(NoOp)
+              logEntry.event.entityId should be(None)
+              logEntry.term should be(term)
+          }
+          leader ! AppendEntriesSucceeded(cmd.term, cmd.entries.last.index, msg.index)
+
+        case ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
+            if cmd.entries.lastOption.exists(_.index == LogEntryIndex(1)) =>
+          cmd.leader should be(leaderIndex)
+          cmd.term should be(term)
+          cmd.prevLogIndex should be(LogEntryIndex.initial())
+          cmd.prevLogTerm should be(Term.initial())
+          inside(cmd.entries) {
+            case Seq(logEntry) =>
+              logEntry.index should be(LogEntryIndex(1))
+              logEntry.event.event should be(NoOp)
+              logEntry.event.entityId should be(None)
+              logEntry.term should be(term)
+          }
+        // don't reply to the leader
+      }
+
+      val event1 = "a"
+      leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
+
+      region.fishMatchMessagesWhile(messages = 2) {
+
+        case msg @ ReplicationRegion.DeliverTo(`follower1Index`, cmd: AppendEntries)
+            if cmd.entries.lastOption.exists(_.index == LogEntryIndex(2)) =>
+          cmd.leader should be(leaderIndex)
+          cmd.term should be(term)
+          cmd.prevLogIndex should be(LogEntryIndex(1))
+          cmd.prevLogTerm should be(term)
+          inside(cmd.entries) {
+            case Seq(logEntry) =>
+              logEntry.index should be(LogEntryIndex(2))
+              logEntry.event.event should be(event1)
+              logEntry.event.entityId should be(Some(entityId))
+              logEntry.term should be(term)
+          }
+          leader ! AppendEntriesSucceeded(cmd.term, cmd.entries.last.index, msg.index)
+
+        case ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
+            if cmd.entries.lastOption.exists(_.index == LogEntryIndex(2)) =>
+          cmd.leader should be(leaderIndex)
+          cmd.term should be(term)
+          cmd.prevLogIndex should be(LogEntryIndex.initial())
+          cmd.prevLogTerm should be(Term.initial())
+          inside(cmd.entries) {
+            case Seq(logEntry1, logEntry2) =>
+              logEntry1.index should be(LogEntryIndex(1))
+              logEntry1.event.event should be(NoOp)
+              logEntry1.event.entityId should be(None)
+              logEntry1.term should be(term)
+
+              logEntry2.index should be(LogEntryIndex(2))
+              logEntry2.event.event should be(event1)
+              logEntry2.event.entityId should be(Some(entityId))
+              logEntry2.term should be(term)
+          }
+        // don't reply to the leader
+      }
+    }
+
+    "send InstallSnapshot to the follower when the leader loses logs that the follower requires by compaction" in {
+      val leaderIndex      = createUniqueMemberIndex()
+      val follower1Index   = createUniqueMemberIndex()
+      val follower2Index   = createUniqueMemberIndex()
+      val region           = TestProbe()
+      val snapshotStore    = TestProbe()
+      val replicationActor = TestProbe()
+      val entityId         = NormalizedEntityId("test")
+      val entityInstanceId = EntityInstanceId(1)
+      val config = ConfigFactory.parseString {
+        """
+        lerna.akka.entityreplication.raft.compaction {
+          log-size-check-interval = 10ms
+          log-size-threshold = 2
+          preserve-log-size = 1
+        }
+        """
+      }
+      val leader = createRaftActor(
+        selfMemberIndex = leaderIndex,
+        otherMemberIndexes = Set(follower1Index, follower2Index),
+        region = region.ref,
+        shardSnapshotStore = snapshotStore.ref,
+        replicationActor = replicationActor.ref,
+        entityId = entityId,
+        settings = RaftSettings(config.withFallback(defaultRaftConfig)),
+      )
+      val term       = Term(1)
+      val leaderData = createLeaderData(term)
+      setState(leader, Candidate, leaderData)
+      setState(leader, Leader, leaderData)
+
+      region.fishMatchMessagesWhile(messages = 2) {
+
+        case msg @ ReplicationRegion.DeliverTo(`follower1Index`, cmd: AppendEntries)
+            if cmd.entries.lastOption.exists(_.index == LogEntryIndex(1)) =>
+          // LogEntryIndex(1) (NoOp) will be committed
+          inside(cmd.entries) {
+            case Seq(logEntry) =>
+              logEntry.event.event should be(NoOp)
+          }
+          leader ! AppendEntriesSucceeded(cmd.term, cmd.entries.last.index, msg.index)
+
+        case ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
+            if cmd.entries.lastOption.exists(_.index == LogEntryIndex(1)) =>
+        // don't reply to the leader
+      }
+
+      val event1 = "a"
+      leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
+
+      region.fishMatchMessagesWhile(messages = 2) {
+
+        case msg @ ReplicationRegion.DeliverTo(`follower1Index`, cmd: AppendEntries)
+            if cmd.entries.lastOption.exists(_.index == LogEntryIndex(2)) =>
+          // LogEntryIndex(2) will be committed
+          inside(cmd.entries) {
+            case Seq(logEntry) =>
+              logEntry.event.event should be(event1)
+          }
+          leader ! AppendEntriesSucceeded(cmd.term, cmd.entries.last.index, msg.index)
+
+        case ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
+            if cmd.entries.lastOption.exists(_.index == LogEntryIndex(2)) =>
+        // don't reply to the leader
+      }
+
+      // compaction started
+      replicationActor.fishForSpecificMessage() {
+        case _: RaftProtocol.TakeSnapshot =>
+          leader ! RaftProtocol.Snapshot(EntitySnapshotMetadata(entityId, LogEntryIndex(2)), EntityState("state"))
+      }
+      snapshotStore.fishForSpecificMessage() {
+        case cmd: SnapshotProtocol.SaveSnapshot =>
+          leader ! SnapshotProtocol.SaveSnapshotSuccess(cmd.snapshot.metadata)
+      }
+
+      val event2 = "b"
+      leader ! Replicate(event2, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
+
+      region.fishMatchMessagesWhile(messages = 2) {
+
+        case msg @ ReplicationRegion.DeliverTo(`follower1Index`, cmd: AppendEntries)
+            if cmd.entries.lastOption.exists(_.index == LogEntryIndex(3)) =>
+          // LogEntryIndex(3) will be committed
+          inside(cmd.entries) {
+            case Seq(logEntry) =>
+              logEntry.event.event should be(event2)
+          }
+          leader ! AppendEntriesSucceeded(cmd.term, cmd.entries.last.index, msg.index)
+
+        case ReplicationRegion.DeliverTo(`follower2Index`, cmd: InstallSnapshot) =>
+          cmd.term should be(term)
+          cmd.srcLatestSnapshotLastLogLogIndex should be(LogEntryIndex(2))
+          cmd.srcLatestSnapshotLastLogTerm should be(term)
+          leader ! InstallSnapshotSucceeded(shardId, term, cmd.srcLatestSnapshotLastLogLogIndex, follower2Index)
+      }
     }
   }
 
