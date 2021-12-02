@@ -57,9 +57,8 @@ private[entityreplication] final case class ReplicatedLog private[model] (
 
   def termAt(logEntryIndex: LogEntryIndex): Option[Term] =
     logEntryIndex match {
-      case initialLogIndex if initialLogIndex == LogEntryIndex.initial() => Option(Term.initial())
-      case `ancestorLastIndex`                                           => Option(ancestorLastTerm)
-      case logEntryIndex                                                 => get(logEntryIndex).map(_.term)
+      case `ancestorLastIndex` => Option(ancestorLastTerm)
+      case logEntryIndex       => get(logEntryIndex).map(_.term)
     }
 
   def merge(thatEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): ReplicatedLog = {
