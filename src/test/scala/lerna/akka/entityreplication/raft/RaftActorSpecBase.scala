@@ -34,6 +34,7 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
       settings: RaftSettings = RaftSettings(defaultRaftConfig),
       replicationActor: ActorRef = Actor.noSender,
       typeName: TypeName = TypeName.from("dummy"),
+      entityId: NormalizedEntityId = NormalizedEntityId.from("dummy"),
   ): RaftTestFSMRef = {
     val replicationActorProps = Props(new Actor() {
       override def receive: Receive = {
@@ -46,7 +47,7 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
       }
     })
     val extractEntityId: PartialFunction[ReplicationRegion.Msg, (NormalizedEntityId, ReplicationRegion.Msg)] = {
-      case msg => (NormalizedEntityId.from("dummy"), msg)
+      case msg => (entityId, msg)
     }
     val ref = system.actorOf(
       Props(
