@@ -76,6 +76,7 @@ private[entityreplication] class SnapshotStore(
       // reduce IO: don't save if same as cached snapshot
       command.replyTo ! SaveSnapshotSuccess(command.snapshot.metadata)
     } else {
+      log.debug("save snapshot: {}", command.snapshot)
       saveSnapshot(command.snapshot)
       context.become(savingSnapshot(command.replyTo, command.snapshot, prevSnapshot))
     }

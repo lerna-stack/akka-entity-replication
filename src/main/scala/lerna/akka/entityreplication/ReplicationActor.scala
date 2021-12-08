@@ -64,6 +64,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
           throw EntityRecoveryTimeoutException(self.path)
 
         case RecoveryState(logEntries, maybeSnapshot) =>
+          println(s"RecoveryState ${maybeSnapshot} - ${logEntries}")
           recoveryTimeoutTimer.cancel()
           maybeSnapshot.foreach { snapshot =>
             innerApplyEvent(
@@ -94,9 +95,11 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
           )
 
         case Replica(logEntry) =>
+          println(s"replica: ${logEntry}")
           innerApplyEvent(logEntry.event.event, logEntry.index)
 
         case TakeSnapshot(metadata, replyTo) =>
+          println(s"take snapshot: ${currentState}")
           replyTo ! Snapshot(metadata, EntityState(currentState))
 
         case other => ReplicationActor.super.aroundReceive(receive, other)

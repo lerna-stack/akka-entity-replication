@@ -6,6 +6,7 @@ import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.RaftActorCompactionSpec.DummyReplicationActor
 import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
+import org.scalatest.exceptions.TestFailedException
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.annotation.nowarn
@@ -28,20 +29,22 @@ object RaftActorCompactionSpecConfig extends MultiNodeConfig {
       lerna.akka.entityreplication.raft.multi-raft-roles = ["replica-group-1", "replica-group-2", "replica-group-3"]
 
       // triggers compaction each event replications
-      lerna.akka.entityreplication.raft.compaction.log-size-threshold = 2
       lerna.akka.entityreplication.raft.compaction.preserve-log-size = 1
-      lerna.akka.entityreplication.raft.compaction.log-size-check-interval = 0.1s
+      lerna.akka.entityreplication.raft.compaction.log-size-check-interval = 0.7s
       """))
       .withFallback(ConfigFactory.parseResources("multi-jvm-testing.conf")),
   )
   nodeConfig(node1)(ConfigFactory.parseString("""
     akka.cluster.roles = ["replica-group-1"]
+      lerna.akka.entityreplication.raft.compaction.log-size-threshold = 9
   """))
   nodeConfig(node2)(ConfigFactory.parseString("""
     akka.cluster.roles = ["replica-group-2"]
+      lerna.akka.entityreplication.raft.compaction.log-size-threshold = 9
   """))
   nodeConfig(node3)(ConfigFactory.parseString("""
     akka.cluster.roles = ["replica-group-3"]
+      lerna.akka.entityreplication.raft.compaction.log-size-threshold = 10
   """))
 }
 
@@ -125,7 +128,6 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
 
     "synchronize snapshot to recover a Follower even if the Follower could not receive logs by compaction in a Leader" in {
       val typeName = createUniqueTypeName()
-
       runOn(node1, node2, node3) {
         clusterReplication = createReplication(typeName)
       }
@@ -138,25 +140,7 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
           ).resolveOne().await
       }
 
-      runOn(node1) {
-        // checks normality
-        awaitAssert {
-          clusterReplication ! DummyReplicationActor.GetState(entityId)
-          expectMsgType[DummyReplicationActor.State](max = 5.seconds)
-        }
-        // updates state
-        clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 1)
-        expectMsg(DummyReplicationActor.State(1))
-      }
-      enterBarrier("a command sent")
-
-      runOn(node1, node2, node3) {
-        awaitAssert {
-          replicationActor(myself) ! DummyReplicationActor.GetState(entityId)
-          expectMsg(DummyReplicationActor.State(1))
-        }
-      }
-      enterBarrier("all ReplicationActor applied an event")
+      val count = 10
 
       isolate(node3, excludes = Set(controller))
 
@@ -167,45 +151,52 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
           expectMsgType[DummyReplicationActor.State](max = 5.seconds)
         }
         // updates state
-        clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 1)
-        clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 1)
-        clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 1)
-        receiveN(3)
+        for (_ <- 1 to count) {
+          clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 1)
+        }
+        receiveN(count)
       }
       enterBarrier("additional commands sent")
+
+      releaseIsolation(node3)
+
+      runOn(node1) {
+        // updates state
+        for (_ <- 1 to count) {
+          clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 1)
+          Thread.sleep(1000)
+        }
+        receiveN(count)
+      }
 
       runOn(node1, node2) {
         // ReplicationActor which has not been isolated applied all events
         awaitAssert {
           replicationActor(myself) ! DummyReplicationActor.GetState(entityId)
-          expectMsg(DummyReplicationActor.State(4))
-        }
-      }
-      runOn(node3) {
-        // ReplicationActor which has been isolated did not apply any events
-        awaitAssert {
-          replicationActor(myself) ! DummyReplicationActor.GetState(entityId)
-          expectMsg(DummyReplicationActor.State(1))
+          expectMsg(DummyReplicationActor.State(count * 2))
         }
       }
       enterBarrier("ReplicationActor which has not been isolated applied all events")
-
-      releaseIsolation(node3)
 
       runOn(node1) {
         awaitAssert {
           // attempt to create entities on all nodes
           clusterReplication ! DummyReplicationActor.Increment(entityId, amount = 0)
-          expectMsg(max = 3.seconds, DummyReplicationActor.State(4))
+          expectMsg(max = 3.seconds, DummyReplicationActor.State(count * 2))
 
           import org.scalatest.Inspectors._
           // All ReplicationActor states will eventually be the same as any other after the isolation is resolved
           forAll(Set(node1, node2, node3)) { role =>
             replicationActor(role) ! DummyReplicationActor.GetState(entityId)
-            expectMsg(max = 3.seconds, DummyReplicationActor.State(4))
+            expectMsg(max = 3.seconds, DummyReplicationActor.State(count * 2))
+          }
+          intercept[TestFailedException] {
+            replicationActor(node3) ! DummyReplicationActor.GetState(entityId)
+            expectMsgType[DummyReplicationActor.State](max = 3.seconds).count should be > count * 2
           }
         }
       }
+      enterBarrier("finish")
     }
   }
 
