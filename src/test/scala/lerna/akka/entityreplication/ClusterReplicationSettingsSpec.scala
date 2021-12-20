@@ -97,5 +97,12 @@ class ClusterReplicationSettingsSpec extends WordSpec with Matchers {
       val modifiedSettings = settings.withEventSourcedJournalPluginId(expectedPluginId)
       modifiedSettings.raftSettings.eventSourcedJournalPluginId should be(expectedPluginId)
     }
+
+    "change value of raftSettings.eventSourcedSnapshotStorePluginId by withEventSourcedSnapshotStorePluginId" in {
+      val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
+      val expectedPluginId = "new-event-sourced-snapshot-store-plugin-id"
+      val modifiedSettings = settings.withEventSourcedSnapshotStorePluginId(expectedPluginId)
+      modifiedSettings.raftSettings.eventSourcedSnapshotStorePluginId should be(expectedPluginId)
+    }
   }
 }

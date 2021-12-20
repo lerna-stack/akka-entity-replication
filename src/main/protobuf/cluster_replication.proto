@@ -77,6 +77,10 @@ message CommitLogStoreSave {
   required Payload committed_event = 3;
 }
 
+message CommitLogStoreActorState {
+  required LogEntryIndex current_index = 1;
+}
+
 // ===
 // raft.protocol
 // ===

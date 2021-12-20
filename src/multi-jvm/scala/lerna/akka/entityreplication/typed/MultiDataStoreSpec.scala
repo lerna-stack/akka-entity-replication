@@ -54,6 +54,7 @@ object MultiDataStoreSpecConfig extends MultiNodeConfig {
           }
           lerna.akka.entityreplication.raft.eventsourced.persistence {
             journal.plugin = akka.persistence.journal.inmem
+            snapshot-store.plugin = akka.persistence.snapshot-store.local
           }
           // save snapshot to unique directory every time
           akka.persistence.snapshot-store.local.dir = "target/snapshots/${Instant.now().getEpochSecond}"
@@ -221,6 +222,7 @@ object MultiDataStoreSpec {
             .withRaftSnapshotPluginId("akka.persistence.snapshot-store.proxy")
             .withRaftQueryPluginId("lerna.akka.entityreplication.util.persistence.query.proxy")
             .withEventSourcedJournalPluginId("akka.persistence.journal.proxy")
+            .withEventSourcedSnapshotStorePluginId("akka.persistence.snapshot-store.proxy")
         }
       ReplicatedEntity(typeKey)(entityContext =>
         Behaviors.setup { context =>

@@ -1,10 +1,10 @@
 package lerna.akka.entityreplication.raft.eventsourced
 
 import akka.Done
-import akka.actor.{ ActorRef, ActorSystem, Props }
+import akka.actor.{ ActorLogging, ActorRef, ActorSystem, Props }
 import akka.cluster.sharding.ShardRegion.HashCodeMessageExtractor
 import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings }
-import akka.persistence.{ PersistentActor, RecoveryCompleted }
+import akka.persistence.{ PersistentActor, RecoveryCompleted, SnapshotOffer }
 import akka.util.ByteString
 import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ClusterReplicationSettings }
 import lerna.akka.entityreplication.model.{ NormalizedShardId, TypeName }
@@ -47,42 +47,70 @@ private[entityreplication] object CommitLogStoreActor {
   def persistenceId(typeName: TypeName, shardId: String): String =
     ActorIds.persistenceId("CommitLogStore", typeName.underlying, shardId)
 
+  /** State of [[CommitLogStoreActor]] */
+  final case class State(currentIndex: LogEntryIndex) extends ClusterReplicationSerializable {
+    def nextIndex: LogEntryIndex = {
+      currentIndex.next()
+    }
+    def next: State = {
+      copy(currentIndex.next())
+    }
+  }
+  object State {
+    def apply(): State = State(LogEntryIndex.initial())
+  }
+
 }
 
 private[entityreplication] class CommitLogStoreActor(typeName: TypeName, settings: ClusterReplicationSettings)
-    extends PersistentActor {
+    extends PersistentActor
+    with ActorLogging {
+
+  import CommitLogStoreActor.State
 
   override def journalPluginId: String = settings.raftSettings.eventSourcedJournalPluginId
 
-  // TODO: Use snapshot for efficient recovery after reboot
-  override def snapshotPluginId: String = "akka.persistence.no-snapshot-store"
+  override def snapshotPluginId: String = settings.raftSettings.eventSourcedSnapshotStorePluginId
 
   private[this] val shardId = URLDecoder.decode(self.path.name, ByteString.UTF_8)
 
-  // state
-  private[this] var currentIndex = LogEntryIndex.initial()
+  private val snapshotInterval: Int = settings.raftSettings.eventSourcedSnapshotEvery
+
+  private var state: State = State()
 
   private[this] def updateState(): Unit = {
-    currentIndex = currentIndex.next()
+    state = state.next
+  }
+
+  private def shouldSaveSnapshot(): Boolean = {
+    lastSequenceNr % snapshotInterval == 0 && // save a snapshot every interval
+    lastSequenceNr > 0 // should have at-least one event
   }
 
   override def receiveRecover: Receive = {
+    case SnapshotOffer(metadata, snapshot: State) =>
+      log.info("Loaded snapshot [{}] with metadata [{}]", snapshot, metadata)
+      state = snapshot
     case RecoveryCompleted =>
     case _                 => updateState()
   }
 
   override def receiveCommand: Receive = {
     case save: Save =>
-      if (save.index <= currentIndex) {
+      val expectedIndex = state.nextIndex
+      if (save.index < expectedIndex) {
         // ignore
         sender() ! Done
-      } else if (currentIndex.next() == save.index) {
+      } else if (save.index == expectedIndex) {
         val event = save.committedEvent match {
           case NoOp        => InternalEvent
           case domainEvent => domainEvent
         }
         persist(event) { _ =>
           updateState()
+          if (shouldSaveSnapshot()) {
+            saveSnapshot(state)
+          }
           sender() ! Done
         }
       } else {

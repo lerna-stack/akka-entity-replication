@@ -4,27 +4,37 @@ import akka.Done
 import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
 import akka.actor.{ typed, ActorRef, ActorSystem }
-import akka.persistence.testkit.PersistenceTestKitPlugin
-import akka.persistence.testkit.scaladsl.PersistenceTestKit
+import akka.persistence.testkit.scaladsl.{ PersistenceTestKit, SnapshotTestKit }
+import akka.persistence.testkit.{ PersistenceTestKitPlugin, PersistenceTestKitSnapshotPlugin }
 import akka.testkit.TestKit
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ClusterReplicationSettings
 import lerna.akka.entityreplication.model.{ NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.ActorSpec
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
-import org.scalatest.BeforeAndAfterAll
+import org.scalatest.{ BeforeAndAfterAll, OptionValues }
 
 import java.util.UUID
 
 object CommitLogStoreActorSpec {
 
-  val pluginConfig: Config = ConfigFactory.parseString(s"""
-      |lerna.akka.entityreplication.raft.eventsourced.persistence.journal.plugin = ${PersistenceTestKitPlugin.PluginId}
+  // Pick not too large and not too small value.
+  //   * A too-large value requires more time to test.
+  //   * A too-small value affects other tests unrelated to the snapshot feature.
+  val snapshotEvery: Int = 10
+
+  val commitLogStoreConfig: Config = ConfigFactory.parseString(s"""
+      |lerna.akka.entityreplication.raft.eventsourced.persistence {
+      |  journal.plugin = ${PersistenceTestKitPlugin.PluginId}
+      |  snapshot-store.plugin = ${PersistenceTestKitSnapshotPlugin.PluginId}
+      |  snapshot-every = $snapshotEvery
+      |}
       |""".stripMargin)
 
   def config: Config = {
     PersistenceTestKitPlugin.config
-      .withFallback(pluginConfig)
+      .withFallback(PersistenceTestKitSnapshotPlugin.config)
+      .withFallback(commitLogStoreConfig)
       .withFallback(ConfigFactory.load())
   }
 
@@ -35,13 +45,15 @@ object CommitLogStoreActorSpec {
 final class CommitLogStoreActorSpec
     extends TestKit(ActorSystem("CommitLogStoreActorSpec", CommitLogStoreActorSpec.config))
     with ActorSpec
-    with BeforeAndAfterAll {
+    with BeforeAndAfterAll
+    with OptionValues {
 
   import CommitLogStoreActorSpec._
 
   private implicit val typedSystem: typed.ActorSystem[Nothing] = system.toTyped
   private val typeName                                         = TypeName.from("CommitLogStoreActorSpec")
   private val persistenceTestKit                               = PersistenceTestKit(system)
+  private val snapshotTestKit                                  = SnapshotTestKit(system)
 
   override def beforeEach(): Unit = {
     super.beforeEach()
@@ -155,6 +167,142 @@ final class CommitLogStoreActorSpec
 
       watch(commitLogStoreActor)
       expectTerminated(commitLogStoreActor)
+    }
+
+    "save a snapshot every `snapshot-every` events" in {
+      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      val indices                                       = Vector.tabulate(snapshotEvery * 2)(_ + 1)
+      indices.foreach { i =>
+        val index              = LogEntryIndex.initial().plus(i)
+        val shouldSaveSnapshot = i % snapshotEvery == 0
+        val domainEvent        = s"Event $i"
+        commitLogStoreActor ! Save(shardId, index, domainEvent)
+        expectMsg(Done)
+        persistenceTestKit.expectNextPersisted(persistenceId, domainEvent)
+        if (shouldSaveSnapshot) {
+          snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(index))
+        }
+      }
+    }
+
+    "load the latest snapshot if it restarts" in {
+      // This test verify that an actor will replay the latest snapshot and at-least one event.
+      assume(
+        snapshotEvery > 1,
+        "`snapshot-every` should be greater than 1 since an actor should replay at-least one event.",
+      )
+
+      val name                                          = UUID.randomUUID().toString
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor(Option(name))
+
+      // Save a snapshot.
+      def shouldSaveSnapshot(index: LogEntryIndex): Boolean = index.underlying % snapshotEvery == 0
+      val indices                                           = Vector.tabulate(snapshotEvery + 1) { i => LogEntryIndex.initial().plus(i + 1) }
+      indices.zipWithIndex.foreach {
+        case (index, n) =>
+          val domainEvent = s"User Domain Event $n"
+          commitLogStoreActor ! Save(shardId, index, domainEvent)
+          expectMsg(Done)
+          persistenceTestKit.expectNextPersisted(persistenceId, domainEvent)
+          if (shouldSaveSnapshot(index)) {
+            snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(index))
+          }
+      }
+
+      val latestSnapshotIndex = indices.filter(shouldSaveSnapshot).lastOption.value
+      val latestIndex         = indices.lastOption.value
+      // To verify that the actor will replay at-least one event, `latestIndex` should be greater than `latestSnapshotIndex`.
+      assume(latestIndex > latestSnapshotIndex, "`snapshot-every` should be greater than 1.")
+
+      // Stop the actor
+      watch(commitLogStoreActor)
+      system.stop(commitLogStoreActor)
+      expectTerminated(commitLogStoreActor)
+
+      // Restart the actor
+      val (newCommitLogStoreActor, _, _) =
+        LoggingTestKit.info(s"Loaded snapshot [State(${latestSnapshotIndex.underlying})]").expect {
+          spawnCommitLogStoreActor(Option(name))
+        }
+
+      // The actor should save an event with the next of the latest index
+      val index       = latestIndex.next()
+      val domainEvent = "User Domain Event after restart"
+      newCommitLogStoreActor ! Save(shardId, index, domainEvent)
+      expectMsg(Done)
+      persistenceTestKit.expectNextPersisted(persistenceId, domainEvent)
+    }
+
+    "continue it's behavior if a snapshot save fails" in {
+      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      val indices                                       = Vector.tabulate(snapshotEvery) { i => LogEntryIndex.initial().plus(i + 1) }
+      indices.zipWithIndex.dropRight(1).foreach {
+        case (index, n) =>
+          val domainEvent = s"Event $n"
+          commitLogStoreActor ! Save(shardId, index, domainEvent)
+          expectMsg(Done)
+          persistenceTestKit.expectNextPersisted(persistenceId, domainEvent)
+      }
+      val snapshotIndex = indices.lastOption.value
+
+      // The actor fails a snapshot save, but continues to accept next commands.
+      // The default implementation generates a warn log.
+      // It's great to verify that the warn log was generated.
+      LoggingTestKit.warn("Failed to saveSnapshot").expect {
+        snapshotTestKit.failNextPersisted()
+        commitLogStoreActor ! Save(shardId, snapshotIndex, NoOp)
+      }
+      expectMsg(Done)
+      persistenceTestKit.expectNextPersisted(persistenceId, InternalEvent)
+      snapshotTestKit.expectNothingPersisted(persistenceId)
+
+      // The actor should handle a next Save command.
+      val nextEventIndex = snapshotIndex.next()
+      commitLogStoreActor ! Save(shardId, nextEventIndex, NoOp)
+      expectMsg(Done)
+      persistenceTestKit.expectNextPersisted(persistenceId, InternalEvent)
+
+    }
+
+    "stop if a snapshot replay fails" in {
+      val name          = UUID.randomUUID().toString
+      val persistenceId = CommitLogStoreActor.persistenceId(typeName, name)
+
+      // The default implementation generates an error log.
+      // It's great to verify that the error log was generated.
+      val expectedErrorMessage =
+        s"Persistence failure when replaying events for persistenceId [$persistenceId]. Last known sequence number [0]"
+      val (commitLogStoreActor, _, _) = LoggingTestKit
+        .error(expectedErrorMessage)
+        .expect {
+          snapshotTestKit.failNextRead()
+          spawnCommitLogStoreActor(Option(name))
+        }
+
+      watch(commitLogStoreActor)
+      expectTerminated(commitLogStoreActor)
+    }
+
+    "not save a snapshot if an event save fails" in {
+      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      val indices                                       = Vector.tabulate(snapshotEvery) { i => LogEntryIndex.initial().plus(i + 1) }
+      indices.zipWithIndex.dropRight(1).foreach {
+        case (index, n) =>
+          val domainEvent = s"Event $n"
+          commitLogStoreActor ! Save(shardId, index, domainEvent)
+          expectMsg(Done)
+          persistenceTestKit.expectNextPersisted(persistenceId, domainEvent)
+      }
+
+      val snapshotIndex = indices.lastOption.value
+      persistenceTestKit.failNextPersisted()
+      commitLogStoreActor ! Save(shardId, snapshotIndex, NoOp)
+      expectNoMessage()
+      persistenceTestKit.expectNothingPersisted(persistenceId)
+      snapshotTestKit.expectNothingPersisted(persistenceId)
     }
 
   }

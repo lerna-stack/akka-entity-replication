@@ -30,6 +30,8 @@ private[entityreplication] final case class RaftSettingsImpl(
     snapshotStorePluginId: String,
     queryPluginId: String,
     eventSourcedJournalPluginId: String,
+    eventSourcedSnapshotStorePluginId: String,
+    eventSourcedSnapshotEvery: Int,
 ) extends RaftSettings {
 
   override private[raft] def randomizedElectionTimeout(): FiniteDuration =
@@ -56,6 +58,9 @@ private[entityreplication] final case class RaftSettingsImpl(
 
   override private[entityreplication] def withEventSourcedJournalPluginId(pluginId: String): RaftSettings =
     copy(eventSourcedJournalPluginId = pluginId)
+
+  override private[entityreplication] def withEventSourcedSnapshotStorePluginId(pluginId: String): RaftSettings =
+    copy(eventSourcedSnapshotStorePluginId = pluginId)
 
 }
 
@@ -134,6 +139,14 @@ private[entityreplication] object RaftSettingsImpl {
 
     val eventSourcedJournalPluginId: String = config.getString("eventsourced.persistence.journal.plugin")
 
+    val eventSourcedSnapshotStorePluginId: String = config.getString("eventsourced.persistence.snapshot-store.plugin")
+
+    val eventSourcedSnapshotEvery: Int = config.getInt("eventsourced.persistence.snapshot-every")
+    require(
+      eventSourcedSnapshotEvery > 0,
+      s"snapshot-every ($eventSourcedSnapshotEvery) should be greater than 0.",
+    )
+
     RaftSettingsImpl(
       config = config,
       electionTimeout = electionTimeout,
@@ -156,6 +169,8 @@ private[entityreplication] object RaftSettingsImpl {
       snapshotStorePluginId = snapshotStorePluginId,
       queryPluginId = queryPluginId,
       eventSourcedJournalPluginId = eventSourcedJournalPluginId,
+      eventSourcedSnapshotStorePluginId = eventSourcedSnapshotStorePluginId,
+      eventSourcedSnapshotEvery = eventSourcedSnapshotEvery,
     )
   }
 
