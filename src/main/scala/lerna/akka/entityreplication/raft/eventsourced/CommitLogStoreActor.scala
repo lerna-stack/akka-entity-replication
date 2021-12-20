@@ -41,8 +41,12 @@ private[entityreplication] object CommitLogStoreActor {
     )
   }
 
-  private def props(typeName: TypeName, settings: ClusterReplicationSettings): Props =
+  def props(typeName: TypeName, settings: ClusterReplicationSettings): Props =
     Props(new CommitLogStoreActor(typeName, settings))
+
+  def persistenceId(typeName: TypeName, shardId: String): String =
+    ActorIds.persistenceId("CommitLogStore", typeName.underlying, shardId)
+
 }
 
 private[entityreplication] class CommitLogStoreActor(typeName: TypeName, settings: ClusterReplicationSettings)
@@ -86,5 +90,6 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
       }
   }
 
-  override def persistenceId: String = ActorIds.persistenceId("CommitLogStore", typeName.underlying, shardId)
+  override def persistenceId: String = CommitLogStoreActor.persistenceId(typeName, shardId)
+
 }
