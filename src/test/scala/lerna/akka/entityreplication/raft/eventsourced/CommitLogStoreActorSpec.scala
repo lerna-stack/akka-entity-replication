@@ -58,6 +58,7 @@ final class CommitLogStoreActorSpec
   override def beforeEach(): Unit = {
     super.beforeEach()
     persistenceTestKit.clearAll()
+    snapshotTestKit.clearAll()
   }
 
   override def afterAll(): Unit = {
