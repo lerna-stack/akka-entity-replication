@@ -18,6 +18,7 @@ private[entityreplication] object RaftProtocol {
   final case class Command(command: Any)                                          extends RaftActorCommand with ClusterReplicationSerializable
   final case class ForwardedCommand(command: Command)                             extends RaftActorCommand with ClusterReplicationSerializable
   final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState) extends RaftActorCommand
+  final case class EntityTerminated(entityId: NormalizedEntityId)                 extends RaftActorCommand
 
   object Replicate {
     def apply(

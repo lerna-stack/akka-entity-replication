@@ -205,6 +205,46 @@ private[entityreplication] trait LeaderData { self: RaftMemberData =>
   ): RaftMemberData
 }
 
+private[entityreplication] object ShardData {
+
+  type EntityStates = Map[NormalizedEntityId, EntityState]
+
+  sealed trait EntityState {
+    def isPassivating: Boolean
+  }
+  final case object NoState extends EntityState {
+    override def isPassivating: Boolean = false
+  }
+  final case object Passivating extends EntityState {
+    override def isPassivating: Boolean = true
+  }
+
+}
+
+private[entityreplication] trait ShardData { self: RaftMemberData =>
+  import ShardData._
+
+  def entityStates: EntityStates
+
+  def entityStateOf(entityId: NormalizedEntityId): EntityState = {
+    entityStates.getOrElse(entityId, NoState)
+  }
+
+  def passivateEntity(entityId: NormalizedEntityId): RaftMemberData =
+    updateShardVolatileState(
+      entityStates = entityStates.updated(entityId, Passivating),
+    )
+
+  def terminateEntity(entityId: NormalizedEntityId): RaftMemberData =
+    updateShardVolatileState(
+      entityStates = entityStates.removed(entityId),
+    )
+
+  protected def updateShardVolatileState(
+      entityStates: EntityStates = entityStates,
+  ): RaftMemberData
+}
+
 private[entityreplication] object RaftMemberData {
   import PersistentStateData._
 
@@ -231,6 +271,7 @@ private[entityreplication] object RaftMemberData {
       clients: Map[LogEntryIndex, ClientContext] = Map(),
       snapshottingProgress: SnapshottingProgress = SnapshottingProgress.empty,
       lastSnapshotStatus: SnapshotStatus = SnapshotStatus.empty,
+      entityStates: ShardData.EntityStates = Map(),
   ) =
     RaftMemberDataImpl(
       currentTerm = currentTerm,
@@ -245,6 +286,7 @@ private[entityreplication] object RaftMemberData {
       clients = clients,
       snapshottingProgress = snapshottingProgress,
       lastSnapshotStatus = lastSnapshotStatus,
+      entityStates = entityStates,
     )
 }
 
@@ -253,7 +295,8 @@ private[entityreplication] trait RaftMemberData
     with VolatileStateData[RaftMemberData]
     with FollowerData
     with CandidateData
-    with LeaderData {
+    with LeaderData
+    with ShardData {
 
   protected def selectApplicableLogEntries: Seq[LogEntry] =
     if (commitIndex > lastApplied) {
@@ -360,6 +403,7 @@ private[entityreplication] final case class RaftMemberDataImpl(
     clients: Map[LogEntryIndex, ClientContext],
     snapshottingProgress: SnapshottingProgress,
     lastSnapshotStatus: SnapshotStatus,
+    entityStates: ShardData.EntityStates,
 ) extends RaftMemberData {
 
   override protected def updatePersistentState(
@@ -399,4 +443,9 @@ private[entityreplication] final case class RaftMemberDataImpl(
       clients: Map[LogEntryIndex, ClientContext],
   ): RaftMemberData =
     copy(nextIndex = nextIndex, matchIndex = matchIndex, clients = clients)
+
+  override protected def updateShardVolatileState(
+      entityStates: ShardData.EntityStates,
+  ): RaftMemberData =
+    copy(entityStates = entityStates)
 }

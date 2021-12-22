@@ -94,7 +94,7 @@ private[entityreplication] final case class ReplicatedEntityBehaviorImpl[Command
             Recovering.behavior(setup)
           }
         }
-      }.onFailure(SupervisorStrategy.restart)
+      }.onFailure(SupervisorStrategy.stop)
   }
 
   override def receiveSignal(

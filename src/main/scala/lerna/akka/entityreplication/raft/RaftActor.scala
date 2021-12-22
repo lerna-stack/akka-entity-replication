@@ -91,6 +91,8 @@ private[entityreplication] object RaftActor {
   final case class SnapshottingStarted(term: Term, logEntryIndex: LogEntryIndex, entityIds: Set[NormalizedEntityId])
       extends NonPersistEvent
   final case class EntitySnapshotSaved(metadata: EntitySnapshotMetadata) extends NonPersistEvent
+  final case class PassivatedEntity(entityId: NormalizedEntityId)        extends NonPersistEvent
+  final case class TerminatedEntity(entityId: NormalizedEntityId)        extends NonPersistEvent
 
   trait NonPersistEventLike extends NonPersistEvent // テスト用
 }
@@ -157,7 +159,7 @@ private[raft] class RaftActor(
           entityId,
         )
       val props = replicationActorProps(new ReplicationActorContext(entityId.raw, self))
-      context.actorOf(props, entityId.underlying)
+      context.watchWith(context.actorOf(props, entityId.underlying), EntityTerminated(entityId))
     }
   }
 
@@ -270,6 +272,10 @@ private[raft] class RaftActor(
       case SnapshotSyncCompleted(snapshotLastLogTerm, snapshotLastLogIndex) =>
         stopAllEntities()
         currentData.syncSnapshot(snapshotLastLogTerm, snapshotLastLogIndex)
+      case PassivatedEntity(entityId) =>
+        currentData.passivateEntity(entityId)
+      case TerminatedEntity(entityId) =>
+        currentData.terminateEntity(entityId)
       // TODO: Remove when test code is modified
       case _: NonPersistEventLike =>
         if (log.isErrorEnabled) log.error("must not use NonPersistEventLike in production code")
@@ -310,9 +316,20 @@ private[raft] class RaftActor(
     case _ => stash()
   }
 
+  def receiveEntityTerminated(entityId: NormalizedEntityId): Unit = {
+    if (currentData.entityStateOf(entityId).isPassivating) {
+      applyDomainEvent(TerminatedEntity(entityId)) { _ => }
+    } else {
+      // restart
+      replicationActor(entityId)
+    }
+  }
+
   def suspendEntity(entityId: NormalizedEntityId, stopMessage: Any): Unit = {
     if (log.isDebugEnabled) log.debug("=== [{}] suspend entity '{}' with {} ===", currentState, entityId, stopMessage)
-    replicationActor(entityId) ! stopMessage
+    applyDomainEvent(PassivatedEntity(entityId)) { _ =>
+      replicationActor(entityId) ! stopMessage
+    }
   }
 
   def receiveEntitySnapshotResponse(response: Snapshot): Unit = {

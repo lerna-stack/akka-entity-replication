@@ -33,6 +33,7 @@ private[raft] trait Leader { this: RaftActor =>
     case TryCreateEntity(_, entityId)                         => createEntityIfNotExists(entityId)
     case RequestRecovery(entityId)                            => recoveryEntity(entityId)
     case response: SnapshotProtocol.FetchSnapshotResponse     => receiveFetchSnapshotResponse(response)
+    case EntityTerminated(id)                                 => receiveEntityTerminated(id)
     case SuspendEntity(_, entityId, stopMessage)              => suspendEntity(entityId, stopMessage)
     case SnapshotTick                                         => handleSnapshotTick()
     case response: Snapshot                                   => receiveEntitySnapshotResponse(response)
