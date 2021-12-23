@@ -58,6 +58,10 @@ trait RaftSettings {
 
   def eventSourcedJournalPluginId: String
 
+  def eventSourcedSnapshotStorePluginId: String
+
+  def eventSourcedSnapshotEvery: Int
+
   private[entityreplication] def withJournalPluginId(pluginId: String): RaftSettings
 
   private[entityreplication] def withSnapshotPluginId(pluginId: String): RaftSettings
@@ -65,5 +69,7 @@ trait RaftSettings {
   private[entityreplication] def withQueryPluginId(pluginId: String): RaftSettings
 
   private[entityreplication] def withEventSourcedJournalPluginId(pluginId: String): RaftSettings
+
+  private[entityreplication] def withEventSourcedSnapshotStorePluginId(pluginId: String): RaftSettings
 
 }
