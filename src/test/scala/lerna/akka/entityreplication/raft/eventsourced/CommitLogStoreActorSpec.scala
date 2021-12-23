@@ -178,11 +178,19 @@ final class CommitLogStoreActorSpec
         val index              = LogEntryIndex.initial().plus(i)
         val shouldSaveSnapshot = i % snapshotEvery == 0
         val domainEvent        = s"Event $i"
-        commitLogStoreActor ! Save(shardId, index, domainEvent)
-        expectMsg(Done)
-        persistenceTestKit.expectNextPersisted(persistenceId, domainEvent)
         if (shouldSaveSnapshot) {
+          // The implementation should generate an info log.
+          // It's great to verify that the info log was generated.
+          LoggingTestKit.info("Succeeded to saveSnapshot").expect {
+            commitLogStoreActor ! Save(shardId, index, domainEvent)
+          }
+          expectMsg(Done)
+          persistenceTestKit.expectNextPersisted(persistenceId, domainEvent)
           snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(index))
+        } else {
+          commitLogStoreActor ! Save(shardId, index, domainEvent)
+          expectMsg(Done)
+          persistenceTestKit.expectNextPersisted(persistenceId, domainEvent)
         }
       }
     }
@@ -249,7 +257,7 @@ final class CommitLogStoreActorSpec
       val snapshotIndex = indices.lastOption.value
 
       // The actor fails a snapshot save, but continues to accept next commands.
-      // The default implementation generates a warn log.
+      // The implementation should generate a warn log.
       // It's great to verify that the warn log was generated.
       LoggingTestKit.warn("Failed to saveSnapshot").expect {
         snapshotTestKit.failNextPersisted()

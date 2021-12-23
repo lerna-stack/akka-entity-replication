@@ -4,7 +4,7 @@ import akka.Done
 import akka.actor.{ ActorLogging, ActorRef, ActorSystem, Props }
 import akka.cluster.sharding.ShardRegion.HashCodeMessageExtractor
 import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings }
-import akka.persistence.{ PersistentActor, RecoveryCompleted, SnapshotOffer }
+import akka.persistence.{ PersistentActor, RecoveryCompleted, SaveSnapshotFailure, SaveSnapshotSuccess, SnapshotOffer }
 import akka.util.ByteString
 import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ClusterReplicationSettings }
 import lerna.akka.entityreplication.model.{ NormalizedShardId, TypeName }
@@ -116,6 +116,18 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
       } else {
         // 送信側でリトライがあるので新しいindexは無視して、古いindexのeventが再送されるのを待つ
       }
+
+    case SaveSnapshotSuccess(metadata) =>
+      log.info("Succeeded to saveSnapshot given metadata [{}]", metadata)
+
+    case SaveSnapshotFailure(metadata, cause) =>
+      log.warning(
+        "Failed to saveSnapshot given metadata [{}] due to: [{}: {}]",
+        metadata,
+        cause.getClass.getCanonicalName,
+        cause.getMessage,
+      )
+
   }
 
   override def persistenceId: String = CommitLogStoreActor.persistenceId(typeName, shardId)
