@@ -69,7 +69,7 @@ final class CommitLogStoreActorSpec
   private def spawnCommitLogStoreActor(name: Option[String] = None): (ActorRef, NormalizedShardId, PersistenceId) = {
     val props         = CommitLogStoreActor.props(typeName, ClusterReplicationSettings.create(system))
     val actorName     = name.getOrElse(UUID.randomUUID().toString)
-    val actor         = system.actorOf(props, actorName)
+    val actor         = planAutoKill(system.actorOf(props, actorName))
     val shardId       = NormalizedShardId.from(actor.path)
     val persistenceId = CommitLogStoreActor.persistenceId(typeName, shardId.raw)
     (actor, shardId, persistenceId)
