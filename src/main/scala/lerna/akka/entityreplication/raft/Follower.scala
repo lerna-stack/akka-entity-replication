@@ -2,7 +2,7 @@ package lerna.akka.entityreplication.raft
 
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
-import lerna.akka.entityreplication.raft.protocol.{ SuspendEntity, TryCreateEntity }
+import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, SuspendEntity, TryCreateEntity }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 import lerna.akka.entityreplication.ReplicationRegion
@@ -28,6 +28,7 @@ private[raft] trait Follower { this: RaftActor =>
     case command: Command                                 => handleCommand(command)
     case _: ForwardedCommand                              => // ignore, because I'm not a leader
     case TryCreateEntity(_, entityId)                     => createEntityIfNotExists(entityId)
+    case request: FetchEntityEvents                       => receiveFetchEntityEvents(request)
     case RequestRecovery(entityId)                        => recoveryEntity(entityId)
     case response: SnapshotProtocol.FetchSnapshotResponse => receiveFetchSnapshotResponse(response)
     case EntityTerminated(id)                             => receiveEntityTerminated(id)

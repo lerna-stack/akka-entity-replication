@@ -9,6 +9,7 @@ import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardI
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, _ }
 import lerna.akka.entityreplication.raft.eventsourced.CommitLogStore
 import lerna.akka.entityreplication.raft.model._
+import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
 import lerna.akka.entityreplication.raft.protocol.RaftCommands.{ InstallSnapshot, InstallSnapshotSucceeded }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
@@ -132,6 +133,12 @@ private[raft] class RaftActor(
   protected[this] def otherMemberIndexes: Set[MemberIndex] = _otherMemberIndexes
 
   protected[this] def createEntityIfNotExists(entityId: NormalizedEntityId): Unit = replicationActor(entityId)
+
+  protected def receiveFetchEntityEvents(request: FetchEntityEvents): Unit = {
+    val logEntries =
+      currentData.selectEntityEntries(request.entityId, from = request.from, to = request.to)
+    request.replyTo ! FetchEntityEventsResponse(logEntries)
+  }
 
   protected[akka] def recoveryEntity(entityId: NormalizedEntityId): Unit = {
     shardSnapshotStore ! SnapshotProtocol.FetchSnapshot(entityId, replyTo = self)

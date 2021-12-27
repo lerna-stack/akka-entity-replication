@@ -311,6 +311,18 @@ private[entityreplication] trait RaftMemberData
     updateVolatileState(lastApplied = applicableLogEntries.lastOption.map(_.index).getOrElse(lastApplied))
   }
 
+  def selectEntityEntries(
+      entityId: NormalizedEntityId,
+      from: LogEntryIndex,
+      to: LogEntryIndex,
+  ): Seq[LogEntry] = {
+    require(
+      to <= lastApplied,
+      s"Cannot select the entries (${from}-${to}) unless RaftActor have applied the entries to the entities (lastApplied: ${lastApplied})",
+    )
+    replicatedLog.sliceEntries(from, to).filter(_.event.entityId.contains(entityId))
+  }
+
   def selectAlreadyAppliedEntries(
       entityId: NormalizedEntityId,
       from: LogEntryIndex = replicatedLog.headIndexOption.getOrElse(LogEntryIndex.initial()),
