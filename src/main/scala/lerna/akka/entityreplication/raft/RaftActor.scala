@@ -140,23 +140,6 @@ private[raft] class RaftActor(
     request.replyTo ! FetchEntityEventsResponse(logEntries)
   }
 
-  protected[akka] def recoveryEntity(entityId: NormalizedEntityId): Unit = {
-    shardSnapshotStore ! SnapshotProtocol.FetchSnapshot(entityId, replyTo = self)
-  }
-
-  protected[this] def receiveFetchSnapshotResponse(response: SnapshotProtocol.FetchSnapshotResponse): Unit =
-    response match {
-      case SnapshotProtocol.SnapshotFound(snapshot) =>
-        val alreadyAppliedEntries = currentData.selectAlreadyAppliedEntries(
-          snapshot.metadata.entityId,
-          from = snapshot.metadata.logEntryIndex.next(),
-        )
-        replicationActor(snapshot.metadata.entityId) ! RecoveryState(alreadyAppliedEntries, Option(snapshot))
-      case SnapshotProtocol.SnapshotNotFound(entityId) =>
-        val alreadyAppliedEntries = currentData.selectAlreadyAppliedEntries(entityId)
-        replicationActor(entityId) ! RecoveryState(alreadyAppliedEntries, None)
-    }
-
   protected[this] def replicationActor(entityId: NormalizedEntityId): ActorRef = {
     context.child(entityId.underlying).getOrElse {
       if (log.isDebugEnabled)
@@ -165,8 +148,10 @@ private[raft] class RaftActor(
           currentState,
           entityId,
         )
-      val props = replicationActorProps(new ReplicationActorContext(entityId.raw, self))
-      context.watchWith(context.actorOf(props, entityId.underlying), EntityTerminated(entityId))
+      val props  = replicationActorProps(new ReplicationActorContext(entityId.raw, self))
+      val entity = context.watchWith(context.actorOf(props, entityId.underlying), EntityTerminated(entityId))
+      entity ! Activate(shardSnapshotStore, recoveryIndex = currentData.lastApplied)
+      entity
     }
   }
 

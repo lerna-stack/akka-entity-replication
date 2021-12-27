@@ -1,13 +1,16 @@
 package lerna.akka.entityreplication
 
-import java.util.concurrent.atomic.AtomicInteger
+import akka.actor.{ Actor, ActorRef, Cancellable, Props, Stash }
+import akka.actor.typed.scaladsl.adapter._
 
-import akka.actor.{ Actor, Cancellable, Stash }
+import java.util.concurrent.atomic.AtomicInteger
 import akka.event.Logging
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
+import lerna.akka.entityreplication.raft.RaftProtocol
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
-import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
+import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse, SnapshotOffer }
+import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 
 private[entityreplication] object ReplicationActor {
@@ -15,6 +18,19 @@ private[entityreplication] object ReplicationActor {
   private[this] val instanceIdCounter = new AtomicInteger(1)
 
   private def generateInstanceId(): EntityInstanceId = EntityInstanceId(instanceIdCounter.getAndIncrement())
+
+  private object FetchSnapshotResponseMapper {
+    def props(replyTo: ActorRef, snapshot: Option[EntitySnapshot]): Props =
+      Props(new FetchEntityEventsResponseMapper(replyTo, snapshot))
+  }
+
+  private class FetchEntityEventsResponseMapper(replyTo: ActorRef, snapshot: Option[EntitySnapshot]) extends Actor {
+    override def receive: Receive = {
+      case FetchEntityEventsResponse(events) =>
+        replyTo ! RaftProtocol.RecoveryState(events, snapshot)
+        context.stop(self)
+    }
+  }
 }
 
 @deprecated(message = "Use typed.ReplicatedEntityBehavior instead", since = "2.0.0")
@@ -24,6 +40,8 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
   private val internalStash = createStash()
 
   private val instanceId = ReplicationActor.generateInstanceId()
+
+  private val entityId = NormalizedEntityId.of(self.path)
 
   private[this] val settings = ClusterReplicationSettings.create(context.system)
 
@@ -35,51 +53,64 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
     def stateReceive(receive: Receive, message: Any): Unit
   }
 
-  override def aroundPreStart(): Unit = {
-    super.aroundPreStart()
-    requestRecovery()
-  }
-
-  override def aroundPreRestart(reason: Throwable, message: Option[Any]): Unit = {
-    super.aroundPreRestart(reason, message)
-    requestRecovery()
-  }
-
-  private[this] def requestRecovery(): Unit = {
-    context.parent ! RequestRecovery(NormalizedEntityId.of(self.path))
-  }
-
-  private[this] val recovering: State = new State {
-
-    private[this] val recoveryTimeoutTimer: Cancellable =
-      context.system.scheduler.scheduleOnce(settings.recoveryEntityTimeout, self, RecoveryTimeout)
-
+  private[this] val inactive: State = new State {
     override def stateReceive(receive: Receive, message: Any): Unit =
       message match {
-        case RecoveryTimeout =>
-          // to restart
-          // TODO: BackoffSupervisor を使ってカスケード障害を回避する
-          if (log.isInfoEnabled)
-            log.info("Entity (name: {}) recovering timed out. It will be retried later.", self.path.name)
-          throw EntityRecoveryTimeoutException(self.path)
-
-        case RecoveryState(logEntries, maybeSnapshot) =>
-          recoveryTimeoutTimer.cancel()
-          maybeSnapshot.foreach { snapshot =>
-            innerApplyEvent(
-              SnapshotOffer(snapshot.state.underlying),
-              snapshot.metadata.logEntryIndex,
-            )
-          }
-          logEntries.foreach { logEntry =>
-            innerApplyEvent(logEntry.event.event, logEntry.index)
-          }
-          changeState(ready)
-          internalStash.unstashAll()
+        case Activate(shardSnapshotStore, recoveryIndex) =>
+          changeState(recovering(shardSnapshotStore, recoveryIndex))
         case _ =>
           internalStash.stash()
       }
   }
+
+  private[this] def recovering(shardSnapshotStore: ActorRef, recoveryIndex: LogEntryIndex): State =
+    new State {
+
+      private[this] val recoveryTimeoutTimer: Cancellable =
+        context.system.scheduler.scheduleOnce(settings.recoveryEntityTimeout, self, RecoveryTimeout)
+
+      shardSnapshotStore ! SnapshotProtocol.FetchSnapshot(entityId, self)
+
+      override def stateReceive(receive: Receive, message: Any): Unit =
+        message match {
+          case RecoveryTimeout =>
+            // to restart
+            // TODO: BackoffSupervisor を使ってカスケード障害を回避する
+            if (log.isInfoEnabled)
+              log.info("Entity (name: {}) recovering timed out. It will be retried later.", self.path.name)
+            throw EntityRecoveryTimeoutException(self.path)
+
+          case found: SnapshotProtocol.SnapshotFound =>
+            fetchEntityEvents(snapshotIndex = found.snapshot.metadata.logEntryIndex, Option(found.snapshot))
+          case _: SnapshotProtocol.SnapshotNotFound =>
+            fetchEntityEvents(snapshotIndex = LogEntryIndex.initial(), None)
+
+          case RecoveryState(logEntries, maybeSnapshot) =>
+            recoveryTimeoutTimer.cancel()
+            maybeSnapshot.foreach { snapshot =>
+              innerApplyEvent(
+                SnapshotOffer(snapshot.state.underlying),
+                snapshot.metadata.logEntryIndex,
+              )
+            }
+            logEntries.foreach { logEntry =>
+              innerApplyEvent(logEntry.event.event, logEntry.index)
+            }
+            changeState(ready)
+            internalStash.unstashAll()
+          case _ =>
+            internalStash.stash()
+        }
+
+      def fetchEntityEvents(snapshotIndex: LogEntryIndex, snapshot: Option[EntitySnapshot]): Unit = {
+        context.parent ! FetchEntityEvents(
+          entityId,
+          from = snapshotIndex.next(),
+          to = recoveryIndex,
+          context.actorOf(ReplicationActor.FetchSnapshotResponseMapper.props(self, snapshot)),
+        )
+      }
+    }
 
   private[this] val ready: State = new State {
 
@@ -132,7 +163,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
 
   def currentState: StateData
 
-  private[this] var replicationState: State         = recovering
+  private[this] var replicationState: State         = inactive
   private[this] def changeState(state: State): Unit = replicationState = state
 
   override def aroundReceive(receive: Receive, msg: Any): Unit =
@@ -143,7 +174,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
     context.parent ! Replicate(
       event,
       replyTo = self,
-      NormalizedEntityId.of(self.path),
+      entityId,
       instanceId,
       originSender = sender(),
     )

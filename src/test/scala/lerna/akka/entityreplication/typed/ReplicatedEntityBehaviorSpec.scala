@@ -3,7 +3,7 @@ package lerna.akka.entityreplication.typed
 import akka.actor.UnhandledMessage
 import akka.actor.testkit.typed.scaladsl.{ ActorTestKit, TestProbe }
 import akka.actor.typed.eventstream.EventStream
-import akka.actor.typed.{ ActorRef, ActorSystem, PostStop }
+import akka.actor.typed.{ ActorRef, ActorSystem, Behavior, PostStop }
 import akka.actor.typed.scaladsl.{ ActorContext, Behaviors }
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol
@@ -13,13 +13,11 @@ import org.scalatest.{ BeforeAndAfterAll, Inside, Matchers, WordSpec }
 import akka.actor.typed.scaladsl.adapter._
 import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.ReplicationRegion
+import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 
 import java.util.concurrent.atomic.AtomicInteger
 
-/**
-  * verify type definition: This code doesn't make sense in context
-  */
 object ReplicatedEntityBehaviorSpec {
 
   import akka.actor.typed.ActorRef
@@ -169,7 +167,8 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
 
   override def afterAll(): Unit = testkit.shutdownTestKit()
 
-  private[this] val shardProbe = testkit.createTestProbe[ShardCommand]()
+  private[this] val shardProbe   = testkit.createTestProbe[ShardCommand]()
+  private val snapshotStoreProbe = testkit.createTestProbe[SnapshotProtocol.Command]()
 
   private[this] val entityId           = "entity1"
   private[this] val normalizedEntityId = NormalizedEntityId.from(entityId)
@@ -196,15 +195,21 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
   "ReplicatedEntityBehavior" should {
 
     "process command that updates the entity state" in {
-      // spawn entity
-      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+      val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 
       // recover the entity
-      inside(shardProbe.expectMessageType[RaftProtocol.RequestRecovery]) {
-        case RaftProtocol.RequestRecovery(entityId) =>
+      inside(snapshotStoreProbe.receiveMessage()) {
+        case SnapshotProtocol.FetchSnapshot(entityId, replyTo) =>
           entityId should be(normalizedEntityId)
+          replyTo ! SnapshotProtocol.SnapshotNotFound(entityId)
       }
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      inside(shardProbe.receiveMessage()) {
+        case FetchEntityEvents(entityId, from, to, replyTo) =>
+          entityId should be(normalizedEntityId)
+          from should be(LogEntryIndex.initial().next())
+          to should be(LogEntryIndex.initial())
+          replyTo ! FetchEntityEventsResponse(Seq())
+      }
 
       // process a command with replicate
       val replyProbe = bankAccount.askWithTestProbe(BankAccountBehavior.Deposit(100, _))
@@ -231,14 +236,20 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
     }
 
     "process command that only reads state" in {
-      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+      val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
       import SnapshotProtocol._
       val metadata = EntitySnapshotMetadata(normalizedEntityId, nextLogEntryIndex())
       val state    = EntityState(BankAccountBehavior.Account(100))
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), Option(EntitySnapshot(metadata, state)))
+      inside(snapshotStoreProbe.receiveMessage()) {
+        case SnapshotProtocol.FetchSnapshot(_, replyTo) =>
+          replyTo ! SnapshotProtocol.SnapshotFound(EntitySnapshot(metadata, state))
+      }
+      inside(shardProbe.receiveMessage()) {
+        case FetchEntityEvents(_, _, _, replyTo) =>
+          replyTo ! FetchEntityEventsResponse(Seq())
+      }
 
       // process a command with ensuring consistency
       val replyProbe = bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
@@ -264,20 +275,31 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
     }
 
     "recovery state with the snapshot state and replicated events that is send from the shard" in {
-      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
-
-      // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
       import SnapshotProtocol._
-      val metadata = EntitySnapshotMetadata(normalizedEntityId, logEntryIndex = LogEntryIndex(5))
-      val state    = EntityState(BankAccountBehavior.Account(100))
-      val term     = Term(1)
+      val metadata    = EntitySnapshotMetadata(normalizedEntityId, logEntryIndex = LogEntryIndex(5))
+      val state       = EntityState(BankAccountBehavior.Account(100))
+      val term        = Term(1)
+      val lastApplied = LogEntryIndex(8)
       val events = Seq(
         LogEntry(LogEntryIndex(6), EntityEvent(Option(normalizedEntityId), BankAccountBehavior.Deposited(10)), term),
         LogEntry(LogEntryIndex(7), EntityEvent(Option(normalizedEntityId), BankAccountBehavior.Deposited(10)), term),
         LogEntry(LogEntryIndex(8), EntityEvent(Option(normalizedEntityId), BankAccountBehavior.Deposited(10)), term),
       )
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(events, Option(EntitySnapshot(metadata, state)))
+
+      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+      bankAccount.asEntity ! RaftProtocol.Activate(snapshotStoreProbe.ref.toClassic, recoveryIndex = lastApplied)
+
+      // recover the entity
+      inside(snapshotStoreProbe.receiveMessage()) {
+        case SnapshotProtocol.FetchSnapshot(_, replyTo) =>
+          replyTo ! SnapshotProtocol.SnapshotFound(EntitySnapshot(metadata, state))
+      }
+      inside(shardProbe.receiveMessage()) {
+        case FetchEntityEvents(_, from, to, replyTo) =>
+          from should be(metadata.logEntryIndex.next())
+          to should be(lastApplied)
+          replyTo ! FetchEntityEventsResponse(events)
+      }
 
       val replyProbe = bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
 
@@ -292,11 +314,17 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
     }
 
     "send a passivation command to shard when receiving the stop message" in {
-      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+      val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      inside(snapshotStoreProbe.receiveMessage()) {
+        case SnapshotProtocol.FetchSnapshot(entityId, replyTo) =>
+          replyTo ! SnapshotProtocol.SnapshotNotFound(entityId)
+      }
+      inside(shardProbe.receiveMessage()) {
+        case FetchEntityEvents(_, _, _, replyTo) =>
+          replyTo ! FetchEntityEventsResponse(Seq())
+      }
 
       bankAccount ! BankAccountBehavior.Passivate
 
@@ -312,18 +340,24 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
     }
 
     "stash command until recovery completed" in {
-      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+      val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 
       // the command will be stash
       val replyToProbe = bankAccount.askWithTestProbe(BankAccountBehavior.Deposit(10, _))
       replyToProbe.expectNoMessage()
 
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
       import SnapshotProtocol._
       val metadata = EntitySnapshotMetadata(normalizedEntityId, nextLogEntryIndex())
       val state    = EntityState(BankAccountBehavior.Account(100))
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), Option(EntitySnapshot(metadata, state)))
+      inside(snapshotStoreProbe.receiveMessage()) {
+        case SnapshotProtocol.FetchSnapshot(_, replyTo) =>
+          replyTo ! SnapshotProtocol.SnapshotFound(EntitySnapshot(metadata, state))
+      }
+      inside(shardProbe.receiveMessage()) {
+        case FetchEntityEvents(_, _, _, replyTo) =>
+          replyTo ! FetchEntityEventsResponse(Seq())
+      }
 
       // unstash the command when recovery completed
       val replicate = shardProbe.expectMessageType[RaftProtocol.Replicate]
@@ -336,14 +370,20 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
     }
 
     "stash command until replication completed" in {
-      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+      val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
       import SnapshotProtocol._
       val metadata = EntitySnapshotMetadata(normalizedEntityId, nextLogEntryIndex())
       val state    = EntityState(BankAccountBehavior.Account(100))
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), Option(EntitySnapshot(metadata, state)))
+      inside(snapshotStoreProbe.receiveMessage()) {
+        case SnapshotProtocol.FetchSnapshot(_, replyTo) =>
+          replyTo ! SnapshotProtocol.SnapshotFound(EntitySnapshot(metadata, state))
+      }
+      inside(shardProbe.receiveMessage()) {
+        case FetchEntityEvents(_, _, _, replyTo) =>
+          replyTo ! FetchEntityEventsResponse(Seq())
+      }
 
       val getBalanceProbe = bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
 
@@ -367,11 +407,10 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
     }
 
     "can process commands after receiving Replica even if replication is in progress" in {
-      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+      val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      recoverWithInitialState(bankAccount.asEntity)
 
       // process a command
       val depositReplyProbe1 = bankAccount.askWithTestProbe(BankAccountBehavior.Deposit(100, _))
@@ -398,11 +437,10 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
     }
 
     "replace instanceId when it restarted" in {
-      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+      var bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      recoverWithInitialState(bankAccount.asEntity)
 
       // process a command
       bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
@@ -412,8 +450,8 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       // the command cause an error
       bankAccount ! BankAccountBehavior.SimulateFailure
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      bankAccount = spawnEntity(BankAccountBehavior(entityContext))
+      recoverWithInitialState(bankAccount.asEntity)
 
       // process a command
       bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
@@ -425,11 +463,10 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
     }
 
     "ignore ReplicationSucceeded which has old instanceId" in {
-      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+      var bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      recoverWithInitialState(bankAccount.asEntity)
 
       // process a command
       bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
@@ -440,8 +477,8 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       // the command cause an error
       bankAccount ! BankAccountBehavior.SimulateFailure
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      bankAccount = spawnEntity(BankAccountBehavior(entityContext))
+      recoverWithInitialState(bankAccount.asEntity)
 
       // process a command
       val getBalance = bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
@@ -455,11 +492,10 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
     }
 
     "ignore Replica that has older LogEntryIndex than already applied ones" in {
-      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+      val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      recoverWithInitialState(bankAccount.asEntity)
 
       val replicatedLogEntry =
         LogEntry(
@@ -487,7 +523,7 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
         .withFallback(this.testkit.config)
 
       val localTestkit = ActorTestKit(config)
-      val bankAccount  = localTestkit.spawn(BankAccountBehavior(entityContext))
+      val bankAccount  = spawnEntity(BankAccountBehavior(entityContext), localTestkit)
 
       shardProbe.expectTerminated(bankAccount)
 
@@ -495,30 +531,39 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       localTestkit.shutdownTestKit()
     }
 
-    "reboot and request Recovery again after recovery-entity-timeout" in {
+    "reboot and retry recovery after recovery-entity-timeout" in {
       val config = ConfigFactory
         .parseString("lerna.akka.entityreplication.recovery-entity-timeout = 0.5s")
         .withFallback(this.testkit.config)
       val localTestkit = ActorTestKit(config)
-      val bankAccount  = localTestkit.spawn(BankAccountBehavior(entityContext))
+      var bankAccount  = spawnEntity(BankAccountBehavior(entityContext), localTestkit)
 
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
+      snapshotStoreProbe.expectMessageType[SnapshotProtocol.FetchSnapshot]
       // timeout after 0.5s
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
+      shardProbe.expectTerminated(bankAccount)
+      bankAccount = spawnEntity(BankAccountBehavior(entityContext), localTestkit)
+      inside(snapshotStoreProbe.expectMessageType[SnapshotProtocol.Command]) {
+        case SnapshotProtocol.FetchSnapshot(entityId, replyTo) =>
+          replyTo ! SnapshotProtocol.SnapshotNotFound(entityId)
+      }
+      shardProbe.expectMessageType[FetchEntityEvents]
+      // timeout after 0.5s
+      shardProbe.expectTerminated(bankAccount)
+      bankAccount = spawnEntity(BankAccountBehavior(entityContext), localTestkit)
+      snapshotStoreProbe.expectMessageType[SnapshotProtocol.FetchSnapshot]
 
       localTestkit.stop(bankAccount)
       localTestkit.shutdownTestKit()
     }
 
     "handle signal" in {
-      val bankAccount           = testkit.spawn(BankAccountBehavior(entityContext))
+      val bankAccount           = spawnEntity(BankAccountBehavior(entityContext))
       val eventStreamSubscriber = testkit.createTestProbe[BankAccountBehavior.PostStopReceived.type]()
 
       testkit.system.eventStream ! EventStream.Subscribe(eventStreamSubscriber.ref)
 
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      recoverWithInitialState(bankAccount.asEntity)
       bankAccount ! BankAccountBehavior.Stop
 
       // PostStopReceived is published to EventStream by PostStop signal
@@ -530,14 +575,13 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
     }
 
     "publish unhandled command to Akka event stream" in {
-      val bankAccount           = testkit.spawn(BankAccountBehavior(entityContext))
+      val bankAccount           = spawnEntity(BankAccountBehavior(entityContext))
       val eventStreamSubscriber = testkit.createTestProbe[UnhandledMessage]()
 
       testkit.system.eventStream ! EventStream.Subscribe(eventStreamSubscriber.ref)
 
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      recoverWithInitialState(bankAccount.asEntity)
 
       bankAccount ! BankAccountBehavior.Unhandled
 
@@ -553,11 +597,10 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
     }
 
     "stash a user defined command when stash effect is used" in {
-      val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+      val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 
       // recover the entity
-      shardProbe.expectMessageType[RaftProtocol.RequestRecovery]
-      bankAccount.asEntity ! RaftProtocol.RecoveryState(Seq(), None)
+      recoverWithInitialState(bankAccount.asEntity)
 
       bankAccount ! BankAccountBehavior.Lock
       val r1 = shardProbe.expectMessageType[RaftProtocol.Replicate]
@@ -580,6 +623,26 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       replyProbe.receiveMessage()
 
       testkit.stop(bankAccount)
+    }
+  }
+
+  private def spawnEntity(
+      behavior: Behavior[BankAccountBehavior.Command],
+      testkit: ActorTestKit = testkit,
+  ): ActorRef[BankAccountBehavior.Command] = {
+    val bankAccount = testkit.spawn(behavior)
+    bankAccount.asEntity ! RaftProtocol.Activate(snapshotStoreProbe.ref.toClassic, LogEntryIndex.initial())
+    bankAccount
+  }
+
+  private def recoverWithInitialState(entity: ActorRef[RaftProtocol.EntityCommand]): Unit = {
+    inside(snapshotStoreProbe.receiveMessage()) {
+      case SnapshotProtocol.FetchSnapshot(entityId, replyTo) =>
+        replyTo ! SnapshotProtocol.SnapshotNotFound(entityId)
+    }
+    inside(shardProbe.receiveMessage()) {
+      case FetchEntityEvents(_, _, _, replyTo) =>
+        replyTo ! FetchEntityEventsResponse(Seq())
     }
   }
 }

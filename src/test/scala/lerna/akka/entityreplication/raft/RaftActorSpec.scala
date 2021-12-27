@@ -27,10 +27,9 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         selfMemberIndex = followerMemberIndex,
       )
 
-      val leaderMemberIndex = createUniqueMemberIndex()
-      val replyProbe        = TestProbe()
-      val term              = Term.initial().next()
-      val entityId          = NormalizedEntityId.from("test-entity")
+      val replyProbe = TestProbe()
+      val term       = Term.initial().next()
+      val entityId   = NormalizedEntityId.from("test-entity")
       val logEntries = Seq(
         LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), term),
         LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "a"), term),

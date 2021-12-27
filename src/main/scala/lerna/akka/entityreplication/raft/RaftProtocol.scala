@@ -14,7 +14,6 @@ import lerna.akka.entityreplication.typed.ClusterReplication.ShardCommand
 private[entityreplication] object RaftProtocol {
 
   sealed trait RaftActorCommand                                                   extends ShardCommand
-  final case class RequestRecovery(entityId: NormalizedEntityId)                  extends RaftActorCommand
   final case class Command(command: Any)                                          extends RaftActorCommand with ClusterReplicationSerializable
   final case class ForwardedCommand(command: Command)                             extends RaftActorCommand with ClusterReplicationSerializable
   final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState) extends RaftActorCommand
@@ -46,6 +45,8 @@ private[entityreplication] object RaftProtocol {
 
   sealed trait EntityCommand
 
+  final case class Activate(shardSnapshotStore: ActorRef, recoveryIndex: LogEntryIndex)   extends EntityCommand
+  final case class ApplySnapshot(entitySnapshot: Option[EntitySnapshot])                  extends EntityCommand
   final case class RecoveryState(events: Seq[LogEntry], snapshot: Option[EntitySnapshot]) extends EntityCommand
   final case class ProcessCommand(command: Any)                                           extends EntityCommand
   final case class Replica(logEntry: LogEntry)                                            extends EntityCommand

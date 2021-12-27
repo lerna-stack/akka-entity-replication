@@ -29,25 +29,23 @@ private[raft] trait Candidate { this: RaftActor =>
         become(Candidate)
       }
 
-    case request: RequestVote                             => receiveRequestVote(request)
-    case response: RequestVoteResponse                    => receiveRequestVoteResponse(response)
-    case request: AppendEntries                           => receiveAppendEntries(request)
-    case request: InstallSnapshot                         => receiveInstallSnapshot(request)
-    case _: InstallSnapshotResponse                       => // ignore, because I'm not a leader
-    case response: SnapshotSyncManager.Response           => receiveSyncSnapshotResponse(response)
-    case command: Command                                 => handleCommand(command)
-    case _: ForwardedCommand                              => // ignore, because I'm not a leader
-    case TryCreateEntity(_, entityId)                     => createEntityIfNotExists(entityId)
-    case request: FetchEntityEvents                       => receiveFetchEntityEvents(request)
-    case RequestRecovery(entityId)                        => recoveryEntity(entityId)
-    case response: SnapshotProtocol.FetchSnapshotResponse => receiveFetchSnapshotResponse(response)
-    case EntityTerminated(id)                             => receiveEntityTerminated(id)
-    case SuspendEntity(_, entityId, stopMessage)          => suspendEntity(entityId, stopMessage)
-    case SnapshotTick                                     => handleSnapshotTick()
-    case response: Snapshot                               => receiveEntitySnapshotResponse(response)
-    case response: SnapshotProtocol.SaveSnapshotResponse  => receiveSaveSnapshotResponse(response)
-    case _: akka.persistence.SaveSnapshotSuccess          => // ignore
-    case _: akka.persistence.SaveSnapshotFailure          => // ignore: no problem because events exist even if snapshot saving failed
+    case request: RequestVote                            => receiveRequestVote(request)
+    case response: RequestVoteResponse                   => receiveRequestVoteResponse(response)
+    case request: AppendEntries                          => receiveAppendEntries(request)
+    case request: InstallSnapshot                        => receiveInstallSnapshot(request)
+    case _: InstallSnapshotResponse                      => // ignore, because I'm not a leader
+    case response: SnapshotSyncManager.Response          => receiveSyncSnapshotResponse(response)
+    case command: Command                                => handleCommand(command)
+    case _: ForwardedCommand                             => // ignore, because I'm not a leader
+    case TryCreateEntity(_, entityId)                    => createEntityIfNotExists(entityId)
+    case request: FetchEntityEvents                      => receiveFetchEntityEvents(request)
+    case EntityTerminated(id)                            => receiveEntityTerminated(id)
+    case SuspendEntity(_, entityId, stopMessage)         => suspendEntity(entityId, stopMessage)
+    case SnapshotTick                                    => handleSnapshotTick()
+    case response: Snapshot                              => receiveEntitySnapshotResponse(response)
+    case response: SnapshotProtocol.SaveSnapshotResponse => receiveSaveSnapshotResponse(response)
+    case _: akka.persistence.SaveSnapshotSuccess         => // ignore
+    case _: akka.persistence.SaveSnapshotFailure         => // ignore: no problem because events exist even if snapshot saving failed
   }
 
   private[this] def receiveRequestVote(request: RequestVote): Unit =

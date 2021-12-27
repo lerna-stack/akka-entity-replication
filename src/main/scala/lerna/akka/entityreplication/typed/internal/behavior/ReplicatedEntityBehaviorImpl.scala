@@ -91,7 +91,7 @@ private[entityreplication] final case class ReplicatedEntityBehaviorImpl[Command
               instanceId,
               buffer,
             )
-            Recovering.behavior(setup)
+            Inactive.behavior(setup)
           }
         }
       }.onFailure(SupervisorStrategy.stop)
