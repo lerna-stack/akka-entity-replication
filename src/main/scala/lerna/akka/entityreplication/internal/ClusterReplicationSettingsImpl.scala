@@ -30,6 +30,9 @@ private[entityreplication] final case class ClusterReplicationSettingsImpl(
   override def withEventSourcedJournalPluginId(pluginId: String): ClusterReplicationSettingsImpl =
     copy(raftSettings = raftSettings.withEventSourcedJournalPluginId(pluginId))
 
+  override def withEventSourcedSnapshotStorePluginId(pluginId: String): ClusterReplicationSettingsImpl =
+    copy(raftSettings = raftSettings.withEventSourcedSnapshotStorePluginId(pluginId))
+
 }
 
 private[entityreplication] object ClusterReplicationSettingsImpl {

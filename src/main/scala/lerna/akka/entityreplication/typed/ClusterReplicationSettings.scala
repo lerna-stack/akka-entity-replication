@@ -33,4 +33,6 @@ trait ClusterReplicationSettings extends classic.ClusterReplicationSettings {
 
   override def withEventSourcedJournalPluginId(pluginId: String): ClusterReplicationSettings
 
+  override def withEventSourcedSnapshotStorePluginId(pluginId: String): ClusterReplicationSettings
+
 }
