@@ -458,32 +458,42 @@ private[raft] class RaftActor(
     }
 
   protected def startSyncSnapshot(installSnapshot: InstallSnapshot): Unit = {
-    val snapshotSyncManagerName = ActorIds.actorName(
-      snapshotSyncManagerNamePrefix,
-      typeName.underlying,
-      installSnapshot.srcMemberIndex.role,
-    )
-    val snapshotSyncManager =
-      context.child(snapshotSyncManagerName).getOrElse {
-        context.actorOf(
-          SnapshotSyncManager.props(
-            typeName = typeName,
-            srcMemberIndex = installSnapshot.srcMemberIndex,
-            dstMemberIndex = selfMemberIndex,
-            dstShardSnapshotStore = shardSnapshotStore,
-            shardId,
-            settings,
-          ),
-          snapshotSyncManagerName,
+    if (currentData.snapshottingProgress.isInProgress) {
+      // Snapshot updates during compaction will break consistency
+      if (log.isInfoEnabled)
+        log.info(
+          "Skipping snapshot synchronization because compaction is in progress (remaining: {}/{})",
+          currentData.snapshottingProgress.inProgressEntities.size,
+          currentData.snapshottingProgress.inProgressEntities.size + currentData.snapshottingProgress.completedEntities.size,
         )
-      }
-    snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
-      srcLatestSnapshotLastLogTerm = installSnapshot.srcLatestSnapshotLastLogTerm,
-      srcLatestSnapshotLastLogIndex = installSnapshot.srcLatestSnapshotLastLogLogIndex,
-      dstLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
-      dstLatestSnapshotLastLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
-      replyTo = self,
-    )
+    } else {
+      val snapshotSyncManagerName = ActorIds.actorName(
+        snapshotSyncManagerNamePrefix,
+        typeName.underlying,
+        installSnapshot.srcMemberIndex.role,
+      )
+      val snapshotSyncManager =
+        context.child(snapshotSyncManagerName).getOrElse {
+          context.actorOf(
+            SnapshotSyncManager.props(
+              typeName = typeName,
+              srcMemberIndex = installSnapshot.srcMemberIndex,
+              dstMemberIndex = selfMemberIndex,
+              dstShardSnapshotStore = shardSnapshotStore,
+              shardId,
+              settings,
+            ),
+            snapshotSyncManagerName,
+          )
+        }
+      snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
+        srcLatestSnapshotLastLogTerm = installSnapshot.srcLatestSnapshotLastLogTerm,
+        srcLatestSnapshotLastLogIndex = installSnapshot.srcLatestSnapshotLastLogLogIndex,
+        dstLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
+        dstLatestSnapshotLastLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
+        replyTo = self,
+      )
+    }
   }
 
   private[this] def stopAllEntities(): Unit = {
