@@ -6,7 +6,7 @@ import akka.actor.typed.scaladsl.adapter._
 import lerna.akka.entityreplication.ReplicationRegion
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol
-import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntryIndex, NoOp, ReplicatedLog, Term }
+import lerna.akka.entityreplication.raft.model.{ EntityEvent, NoOp, ReplicatedLog, Term }
 import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.typed.ClusterReplication.ShardCommand
@@ -101,7 +101,10 @@ private[entityreplication] class ReplicatedEntityBehaviorTestKitImpl[Command, Ev
 
   private[this] def spawnAndRecoverReplicatedEntityRef(): ActorRef[Command] = {
     val ref = actorTestKit.spawn(behavior(entityContext))
-    ref.asEntity ! RaftProtocol.Activate(shardSnapshotStoreProbe.ref.toClassic, recoveryIndex = LogEntryIndex.initial())
+    ref.asEntity ! RaftProtocol.Activate(
+      shardSnapshotStoreProbe.ref.toClassic,
+      recoveryIndex = replicatedLog.lastLogIndex, // FetchEntityEventsResponse contains all entries.
+    )
     val fetchSnapshot = shardSnapshotStoreProbe.expectMessageType[SnapshotProtocol.FetchSnapshot]
     fetchSnapshot.replyTo ! SnapshotProtocol.SnapshotNotFound(fetchSnapshot.entityId)
     val fetchEvents = shardProbe.expectMessageType[FetchEntityEvents]
