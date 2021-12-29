@@ -78,6 +78,7 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec", c
             case _: RuntimeException => SupervisorStrategy.Stop
           },
         )
+        // recoveryIndex is arbitrary value but recoveryIndex is greater than 0 normally.
         replicationActor ! Activate(snapshotStoreProbe.ref, LogEntryIndex.initial().next())
         val fetchSnapshot = snapshotStoreProbe.expectMsgType[SnapshotProtocol.FetchSnapshot]
         fetchSnapshot.replyTo ! SnapshotProtocol.SnapshotNotFound(fetchSnapshot.entityId)

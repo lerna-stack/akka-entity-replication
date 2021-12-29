@@ -11,6 +11,7 @@ protected[testkit] class TestReplicationActor(replicationActorProps: Props) exte
 
   private[this] val replicationActor = context.watch(context.actorOf(replicationActorProps))
 
+  // recoveryIndex is arbitrary value but recoveryIndex is greater than 0 normally.
   replicationActor ! Activate(self, recoveryIndex = LogEntryIndex.initial().next())
 
   override def receive: Receive = active(LogEntryIndex(1))
