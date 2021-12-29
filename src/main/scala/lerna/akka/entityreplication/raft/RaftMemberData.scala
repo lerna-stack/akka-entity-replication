@@ -323,13 +323,6 @@ private[entityreplication] trait RaftMemberData
     replicatedLog.sliceEntries(from, to).filter(_.event.entityId.contains(entityId))
   }
 
-  def selectAlreadyAppliedEntries(
-      entityId: NormalizedEntityId,
-      from: LogEntryIndex = replicatedLog.headIndexOption.getOrElse(LogEntryIndex.initial()),
-  ): Seq[LogEntry] = {
-    replicatedLog.sliceEntries(from, to = lastApplied).filter(_.event.entityId.contains(entityId))
-  }
-
   def alreadyVotedOthers(candidate: MemberIndex): Boolean = votedFor.exists(candidate != _)
 
   def hasMatchLogEntry(prevLogIndex: LogEntryIndex, prevLogTerm: Term): Boolean = {
