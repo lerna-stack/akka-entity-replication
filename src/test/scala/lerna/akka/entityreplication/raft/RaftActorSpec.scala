@@ -2,10 +2,13 @@ package lerna.akka.entityreplication.raft
 
 import akka.actor.ActorSystem
 import akka.testkit.{ TestKit, TestProbe }
+import akka.actor.typed.scaladsl.adapter._
 import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.model.NormalizedEntityId
-import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, Term }
+import lerna.akka.entityreplication.raft.RaftActor.Follower
+import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, NoOp, ReplicatedLog, Term }
+import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 
 object RaftActorSpec {
@@ -14,6 +17,42 @@ object RaftActorSpec {
 
 class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
   import RaftActorSpec._
+
+  "RaftActor receiving FetchEntityEvents" should {
+    "reply FetchEntityEventsResponse" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+
+      val replyProbe = TestProbe()
+      val term       = Term.initial().next()
+      val entityId   = NormalizedEntityId.from("test-entity")
+      val logEntries = Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), term),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "a"), term),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "b"), term),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "c"), term),
+      )
+      val data = RaftMemberData(
+        replicatedLog = ReplicatedLog().merge(logEntries, LogEntryIndex.initial()),
+        lastApplied = LogEntryIndex(3),
+      )
+      setState(follower, Follower, data)
+      assume(data.lastApplied <= data.replicatedLog.lastLogIndex)
+
+      follower ! FetchEntityEvents(
+        entityId,
+        from = LogEntryIndex.initial(),
+        to = data.lastApplied,
+        replyTo = replyProbe.ref,
+      )
+      val reply = replyProbe.expectMsgType[FetchEntityEventsResponse]
+      reply.events.map(_.index) should be(Seq(LogEntryIndex(2), LogEntryIndex(3)))
+    }
+  }
 
   "RaftActor Snapshotting" should {
 

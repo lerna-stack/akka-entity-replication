@@ -71,6 +71,8 @@ private[entityreplication] class Ready[Command, Event, State](
         case command: RaftProtocol.ProcessCommand => receiveProcessCommand(command, readyState)
         case command: RaftProtocol.Replica        => receiveReplica(command, readyState)
         case command: RaftProtocol.TakeSnapshot   => receiveTakeSnapshot(command, readyState.entityState)
+        case _: RaftProtocol.Activate             => Behaviors.unhandled
+        case _: RaftProtocol.ApplySnapshot        => Behaviors.unhandled
         case _: RaftProtocol.RecoveryState        => Behaviors.unhandled
         case _: RaftProtocol.ReplicationSucceeded => Behaviors.unhandled
         case RaftProtocol.RecoveryTimeout         => Behaviors.unhandled

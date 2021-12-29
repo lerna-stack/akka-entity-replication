@@ -130,7 +130,7 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
         entity ! PingPongEntity.Break()
         awaitAssert {
           entity ! PingPongEntity.Ping(replyTo.ref)
-          replyTo.receiveMessage().count should be(3)
+          replyTo.receiveMessage(max = remainingOrDefault / 5).count should be(3)
         }
       }
     }
