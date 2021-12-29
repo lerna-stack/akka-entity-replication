@@ -19,7 +19,7 @@ private[entityreplication] object ReplicationActor {
 
   private def generateInstanceId(): EntityInstanceId = EntityInstanceId(instanceIdCounter.getAndIncrement())
 
-  private object FetchSnapshotResponseMapper {
+  private object FetchEntityEventsResponseMapper {
     def props(replyTo: ActorRef, snapshot: Option[EntitySnapshot]): Props =
       Props(new FetchEntityEventsResponseMapper(replyTo, snapshot))
   }
@@ -107,7 +107,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
           entityId,
           from = snapshotIndex.next(),
           to = recoveryIndex,
-          context.actorOf(ReplicationActor.FetchSnapshotResponseMapper.props(self, snapshot)),
+          context.actorOf(ReplicationActor.FetchEntityEventsResponseMapper.props(self, snapshot)),
         )
       }
     }
