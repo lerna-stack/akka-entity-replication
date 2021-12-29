@@ -10,15 +10,15 @@ import lerna.akka.entityreplication.raft.ActorSpec
 import lerna.akka.entityreplication.raft.RaftActor.CompactionCompleted
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, Term }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
+import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
   EntitySnapshot,
   EntitySnapshotMetadata,
   EntityState,
 }
-import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, SnapshotProtocol }
-import lerna.akka.entityreplication.util.EventStore
-import org.scalatest.Inspectors._
+import lerna.akka.entityreplication.util.{ RaftEventJournalTestKit, RaftSnapshotStoreTestKit }
 import org.scalatest.BeforeAndAfterEach
+import org.scalatest.Inspectors._
 
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -28,18 +28,20 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
   private[this] val shardId = NormalizedShardId("test-shard")
 
-  private[this] val typeName                   = TypeName.from("test-type-1")
-  private[this] val srcMemberIndex             = MemberIndex("test-member-index-1")
-  private[this] var srcSnapshotStore: ActorRef = null
+  private[this] val typeName              = TypeName.from("test-type-1")
+  private[this] val srcMemberIndex        = MemberIndex("test-member-index-1")
+  private val srcRaftSnapshotStoreTestKit = RaftSnapshotStoreTestKit(system, typeName, srcMemberIndex, settings)
 
-  private[this] val dstMemberIndex             = MemberIndex("test-member-index-2")
-  private[this] var dstSnapshotStore: ActorRef = null
+  private[this] val dstMemberIndex        = MemberIndex("test-member-index-2")
+  private val dstRaftSnapshotStoreTestKit = RaftSnapshotStoreTestKit(system, typeName, dstMemberIndex, settings)
 
-  private[this] val eventStore = system.actorOf(EventStore.props(settings), "eventStore")
+  private val raftEventJournalTestKit = RaftEventJournalTestKit(system, settings)
 
   private[this] val snapshotSyncManagerUniqueId = new AtomicInteger(0)
 
-  private[this] def createSnapshotSyncManager(dstSnapshotStore: ActorRef = dstSnapshotStore): ActorRef =
+  private[this] def createSnapshotSyncManager(
+      dstSnapshotStore: ActorRef = dstRaftSnapshotStoreTestKit.snapshotStoreActorRef,
+  ): ActorRef =
     system.actorOf(
       SnapshotSyncManager.props(
         typeName,
@@ -62,18 +64,8 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       case _: Status.Success => Done
     }
     // reset SnapshotStore
-    srcSnapshotStore = planAutoKill(
-      system.actorOf(
-        ShardSnapshotStore.props(typeName, settings.raftSettings, srcMemberIndex),
-        s"srcSnapshotStore:${snapshotSyncManagerUniqueId.getAndIncrement()}",
-      ),
-    )
-    dstSnapshotStore = planAutoKill(
-      system.actorOf(
-        ShardSnapshotStore.props(typeName, settings.raftSettings, dstMemberIndex),
-        s"dstSnapshotStore:${snapshotSyncManagerUniqueId.getAndIncrement()}",
-      ),
-    )
+    srcRaftSnapshotStoreTestKit.reset()
+    dstRaftSnapshotStoreTestKit.reset()
   }
 
   "SnapshotSyncManager" should {
@@ -85,7 +77,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val dstSnapshots = Set(
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
       )
-      saveSnapshots(dstSnapshots, dstSnapshotStore)
+      dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
@@ -95,8 +87,8 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex), EntityState("state-3-3")),
       )
       val entityIds = srcSnapshots.map(_.metadata.entityId)
-      saveSnapshots(srcSnapshots, srcSnapshotStore)
-      persistEvents(
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+      raftEventJournalTestKit.persistEvents(
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, LogEntryIndex(1), entityIds),
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex, entityIds),
       )
@@ -111,7 +103,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
           replyTo = testActor,
         )
         expectMsg(SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex))
-        fetchSnapshots(entityIds, dstSnapshotStore) should be(srcSnapshots)
+        dstRaftSnapshotStoreTestKit.fetchSnapshots(entityIds) should be(srcSnapshots)
       }
     }
 
@@ -122,7 +114,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val dstSnapshots = Set(
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
       )
-      saveSnapshots(dstSnapshots, dstSnapshotStore)
+      dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm      = Term(1)
       val srcSnapshotLogIndex1 = LogEntryIndex(1)
@@ -132,11 +124,11 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("2"), srcSnapshotLogIndex2), EntityState("state-2-3")),
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex2), EntityState("state-3-3")),
       )
-      saveSnapshots(srcSnapshots, srcSnapshotStore)
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
       val entityIds1 = srcSnapshots.filter(_.metadata.logEntryIndex == srcSnapshotLogIndex1).map(_.metadata.entityId)
       val entityIds2 = srcSnapshots.filter(_.metadata.logEntryIndex == srcSnapshotLogIndex2).map(_.metadata.entityId)
       val entityIds  = entityIds1 ++ entityIds2
-      persistEvents(
+      raftEventJournalTestKit.persistEvents(
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex1, entityIds1),
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex2, entityIds2),
       )
@@ -153,7 +145,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
           replyTo = testActor,
         )
         expectMsg(SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex2, srcMemberIndex))
-        forAtLeast(min = 1, fetchSnapshots(entityIds, dstSnapshotStore)) { snapshot =>
+        forAtLeast(min = 1, dstRaftSnapshotStoreTestKit.fetchSnapshots(entityIds)) { snapshot =>
           snapshot.state.underlying should be("state-1-1")
         }
       }
@@ -166,7 +158,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val dstSnapshots = Set(
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
       )
-      saveSnapshots(dstSnapshots, dstSnapshotStore)
+      dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
@@ -176,8 +168,8 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex), EntityState("state-3-3")),
       )
       val entityIds = srcSnapshots.map(_.metadata.entityId)
-      saveSnapshots(srcSnapshots, srcSnapshotStore)
-      persistEvents(
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+      raftEventJournalTestKit.persistEvents(
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, LogEntryIndex(1), entityIds),
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex, entityIds),
       )
@@ -217,7 +209,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val dstSnapshots = Set(
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
       )
-      saveSnapshots(dstSnapshots, dstSnapshotStore)
+      dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
@@ -227,8 +219,8 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex), EntityState("state-3-3")),
       )
       val entityIds = srcSnapshots.map(_.metadata.entityId)
-      saveSnapshots(srcSnapshots, srcSnapshotStore)
-      persistEvents(
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+      raftEventJournalTestKit.persistEvents(
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, LogEntryIndex(1), entityIds),
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex, entityIds),
       )
@@ -252,7 +244,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val dstSnapshotLogIndex = LogEntryIndex(1)
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
-      persistEvents(
+      raftEventJournalTestKit.persistEvents(
         // no events
       )
       /* check */
@@ -275,7 +267,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val dstSnapshots = Set(
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
       )
-      saveSnapshots(dstSnapshots, dstSnapshotStore)
+      dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
@@ -288,8 +280,8 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         ),
       )
       val entityIds = srcSnapshots.map(_.metadata.entityId)
-      saveSnapshots(srcSnapshots, srcSnapshotStore)
-      persistEvents(
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+      raftEventJournalTestKit.persistEvents(
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, LogEntryIndex(1), entityIds),
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex, entityIds),
       )
@@ -313,7 +305,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val dstSnapshots = Set(
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
       )
-      saveSnapshots(dstSnapshots, dstSnapshotStore)
+      dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
@@ -323,8 +315,8 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex), EntityState("state-3-3")),
       )
       val entityIds = srcSnapshots.map(_.metadata.entityId) + NormalizedEntityId("4") // that lost the snapshot
-      saveSnapshots(srcSnapshots, srcSnapshotStore)
-      persistEvents(
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+      raftEventJournalTestKit.persistEvents(
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, LogEntryIndex(1), entityIds),
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex, entityIds),
       )
@@ -348,7 +340,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val dstSnapshots = Set(
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
       )
-      saveSnapshots(dstSnapshots, dstSnapshotStore)
+      dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
@@ -358,8 +350,8 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex), EntityState("state-3-3")),
       )
       val entityIds = srcSnapshots.map(_.metadata.entityId)
-      saveSnapshots(srcSnapshots, srcSnapshotStore)
-      persistEvents(
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+      raftEventJournalTestKit.persistEvents(
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, LogEntryIndex(1), entityIds),
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex, entityIds),
       )
@@ -387,14 +379,14 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val dstSnapshotTerm     = Term(1)
       val dstSnapshotLogIndex = LogEntryIndex(1)
       val dstSnapshots        = Set.empty[EntitySnapshot]
-      saveSnapshots(dstSnapshots, dstSnapshotStore)
+      dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
       val srcSnapshots        = Set.empty[EntitySnapshot]
       val entityIds           = Set(NormalizedEntityId("1")) // that lost the snapshot
-      saveSnapshots(srcSnapshots, srcSnapshotStore)
-      persistEvents(
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+      raftEventJournalTestKit.persistEvents(
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex, entityIds),
       )
 
@@ -410,30 +402,5 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       expectMsgType[SnapshotSyncManager.SyncSnapshotFailed]
       expectTerminated(snapshotSyncManager)
     }
-  }
-
-  private[this] def saveSnapshots(snapshots: Set[EntitySnapshot], snapshotStore: ActorRef): Unit = {
-    snapshots.foreach { snapshot =>
-      snapshotStore ! SnapshotProtocol.SaveSnapshot(snapshot, testActor)
-    }
-    receiveWhile(messages = snapshots.size) {
-      case _: SnapshotProtocol.SaveSnapshotSuccess => Done
-    }
-  }
-
-  private[this] def persistEvents(events: CompactionCompleted*): Unit = {
-    eventStore ! EventStore.PersistEvents(events)
-    expectMsg(Done)
-  }
-
-  private[this] def fetchSnapshots(entityIds: Set[NormalizedEntityId], snapshotStore: ActorRef): Set[EntitySnapshot] = {
-    entityIds.foreach { entityId =>
-      snapshotStore ! SnapshotProtocol.FetchSnapshot(entityId, testActor)
-    }
-    receiveWhile(messages = entityIds.size) {
-      case resp: SnapshotProtocol.FetchSnapshotResponse => resp
-    }.collect {
-      case res: SnapshotProtocol.SnapshotFound => res.snapshot
-    }.toSet
   }
 }
