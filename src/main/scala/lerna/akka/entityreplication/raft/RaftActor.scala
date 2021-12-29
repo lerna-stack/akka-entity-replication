@@ -470,7 +470,6 @@ private[raft] class RaftActor(
       val snapshotSyncManagerName = ActorIds.actorName(
         snapshotSyncManagerNamePrefix,
         typeName.underlying,
-        installSnapshot.srcMemberIndex.role,
       )
       val snapshotSyncManager =
         context.child(snapshotSyncManagerName).getOrElse {
