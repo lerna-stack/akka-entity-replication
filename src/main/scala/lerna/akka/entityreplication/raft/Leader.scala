@@ -5,7 +5,7 @@ import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
-import lerna.akka.entityreplication.raft.protocol.{ SuspendEntity, TryCreateEntity }
+import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, SuspendEntity, TryCreateEntity }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 import lerna.akka.entityreplication.ReplicationRegion
@@ -31,8 +31,8 @@ private[raft] trait Leader { this: RaftActor =>
     case response: ReplicationResponse                        => receiveReplicationResponse(response)
     case ReplicationRegion.Passivate(entityPath, stopMessage) => startEntityPassivationProcess(entityPath, stopMessage)
     case TryCreateEntity(_, entityId)                         => createEntityIfNotExists(entityId)
-    case RequestRecovery(entityId)                            => recoveryEntity(entityId)
-    case response: SnapshotProtocol.FetchSnapshotResponse     => receiveFetchSnapshotResponse(response)
+    case request: FetchEntityEvents                           => receiveFetchEntityEvents(request)
+    case EntityTerminated(id)                                 => receiveEntityTerminated(id)
     case SuspendEntity(_, entityId, stopMessage)              => suspendEntity(entityId, stopMessage)
     case SnapshotTick                                         => handleSnapshotTick()
     case response: Snapshot                                   => receiveEntitySnapshotResponse(response)
