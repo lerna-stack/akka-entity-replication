@@ -47,4 +47,6 @@ trait ClusterReplicationSettings {
 
   def withEventSourcedJournalPluginId(pluginId: String): ClusterReplicationSettings
 
+  def withEventSourcedSnapshotStorePluginId(pluginId: String): ClusterReplicationSettings
+
 }

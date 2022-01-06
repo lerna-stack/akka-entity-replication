@@ -51,7 +51,8 @@ lazy val lerna = (project in file("."))
         "com.typesafe.akka" %% "akka-multi-node-testkit"  % akkaVersion % Test,
         // akka-persistence-inmemory が 2.6.x 系に対応していない。
         // TODO 2.6.x 系に対応できる方法に変更する。
-        "com.github.dnvriend" %% "akka-persistence-inmemory" % "2.5.15.2" % Test,
+        "com.github.dnvriend" %% "akka-persistence-inmemory" % "2.5.15.2"  % Test,
+        "com.typesafe.akka"   %% "akka-persistence-testkit"  % akkaVersion % Test,
       ),
     inConfig(MultiJvm)(
       // multi-jvm ディレクトリをフォーマットするために必要
