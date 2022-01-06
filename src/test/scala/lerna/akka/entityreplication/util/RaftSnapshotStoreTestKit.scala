@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.util
 
 import akka.Done
-import akka.actor.{ ActorRef, ActorSystem }
+import akka.actor.{ ActorRef, ActorSystem, Props }
 import akka.testkit.{ ImplicitSender, TestKit }
 import lerna.akka.entityreplication.ClusterReplicationSettings
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
@@ -21,14 +21,13 @@ object RaftSnapshotStoreTestKit {
       typeName: TypeName,
       memberIndex: MemberIndex,
       settings: ClusterReplicationSettings,
-  ): RaftSnapshotStoreTestKit = new RaftSnapshotStoreTestKit(system, typeName, memberIndex, settings)
+  ): RaftSnapshotStoreTestKit =
+    new RaftSnapshotStoreTestKit(system, ShardSnapshotStore.props(typeName, settings.raftSettings, memberIndex))
 }
 
-final class RaftSnapshotStoreTestKit(
+final class RaftSnapshotStoreTestKit private[util] (
     system: ActorSystem,
-    typeName: TypeName,
-    memberIndex: MemberIndex,
-    settings: ClusterReplicationSettings,
+    shardSnapshotStoreProps: Props,
 ) extends TestKit(system)
     with ImplicitSender {
 
@@ -36,7 +35,7 @@ final class RaftSnapshotStoreTestKit(
 
   private def spawnSnapshotStore(): ActorRef =
     system.actorOf(
-      ShardSnapshotStore.props(typeName, settings.raftSettings, memberIndex),
+      shardSnapshotStoreProps,
       s"RaftSnapshotStoreTestKitShardSnapshotStore:${UUID.randomUUID().toString}",
     )
 
@@ -50,9 +49,14 @@ final class RaftSnapshotStoreTestKit(
     snapshots.foreach { snapshot =>
       snapshotStore ! SnapshotProtocol.SaveSnapshot(snapshot, testActor)
     }
-    receiveWhile(messages = snapshots.size) {
-      case _: SnapshotProtocol.SaveSnapshotSuccess => Done
-    }
+    val results =
+      receiveN(snapshots.size).collect {
+        case _: SnapshotProtocol.SaveSnapshotSuccess => Done
+      }
+    assert(
+      results.size == snapshots.size,
+      s"Failed to save snapshots: The expected number of the saved snapshot is ${snapshots.size} but the actual ${results.size}",
+    )
   }
 
   /**
@@ -62,11 +66,13 @@ final class RaftSnapshotStoreTestKit(
     entityIds.foreach { entityId =>
       snapshotStore ! SnapshotProtocol.FetchSnapshot(entityId, testActor)
     }
-    receiveWhile(messages = entityIds.size) {
-      case resp: SnapshotProtocol.FetchSnapshotResponse => resp
-    }.collect {
-      case res: SnapshotProtocol.SnapshotFound => res.snapshot
-    }.toSet
+    val results =
+      receiveN(entityIds.size).collect {
+        case res: SnapshotProtocol.SnapshotFound => res.snapshot
+      }.toSet
+    val shortages = entityIds.diff(results.map(_.metadata.entityId))
+    assert(shortages.isEmpty, s"Failed to fetch snapshots of [${shortages.map(_.underlying).mkString(", ")}]")
+    results
   }
 
   /**
