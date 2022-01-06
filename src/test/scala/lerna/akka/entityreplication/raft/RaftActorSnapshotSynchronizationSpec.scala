@@ -104,10 +104,10 @@ class RaftActorSnapshotSynchronizationSpec
         // trigger compaction
         follower ! SnapshotTick
       }
-      snapshotStore.receiveWhile(messages = 2) {
+      snapshotStore.receiveWhile(messages = 1) {
         case msg: SaveSnapshot =>
           msg.replyTo ! SaveSnapshotSuccess(msg.snapshot.metadata)
-      }
+      } should have length 1
       // snapshot synchronization completed (compaction become available)
       follower ! AppendEntries(
         shardId,

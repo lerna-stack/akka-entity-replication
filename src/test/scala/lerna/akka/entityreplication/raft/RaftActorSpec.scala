@@ -348,7 +348,7 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
       snapshotStore.receiveWhile(messages = 1) {
         case msg: SaveSnapshot =>
           snapshotStore.reply(SaveSnapshotSuccess(msg.snapshot.metadata))
-      }
+      } should have length 1
       // compaction completed (snapshot synchronization become available)
       LoggingTestKit.info("Snapshot synchronization already completed").expect {
         // the snapshots has been already saved by compaction
