@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.raft
 
-import akka.actor.ActorLogging
+import akka.actor.SupervisorStrategy.Stop
+import akka.actor._
 import akka.persistence.{ PersistentActor, RecoveryCompleted, SnapshotOffer }
 import lerna.akka.entityreplication.raft.PersistentStateData.PersistentState
 import lerna.akka.entityreplication.raft.RaftActor._
@@ -35,6 +36,14 @@ private[raft] trait RaftActorBase extends PersistentActor with ActorLogging {
   protected val onTransition: TransitionHandler
 
   protected def onRecoveryCompleted(): Unit
+
+  override def supervisorStrategy: SupervisorStrategy =
+    OneForOneStrategy()({
+      case ex: ActorInitializationException => super.supervisorStrategy.decider(ex)
+      case ex: ActorKilledException         => super.supervisorStrategy.decider(ex)
+      case ex: DeathPactException           => super.supervisorStrategy.decider(ex)
+      case ex: Exception                    => Stop // Entity termination is handled by RaftActor
+    })
 
   final override def receiveRecover: Receive = {
     case SnapshotOffer(_, snapshot: PersistentState) =>

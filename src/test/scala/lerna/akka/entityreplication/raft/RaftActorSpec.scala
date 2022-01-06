@@ -1,14 +1,16 @@
 package lerna.akka.entityreplication.raft
 
-import akka.actor.{ typed, ActorSystem }
 import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter._
+import akka.actor.{ typed, ActorSystem }
 import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
-import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.model.NormalizedEntityId
-import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, Term }
+import lerna.akka.entityreplication.raft.RaftActor.Follower
+import lerna.akka.entityreplication.raft.RaftProtocol._
+import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands.InstallSnapshot
+import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 
 object RaftActorSpec {
@@ -19,6 +21,42 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
   import RaftActorSpec._
 
   private implicit val typedSystem: typed.ActorSystem[Nothing] = system.toTyped
+
+  "RaftActor receiving FetchEntityEvents" should {
+    "reply FetchEntityEventsResponse" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+
+      val replyProbe = TestProbe()
+      val term       = Term.initial().next()
+      val entityId   = NormalizedEntityId.from("test-entity")
+      val logEntries = Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), term),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "a"), term),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "b"), term),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "c"), term),
+      )
+      val data = RaftMemberData(
+        replicatedLog = ReplicatedLog().merge(logEntries, LogEntryIndex.initial()),
+        lastApplied = LogEntryIndex(3),
+      )
+      setState(follower, Follower, data)
+      assume(data.lastApplied <= data.replicatedLog.lastLogIndex)
+
+      follower ! FetchEntityEvents(
+        entityId,
+        from = LogEntryIndex.initial(),
+        to = data.lastApplied,
+        replyTo = replyProbe.ref,
+      )
+      val reply = replyProbe.expectMsgType[FetchEntityEventsResponse]
+      reply.events.map(_.index) should be(Seq(LogEntryIndex(2), LogEntryIndex(3)))
+    }
+  }
 
   "RaftActor Snapshotting" should {
 
@@ -353,6 +391,73 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
       LoggingTestKit.info("Snapshot synchronization already completed").expect {
         // the snapshots has been already saved by compaction
         follower ! installSnapshot
+      }
+    }
+
+    "not persist snapshots that have already been persisted in the next compaction" in {
+      val snapshotStore       = TestProbe()
+      val replicationActor    = TestProbe()
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+        shardSnapshotStore = snapshotStore.ref,
+        replicationActor = replicationActor.ref,
+        settings = RaftSettings(raftConfig),
+      )
+
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val term              = Term.initial().next()
+      val entityId1         = NormalizedEntityId.from("test-entity-1")
+      val entityId2         = NormalizedEntityId.from("test-entity-2")
+
+      follower ! createAppendEntries(
+        shardId,
+        term,
+        leaderMemberIndex,
+        entries = Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId1), "a"), term),
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId1), "b"), term),
+          LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId1), "c"), term),
+          LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId1), "d"), term),
+        ),
+        leaderCommit = LogEntryIndex(4),
+      )
+      replicationActor.fishForSpecificMessage() {
+        case msg: TakeSnapshot =>
+          msg.metadata.entityId should be(entityId1)
+          replicationActor.reply(Snapshot(msg.metadata, EntityState(DummyEntityState)))
+      }
+      snapshotStore.receiveWhile(messages = 1) {
+        case msg: SaveSnapshot =>
+          snapshotStore.reply(SaveSnapshotSuccess(msg.snapshot.metadata))
+      }
+
+      // add events that only entity2 persisted
+      follower ! createAppendEntries(
+        shardId,
+        term,
+        leaderMemberIndex,
+        prevLogIndex = LogEntryIndex(4),
+        prevLogTerm = term,
+        entries = Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId2), "e"), term),
+          LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId2), "f"), term),
+          LogEntry(LogEntryIndex(7), EntityEvent(Option(entityId2), "g"), term),
+        ),
+        leaderCommit = LogEntryIndex(7),
+      )
+      // the snapshot should be only for entity2
+      replicationActor.fishForSpecificMessage() {
+        case msg: TakeSnapshot =>
+          msg.metadata.entityId should be(entityId2)
+          replicationActor.reply(Snapshot(msg.metadata, EntityState(DummyEntityState)))
+      }
+      snapshotStore.receiveWhile(messages = 1) {
+        case msg: SaveSnapshot =>
+          msg.snapshot.metadata.entityId should be(entityId2)
+          snapshotStore.reply(SaveSnapshotSuccess(msg.snapshot.metadata))
       }
     }
   }

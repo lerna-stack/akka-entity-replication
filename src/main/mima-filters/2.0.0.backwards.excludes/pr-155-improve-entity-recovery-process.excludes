@@ -1,0 +1,4 @@
+# These command classes are enclosed with the package private object of [entityreplication]
+# related discussion: https://github.com/lightbend/mima/issues/53
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.raft.RaftProtocol$RequestRecovery")
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.raft.RaftProtocol$RequestRecovery$")
