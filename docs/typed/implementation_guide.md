@@ -327,9 +327,10 @@ lerna.akka.entityreplication.raft.persistence.journal.plugin = ""
 lerna.akka.entityreplication.raft.persistence.snapshot-store.plugin = ""
 lerna.akka.entityreplication.raft.persistence.query.plugin = ""
 lerna.akka.entityreplication.raft.eventsourced.persistence.journal.plugin = ""
+lerna.akka.entityreplication.raft.eventsourced.persistence.snapshot-store.plugin = ""
 ```
 
-You can override these settings by `withRaftJournalPluginId`, `withRaftSnapshotPluginId`, `withRaftQueryPluginId` and `withEventSourcedJournalPluginId`
+You can override these settings by `withRaftJournalPluginId`, `withRaftSnapshotPluginId`, `withRaftQueryPluginId`, `withEventSourcedJournalPluginId`, and `withEventSourcedSnapshotStorePluginId`
 of `ClusterReplicationSettings`.
 
 ```scala
@@ -346,6 +347,7 @@ val settings =
     .withRaftSnapshotPluginId("my.special.raft.snapshot-store")
     .withRaftQueryPluginId("my.special.raft.query")
     .withEventSourcedJournalPluginId("my.special.eventsourced.journal")
+    .withEventSourcedSnapshotStorePluginId("my.special.eventsourced.snapshot-store")
 
 val entity = 
   ReplicatedEntity(BankAccountBehavior.TypeKey)(entityContext => BankAccountBehavior(entityContext))
@@ -596,6 +598,7 @@ lerna.akka.entityreplication.raft.persistence {
 // Query side persistence plugin settings
 lerna.akka.entityreplication.raft.eventsourced.persistence {
     journal.plugin  = ""
+    snapshot-store.plugin = ""
 }
 ```
 

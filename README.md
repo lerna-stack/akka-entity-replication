@@ -73,6 +73,10 @@ You can see a sample application using this extension in the following project.
 
 You can see all the notable changes in [CHANGELOG](CHANGELOG.md).
 
+## Migration Guide
+
+[Migration Guide](docs/migration_guide.md) describes how to migrate code and settings from previous versions.
+
 ## License
 
 akka-entity-replication is released under the terms of the [Apache License Version 2.0](./LICENSE).

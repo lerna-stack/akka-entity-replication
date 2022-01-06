@@ -1,12 +1,14 @@
 package lerna.akka.entityreplication
 
-import akka.actor.SupervisorStrategy.Restart
+import akka.actor.SupervisorStrategy
 import akka.actor.{ ActorRef, ActorSystem, OneForOneStrategy, Props }
 import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.ReplicationActorSpec.{ config, ExampleReplicationActor }
 import lerna.akka.entityreplication.model.EntityInstanceId
 import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, Term }
+import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
+import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftProtocol }
 
 import java.util.concurrent.atomic.AtomicInteger
@@ -64,6 +66,8 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec", c
   import RaftProtocol._
   import ExampleReplicationActor._
 
+  private val snapshotStoreProbe = TestProbe()
+
   "ReplicationActor" should {
 
     def createReplicationActor(parent: TestProbe): ActorRef =
@@ -71,11 +75,15 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec", c
         val replicationActor = parent.childActorOf(
           ExampleReplicationActor.props,
           OneForOneStrategy() {
-            case _: RuntimeException => Restart
+            case _: RuntimeException => SupervisorStrategy.Stop
           },
         )
-        parent.expectMsgType[RequestRecovery]
-        replicationActor ! RecoveryState(Seq(), None)
+        // recoveryIndex is arbitrary value but recoveryIndex is greater than 0 normally.
+        replicationActor ! Activate(snapshotStoreProbe.ref, LogEntryIndex.initial().next())
+        val fetchSnapshot = snapshotStoreProbe.expectMsgType[SnapshotProtocol.FetchSnapshot]
+        fetchSnapshot.replyTo ! SnapshotProtocol.SnapshotNotFound(fetchSnapshot.entityId)
+        val fetchEvents = parent.expectMsgType[FetchEntityEvents]
+        fetchEvents.replyTo ! FetchEntityEventsResponse(Seq())
         replicationActor
       }
 
@@ -104,16 +112,17 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec", c
     }
 
     "replace instanceId when it restarted" in {
+      val watchProbe       = TestProbe()
       val raftActorProbe   = TestProbe()
-      val replicationActor = createReplicationActor(raftActorProbe)
+      var replicationActor = watchProbe.watch(createReplicationActor(raftActorProbe))
 
       replicationActor ! Count()
       val r1 = raftActorProbe.expectMsgType[Replicate]
       r1.replyTo ! createReplicationSucceeded(Counted(), r1.instanceId)
       replicationActor ! Break() // ReplicationActor will restart
       // recovery start
-      raftActorProbe.expectMsgType[RequestRecovery]
-      replicationActor ! RecoveryState(Seq(), None)
+      watchProbe.expectTerminated(replicationActor)
+      replicationActor = createReplicationActor(raftActorProbe)
       // recovery complete
       replicationActor ! Count()
       val r2 = raftActorProbe.expectMsgType[Replicate]
@@ -136,23 +145,30 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec", c
       raftActorProbe.expectMsgType[Replicate]
     }
 
-    "reboot and request Recovery again after RecoveryTimeout" in {
+    "reboot and retry recovery after RecoveryTimeout" in {
       val testProbe      = TestProbe()
       val raftActorProbe = TestProbe()
-      planAutoKill {
-        raftActorProbe.childActorOf(
-          ExampleReplicationActor.props,
-          OneForOneStrategy() {
-            case runtimeException: RuntimeException =>
-              testProbe.ref ! runtimeException
-              Restart
-          },
-        )
-      }
-      // Do not send RecoveryState to replicationActor
-      raftActorProbe.expectMsgType[RequestRecovery]
+      def spawnReplicationActor() =
+        planAutoKill {
+          raftActorProbe.childActorOf(
+            ExampleReplicationActor.props,
+            OneForOneStrategy() {
+              case runtimeException: RuntimeException =>
+                testProbe.ref ! runtimeException
+                SupervisorStrategy.Stop
+            },
+          )
+        }
+      var replicationActor = testProbe.watch(spawnReplicationActor())
+      replicationActor ! RaftProtocol.Activate(snapshotStoreProbe.ref, LogEntryIndex.initial())
+      snapshotStoreProbe.expectMsgType[SnapshotProtocol.FetchSnapshot]
+      // don't send snapshot to replicationActor
       testProbe.expectMsgType[EntityRecoveryTimeoutException]
-      raftActorProbe.expectMsgType[RequestRecovery]
+      testProbe.expectTerminated(replicationActor)
+      // retry
+      replicationActor = spawnReplicationActor()
+      replicationActor ! RaftProtocol.Activate(snapshotStoreProbe.ref, LogEntryIndex.initial())
+      snapshotStoreProbe.expectMsgType[SnapshotProtocol.FetchSnapshot]
     }
   }
 

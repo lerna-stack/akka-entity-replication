@@ -222,6 +222,8 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       leader ! AppendEntriesSucceeded(term, lastLogIndex, follower1MemberIndex)
       leader ! AppendEntriesSucceeded(term, lastLogIndex, follower2MemberIndex)
 
+      // the leader activates the entity
+      replicationActor.expectMsgType[RaftProtocol.Activate]
       // the leader forwards the command to ReplicationActor
       replicationActor.expectMsg(ProcessCommand(SomeCommand))
     }

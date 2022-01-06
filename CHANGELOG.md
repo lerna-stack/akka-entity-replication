@@ -13,8 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This change will show you deserialization warnings during the rolling update, it's safe to ignore. 
   For more details, see [Akka 2.6.16 release note](https://akka.io/blog/news/2021/08/19/akka-2.6.16-released#rolling-upgrades)
 
+- Efficient recovery of commit log store, which is on the query side [PR#112](https://github.com/lerna-stack/akka-entity-replication/issues/112)
+
+  This change will improve the performance of the recovery on the query side.
+  You should migrate settings described at [Migration Guide](docs/migration_guide.md#210-from-200).
+
 ### Fixed
 - TestKit throws "Shard received unexpected message" exception after the entity passivated [PR#100](https://github.com/lerna-stack/akka-entity-replication/pull/100)
+- `ReplicatedEntity` can produce illegal snapshot if compaction and receiving new event occur same time [#111](https://github.com/lerna-stack/akka-entity-replication/issues/111)
 - Starting a follower member later than leader completes a compaction may break ReplicatedLog of the follower [#105](https://github.com/lerna-stack/akka-entity-replication/issues/105)
 
 ## [v2.0.0] - 2021-07-16

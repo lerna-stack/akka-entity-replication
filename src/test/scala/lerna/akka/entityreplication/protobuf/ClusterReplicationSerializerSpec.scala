@@ -13,7 +13,7 @@ import lerna.akka.entityreplication.protobuf.ClusterReplicationSerializerSpec.{
 import lerna.akka.entityreplication.raft.PersistentStateData.PersistentState
 import lerna.akka.entityreplication.raft.RaftActor._
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand }
-import lerna.akka.entityreplication.raft.eventsourced.{ InternalEvent, Save }
+import lerna.akka.entityreplication.raft.eventsourced.{ CommitLogStoreActor, InternalEvent, Save }
 import lerna.akka.entityreplication.raft.model.{
   EntityEvent,
   LogEntry,
@@ -141,6 +141,7 @@ final class ClusterReplicationSerializerSpec
         MyEvent(908125, "save?my-event!"),
       ),
     )
+    checkSerialization(CommitLogStoreActor.State(LogEntryIndex(6451)))
 
     // raft.protocol
     checkSerialization(

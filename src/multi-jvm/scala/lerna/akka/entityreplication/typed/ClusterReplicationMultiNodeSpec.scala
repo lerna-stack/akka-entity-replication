@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.typed
 
+import akka.NotUsed
 import akka.actor.typed.ActorRef
-import akka.actor.typed.scaladsl.Behaviors
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import lerna.akka.entityreplication.{ STMultiNodeSerializable, STMultiNodeSpec }
@@ -86,10 +86,14 @@ object ClusterReplicationMultiNodeSpec {
 
     def apply(): ReplicatedEntity[GetEntityContext, ReplicationEnvelope[GetEntityContext]] = {
       ReplicatedEntity(typeKey)(context =>
-        Behaviors.receiveMessage { msg =>
-          msg.replyTo ! Reply(context)
-          Behaviors.same
-        },
+        ReplicatedEntityBehavior[GetEntityContext, NotUsed.type, NotUsed.type](
+          context,
+          emptyState = NotUsed,
+          commandHandler = { (_, msg) =>
+            Effect.reply(msg.replyTo)(Reply(context))
+          },
+          eventHandler = (_, _) => NotUsed,
+        ),
       )
     }
   }
