@@ -7,7 +7,7 @@ import lerna.akka.entityreplication.raft.ActorSpec
 class CustomTestProbeSpec extends TestKit(ActorSystem("CustomTestProbeSpec")) with ActorSpec {
   import CustomTestProbe._
 
-  "CustomTestProbe.fishMatchMessagesWhile" should {
+  "CustomTestProbe.fishForMessageN" should {
 
     "pass when the probe receives messages that match the condition" in {
       val probe = TestProbe()
@@ -15,7 +15,7 @@ class CustomTestProbeSpec extends TestKit(ActorSystem("CustomTestProbeSpec")) wi
       probe.ref ! "match"
 
       var called = false
-      probe.fishMatchMessagesWhile(messages = 1) {
+      probe.fishForMessageN(messages = 1) {
         case "match" =>
           called = true
       }
@@ -28,7 +28,7 @@ class CustomTestProbeSpec extends TestKit(ActorSystem("CustomTestProbeSpec")) wi
       probe.ref ! "invalid"
 
       intercept[AssertionError] {
-        probe.fishMatchMessagesWhile(messages = 1) {
+        probe.fishForMessageN(messages = 1) {
           case "match" =>
         }
       }
@@ -42,7 +42,7 @@ class CustomTestProbeSpec extends TestKit(ActorSystem("CustomTestProbeSpec")) wi
       probe.ref ! "match"
 
       var called = false
-      probe.fishMatchMessagesWhile(messages = 1) {
+      probe.fishForMessageN(messages = 1) {
         case "match" =>
           called = true
       }
@@ -56,11 +56,25 @@ class CustomTestProbeSpec extends TestKit(ActorSystem("CustomTestProbeSpec")) wi
       probe.ref ! "match"
 
       var count = 0
-      probe.fishMatchMessagesWhile(messages = 2) {
+      probe.fishForMessageN(messages = 2) {
         case "match" =>
           count = count + 1
       }
       count should be(2)
+    }
+
+    "return the values the PartialFunction provided to verify coverage of the patterns matched" in {
+      val probe = TestProbe()
+
+      probe.ref ! "first"
+      probe.ref ! "second"
+
+      probe.fishForMessageN(messages = 2) {
+        case msg @ "first" =>
+          msg
+        case msg @ "second" =>
+          msg
+      } should contain theSameElementsInOrderAs Seq("first", "second")
     }
   }
 }

@@ -5,15 +5,15 @@ import akka.testkit.TestProbe
 object CustomTestProbe {
 
   implicit class CustomTestProbe(testProbe: TestProbe) {
-    def fishMatchMessagesWhile(messages: Int)(f: PartialFunction[Any, Unit]): Unit = {
-      var count = 0
+    def fishForMessageN[T](messages: Int)(f: PartialFunction[Any, T]): Seq[T] = {
+      var fishedMessages = Seq.empty[T]
       testProbe.fishForMessage() {
         case msg if f.isDefinedAt(msg) =>
-          f(msg)
-          count = count + 1
-          count >= messages
+          fishedMessages :+= f(msg)
+          fishedMessages.sizeIs >= messages
         case _ => false // ignore
       }
+      fishedMessages
     }
   }
 }

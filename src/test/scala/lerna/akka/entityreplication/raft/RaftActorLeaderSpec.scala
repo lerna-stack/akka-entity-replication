@@ -355,7 +355,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       setState(leader, Candidate, leaderData)
       setState(leader, Leader, leaderData)
 
-      region.fishMatchMessagesWhile(messages = 2) {
+      region.fishForMessageN(messages = 2) {
 
         case msg @ ReplicationRegion.DeliverTo(`follower1Index`, cmd: AppendEntries)
             if cmd.entries.lastOption.exists(_.index == LogEntryIndex(1)) =>
@@ -371,8 +371,9 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
               logEntry.term should be(term)
           }
           leader ! AppendEntriesSucceeded(cmd.term, cmd.entries.last.index, msg.index)
+          msg.index
 
-        case ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
+        case msg @ ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
             if cmd.entries.lastOption.exists(_.index == LogEntryIndex(1)) =>
           cmd.leader should be(leaderIndex)
           cmd.term should be(term)
@@ -385,13 +386,14 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
               logEntry.event.entityId should be(None)
               logEntry.term should be(term)
           }
-        // don't reply to the leader
-      }
+          // don't reply to the leader
+          msg.index
+      } should contain theSameElementsAs (Set(follower1Index, follower2Index))
 
       val event1 = "a"
       leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
 
-      region.fishMatchMessagesWhile(messages = 2) {
+      region.fishForMessageN(messages = 2) {
 
         case msg @ ReplicationRegion.DeliverTo(`follower1Index`, cmd: AppendEntries)
             if cmd.entries.lastOption.exists(_.index == LogEntryIndex(2)) =>
@@ -407,8 +409,9 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
               logEntry.term should be(term)
           }
           leader ! AppendEntriesSucceeded(cmd.term, cmd.entries.last.index, msg.index)
+          msg.index
 
-        case ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
+        case msg @ ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
             if cmd.entries.lastOption.exists(_.index == LogEntryIndex(2)) =>
           cmd.leader should be(leaderIndex)
           cmd.term should be(term)
@@ -426,8 +429,9 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
               logEntry2.event.entityId should be(Some(entityId))
               logEntry2.term should be(term)
           }
-        // don't reply to the leader
-      }
+          // don't reply to the leader
+          msg.index
+      } should contain theSameElementsAs (Set(follower1Index, follower2Index))
     }
 
     "send InstallSnapshot to the follower when the leader loses logs that the follower requires by compaction" in {
@@ -462,7 +466,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       setState(leader, Candidate, leaderData)
       setState(leader, Leader, leaderData)
 
-      region.fishMatchMessagesWhile(messages = 2) {
+      region.fishForMessageN(messages = 2) {
 
         case msg @ ReplicationRegion.DeliverTo(`follower1Index`, cmd: AppendEntries)
             if cmd.entries.lastOption.exists(_.index == LogEntryIndex(1)) =>
@@ -472,16 +476,18 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
               logEntry.event.event should be(NoOp)
           }
           leader ! AppendEntriesSucceeded(cmd.term, cmd.entries.last.index, msg.index)
+          msg.index
 
-        case ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
+        case msg @ ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
             if cmd.entries.lastOption.exists(_.index == LogEntryIndex(1)) =>
-        // don't reply to the leader
-      }
+          // don't reply to the leader
+          msg.index
+      } should contain theSameElementsAs (Set(follower1Index, follower2Index))
 
       val event1 = "a"
       leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
 
-      region.fishMatchMessagesWhile(messages = 2) {
+      region.fishForMessageN(messages = 2) {
 
         case msg @ ReplicationRegion.DeliverTo(`follower1Index`, cmd: AppendEntries)
             if cmd.entries.lastOption.exists(_.index == LogEntryIndex(2)) =>
@@ -491,11 +497,13 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
               logEntry.event.event should be(event1)
           }
           leader ! AppendEntriesSucceeded(cmd.term, cmd.entries.last.index, msg.index)
+          msg.index
 
-        case ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
+        case msg @ ReplicationRegion.DeliverTo(`follower2Index`, cmd: AppendEntries)
             if cmd.entries.lastOption.exists(_.index == LogEntryIndex(2)) =>
-        // don't reply to the leader
-      }
+          // don't reply to the leader
+          msg.index
+      } should contain theSameElementsAs (Set(follower1Index, follower2Index))
 
       // compaction started
       replicationActor.fishForSpecificMessage() {
@@ -510,7 +518,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val event2 = "b"
       leader ! Replicate(event2, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
 
-      region.fishMatchMessagesWhile(messages = 2) {
+      region.fishForMessageN(messages = 2) {
 
         case msg @ ReplicationRegion.DeliverTo(`follower1Index`, cmd: AppendEntries)
             if cmd.entries.lastOption.exists(_.index == LogEntryIndex(3)) =>
@@ -520,13 +528,15 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
               logEntry.event.event should be(event2)
           }
           leader ! AppendEntriesSucceeded(cmd.term, cmd.entries.last.index, msg.index)
+          msg.index
 
-        case ReplicationRegion.DeliverTo(`follower2Index`, cmd: InstallSnapshot) =>
+        case msg @ ReplicationRegion.DeliverTo(`follower2Index`, cmd: InstallSnapshot) =>
           cmd.term should be(term)
           cmd.srcLatestSnapshotLastLogLogIndex should be(LogEntryIndex(2))
           cmd.srcLatestSnapshotLastLogTerm should be(term)
           leader ! InstallSnapshotSucceeded(shardId, term, cmd.srcLatestSnapshotLastLogLogIndex, follower2Index)
-      }
+          msg.index
+      } should contain theSameElementsAs (Set(follower1Index, follower2Index))
     }
   }
 
