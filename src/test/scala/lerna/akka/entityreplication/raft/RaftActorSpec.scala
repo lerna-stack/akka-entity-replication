@@ -1,13 +1,15 @@
 package lerna.akka.entityreplication.raft
 
-import akka.actor.ActorSystem
-import akka.testkit.{ TestKit, TestProbe }
+import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter._
+import akka.actor.{ typed, ActorSystem }
+import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
-import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftActor.Follower
-import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, NoOp, ReplicatedLog, Term }
+import lerna.akka.entityreplication.raft.RaftProtocol._
+import lerna.akka.entityreplication.raft.model._
+import lerna.akka.entityreplication.raft.protocol.RaftCommands.InstallSnapshot
 import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 
@@ -17,6 +19,8 @@ object RaftActorSpec {
 
 class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
   import RaftActorSpec._
+
+  private implicit val typedSystem: typed.ActorSystem[Nothing] = system.toTyped
 
   "RaftActor receiving FetchEntityEvents" should {
     "reply FetchEntityEventsResponse" in {
@@ -329,6 +333,64 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         import org.scalatest.LoneElement._
         getState(follower).stateData.replicatedLog.entries should have size 1
         getState(follower).stateData.replicatedLog.entries.loneElement shouldBe logEntries.last
+      }
+    }
+
+    "prevent to start snapshot synchronization during compaction" in {
+      val snapshotStore       = TestProbe()
+      val replicationActor    = TestProbe()
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+        shardSnapshotStore = snapshotStore.ref,
+        replicationActor = replicationActor.ref,
+        settings = RaftSettings(raftConfig),
+      )
+
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val term              = Term.initial().next()
+      val entityId          = NormalizedEntityId.from("test-entity")
+      val logEntries = Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "a"), term),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), term),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "c"), term),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "d"), term),
+      )
+      val applicableIndex = LogEntryIndex(3)
+      val installSnapshot =
+        InstallSnapshot(
+          shardId,
+          term,
+          leaderMemberIndex,
+          srcLatestSnapshotLastLogTerm = term,
+          srcLatestSnapshotLastLogLogIndex = applicableIndex,
+        )
+      follower ! createAppendEntries(
+        shardId,
+        term,
+        leaderMemberIndex,
+        entries = logEntries,
+        leaderCommit = applicableIndex,
+      )
+      // wait for starting compaction
+      val takeSnapshot =
+        replicationActor.fishForSpecificMessage() {
+          case msg: TakeSnapshot => msg
+        }
+      LoggingTestKit.info("Skipping snapshot synchronization because compaction is in progress").expect {
+        follower ! installSnapshot
+      }
+      takeSnapshot.replyTo ! Snapshot(takeSnapshot.metadata, EntityState(DummyEntityState))
+      snapshotStore.receiveWhile(messages = 1) {
+        case msg: SaveSnapshot =>
+          snapshotStore.reply(SaveSnapshotSuccess(msg.snapshot.metadata))
+      } should have length 1
+      // compaction completed (snapshot synchronization become available)
+      LoggingTestKit.info("Snapshot synchronization already completed").expect {
+        // the snapshots has been already saved by compaction
+        follower ! installSnapshot
       }
     }
 

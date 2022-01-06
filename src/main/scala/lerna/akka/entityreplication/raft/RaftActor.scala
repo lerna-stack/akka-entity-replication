@@ -395,16 +395,22 @@ private[raft] class RaftActor(
       currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold
       && currentData.hasLogEntriesThatCanBeCompacted
     ) {
-      val (term, logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
-      applyDomainEvent(SnapshottingStarted(term, logEntryIndex, entityIds)) { _ =>
+      if (snapshotSynchronizationIsInProgress) {
+        // Snapshot updates during synchronizing snapshot will break consistency
         if (log.isInfoEnabled)
-          log.info(
-            "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
-            currentState,
-            logEntryIndex,
-            entityIds.size,
-          )
-        requestTakeSnapshots(logEntryIndex, entityIds)
+          log.info("Skipping compaction because snapshot synchronization is in progress")
+      } else {
+        val (term, logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
+        applyDomainEvent(SnapshottingStarted(term, logEntryIndex, entityIds)) { _ =>
+          if (log.isInfoEnabled)
+            log.info(
+              "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
+              currentState,
+              logEntryIndex,
+              entityIds.size,
+            )
+          requestTakeSnapshots(logEntryIndex, entityIds)
+        }
       }
     }
     resetSnapshotTickTimer()
@@ -466,33 +472,48 @@ private[raft] class RaftActor(
       case _: SnapshotSyncManager.SyncSnapshotFailed => // ignore
     }
 
+  private val snapshotSyncManagerName: String = ActorIds.actorName(
+    snapshotSyncManagerNamePrefix,
+    typeName.underlying,
+  )
+
   protected def startSyncSnapshot(installSnapshot: InstallSnapshot): Unit = {
-    val snapshotSyncManagerName = ActorIds.actorName(
-      snapshotSyncManagerNamePrefix,
-      typeName.underlying,
-      installSnapshot.srcMemberIndex.role,
-    )
-    val snapshotSyncManager =
-      context.child(snapshotSyncManagerName).getOrElse {
-        context.actorOf(
-          SnapshotSyncManager.props(
-            typeName = typeName,
-            srcMemberIndex = installSnapshot.srcMemberIndex,
-            dstMemberIndex = selfMemberIndex,
-            dstShardSnapshotStore = shardSnapshotStore,
-            shardId,
-            settings,
-          ),
-          snapshotSyncManagerName,
+    if (currentData.snapshottingProgress.isInProgress) {
+      // Snapshot updates during compaction will break consistency
+      if (log.isInfoEnabled)
+        log.info(
+          "Skipping snapshot synchronization because compaction is in progress (remaining: {}/{})",
+          currentData.snapshottingProgress.inProgressEntities.size,
+          currentData.snapshottingProgress.inProgressEntities.size + currentData.snapshottingProgress.completedEntities.size,
         )
-      }
-    snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
-      srcLatestSnapshotLastLogTerm = installSnapshot.srcLatestSnapshotLastLogTerm,
-      srcLatestSnapshotLastLogIndex = installSnapshot.srcLatestSnapshotLastLogLogIndex,
-      dstLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
-      dstLatestSnapshotLastLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
-      replyTo = self,
-    )
+    } else {
+      val snapshotSyncManager =
+        context.child(snapshotSyncManagerName).getOrElse {
+          context.actorOf(
+            SnapshotSyncManager.props(
+              typeName = typeName,
+              srcMemberIndex = installSnapshot.srcMemberIndex,
+              dstMemberIndex = selfMemberIndex,
+              dstShardSnapshotStore = shardSnapshotStore,
+              shardId,
+              settings,
+            ),
+            snapshotSyncManagerName,
+          )
+        }
+      snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
+        srcLatestSnapshotLastLogTerm = installSnapshot.srcLatestSnapshotLastLogTerm,
+        srcLatestSnapshotLastLogIndex = installSnapshot.srcLatestSnapshotLastLogLogIndex,
+        dstLatestSnapshotLastLogTerm = currentData.lastSnapshotStatus.snapshotLastTerm,
+        dstLatestSnapshotLastLogIndex = currentData.lastSnapshotStatus.snapshotLastLogIndex,
+        replyTo = self,
+      )
+    }
+  }
+
+  protected def snapshotSynchronizationIsInProgress: Boolean = {
+    // SnapshotSyncManager stops after synchronization completed
+    context.child(snapshotSyncManagerName).nonEmpty
   }
 
   private[this] def stopAllEntities(): Unit = {
