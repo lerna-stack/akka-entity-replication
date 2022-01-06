@@ -38,7 +38,7 @@ class RaftActorSnapshotSynchronizationSpec
     storage.snapshotStorage ! InMemorySnapshotStorage.ClearSnapshots
     receiveWhile(messages = 2) {
       case _: Status.Success => Done
-    }
+    } should have length 2
     // reset SnapshotStore
     leaderRaftSnapshotStoreTestKit.reset()
   }
