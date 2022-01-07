@@ -250,7 +250,8 @@ private[raft] class RaftActor(
               progress.snapshotLastLogIndex,
               progress.completedEntities,
             ),
-          ) { event =>
+          ) { _ =>
+            saveSnapshot(currentData.persistentState) // Note that this persistence can fail
             if (log.isInfoEnabled)
               log.info(
                 "[{}] compaction completed (term: {}, logEntryIndex: {})",
@@ -266,7 +267,6 @@ private[raft] class RaftActor(
           currentData
             .updateLastSnapshotStatus(snapshotLastTerm, snapshotLastIndex)
             .compactReplicatedLog(settings.compactionPreserveLogSize)
-        saveSnapshot(newData.persistentState) // Note that this persistence can fail
         newData
       case SnapshotSyncCompleted(snapshotLastLogTerm, snapshotLastLogIndex) =>
         stopAllEntities()
