@@ -239,28 +239,11 @@ private[raft] class RaftActor(
       case SnapshottingStarted(term, logEntryIndex, entityIds) =>
         currentData.startSnapshotting(term, logEntryIndex, entityIds)
       case EntitySnapshotSaved(metadata) =>
-        currentData.recordSavedSnapshot(metadata, settings.compactionPreserveLogSize)(onComplete = { progress =>
-          applyDomainEvent(
-            CompactionCompleted(
-              selfMemberIndex,
-              shardId,
-              progress.snapshotLastLogTerm,
-              progress.snapshotLastLogIndex,
-              progress.completedEntities,
-            ),
-          ) { _ =>
-            saveSnapshot(currentData.persistentState) // Note that this persistence can fail
-            if (log.isInfoEnabled)
-              log.info(
-                "[{}] compaction completed (term: {}, logEntryIndex: {})",
-                currentState,
-                progress.snapshotLastLogTerm,
-                progress.snapshotLastLogIndex,
-              )
-          }
-        })
+        currentData.recordSavedSnapshot(metadata)
       case CompactionCompleted(_, _, snapshotLastTerm, snapshotLastIndex, _) =>
-        currentData.updateLastSnapshotStatus(snapshotLastTerm, snapshotLastIndex)
+        currentData
+          .updateLastSnapshotStatus(snapshotLastTerm, snapshotLastIndex)
+          .compactReplicatedLog(settings.compactionPreserveLogSize)
       case SnapshotSyncCompleted(snapshotLastLogTerm, snapshotLastLogIndex) =>
         stopAllEntities()
         currentData.syncSnapshot(snapshotLastLogTerm, snapshotLastLogIndex)
@@ -334,7 +317,27 @@ private[raft] class RaftActor(
     response match {
       case SnapshotProtocol.SaveSnapshotSuccess(metadata) =>
         applyDomainEvent(EntitySnapshotSaved(metadata)) { _ =>
-          // do nothing
+          val progress = currentData.snapshottingProgress
+          if (progress.isCompleted) {
+            applyDomainEvent(
+              CompactionCompleted(
+                selfMemberIndex,
+                shardId,
+                progress.snapshotLastLogTerm,
+                progress.snapshotLastLogIndex,
+                progress.completedEntities,
+              ),
+            ) { _ =>
+              saveSnapshot(currentData.persistentState) // Note that this persistence can fail
+              if (log.isInfoEnabled)
+                log.info(
+                  "[{}] compaction completed (term: {}, logEntryIndex: {})",
+                  currentState,
+                  progress.snapshotLastLogTerm,
+                  progress.snapshotLastLogIndex,
+                )
+            }
+          }
         }
       case SnapshotProtocol.SaveSnapshotFailure(_) =>
       // do nothing
