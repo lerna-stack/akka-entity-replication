@@ -1,0 +1,6 @@
+# It is safe to exclude the following since ClusterReplicationGuardian is package-private.
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.ClusterReplicationGuardian#Start.copy")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.ClusterReplicationGuardian#Start.this")
+ProblemFilters.exclude[MissingTypesProblem]("lerna.akka.entityreplication.ClusterReplicationGuardian$Start$")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.ClusterReplicationGuardian#Start.apply")
+ProblemFilters.exclude[IncompatibleSignatureProblem]("lerna.akka.entityreplication.ClusterReplicationGuardian#Start.unapply")
