@@ -3,7 +3,7 @@ package lerna.akka.entityreplication.raft
 import com.typesafe.config.{ Config, ConfigFactory }
 
 import java.util.concurrent.TimeUnit.NANOSECONDS
-import scala.concurrent.duration.{ Duration, FiniteDuration }
+import scala.concurrent.duration.{ Duration, DurationInt, FiniteDuration }
 import scala.jdk.CollectionConverters._
 import scala.jdk.DurationConverters._
 import scala.util.Random
@@ -26,6 +26,9 @@ private[entityreplication] final case class RaftSettingsImpl(
     snapshotSyncCopyingParallelism: Int,
     snapshotSyncPersistenceOperationTimeout: FiniteDuration,
     clusterShardingConfig: Config,
+    raftActorAutoStartFrequency: FiniteDuration,
+    raftActorAutoStartNumberOfActors: Int,
+    raftActorAutoStartRetryInterval: FiniteDuration,
     journalPluginId: String,
     snapshotStorePluginId: String,
     queryPluginId: String,
@@ -131,6 +134,27 @@ private[entityreplication] object RaftSettingsImpl {
 
     val clusterShardingConfig: Config = config.getConfig("sharding")
 
+    val raftActorAutoStartFrequency: FiniteDuration =
+      config.getDuration("raft-actor-auto-start.frequency").toScala
+    require(
+      raftActorAutoStartFrequency > 0.milli,
+      s"raft-actor-auto-start.frequency ($raftActorAutoStartFrequency) should be greater than 0 milli.",
+    )
+
+    val raftActorAutoStartNumberOfActors: Int =
+      config.getInt("raft-actor-auto-start.number-of-actors")
+    require(
+      raftActorAutoStartNumberOfActors > 0,
+      s"raft-actor-auto-start.number-of-actors ($raftActorAutoStartNumberOfActors) should be greater than 0.",
+    )
+
+    val raftActorAutoStartRetryInterval: FiniteDuration =
+      config.getDuration("raft-actor-auto-start.retry-interval").toScala
+    require(
+      raftActorAutoStartRetryInterval > 0.milli,
+      s"raft-actor-auto-start.retry-interval ($raftActorAutoStartRetryInterval) should be greater than 0 milli.",
+    )
+
     val journalPluginId: String = config.getString("persistence.journal.plugin")
 
     val snapshotStorePluginId: String = config.getString("persistence.snapshot-store.plugin")
@@ -165,6 +189,9 @@ private[entityreplication] object RaftSettingsImpl {
       snapshotSyncCopyingParallelism = snapshotSyncCopyingParallelism,
       snapshotSyncPersistenceOperationTimeout = snapshotSyncPersistenceOperationTimeout,
       clusterShardingConfig = clusterShardingConfig,
+      raftActorAutoStartFrequency = raftActorAutoStartFrequency,
+      raftActorAutoStartNumberOfActors = raftActorAutoStartNumberOfActors,
+      raftActorAutoStartRetryInterval = raftActorAutoStartRetryInterval,
       journalPluginId = journalPluginId,
       snapshotStorePluginId = snapshotStorePluginId,
       queryPluginId = queryPluginId,

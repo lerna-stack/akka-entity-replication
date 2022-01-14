@@ -1,5 +1,6 @@
 package lerna.akka.entityreplication
 
+import akka.actor.typed.scaladsl.adapter.ClassicActorContextOps
 import akka.actor.{ Actor, ActorLogging, ActorPath, ActorRef, OneForOneStrategy, Props, Stash, SupervisorStrategy }
 import akka.cluster.ClusterEvent._
 import akka.cluster.sharding.ShardRegion.GracefulShutdown
@@ -59,9 +60,20 @@ object ReplicationRegion {
       settings: ClusterReplicationSettings,
       extractEntityId: ExtractEntityId,
       extractShardId: ExtractShardId,
+      possibleShardIds: Set[ReplicationRegion.ShardId],
       maybeCommitLogStore: Option[CommitLogStore],
   ) =
-    Props(new ReplicationRegion(typeName, entityProps, settings, extractEntityId, extractShardId, maybeCommitLogStore))
+    Props(
+      new ReplicationRegion(
+        typeName,
+        entityProps,
+        settings,
+        extractEntityId,
+        extractShardId,
+        possibleShardIds,
+        maybeCommitLogStore,
+      ),
+    )
 
   private[entityreplication] case class CreateShard(shardId: NormalizedShardId) extends ShardRequest
 
@@ -78,6 +90,15 @@ object ReplicationRegion {
     * @param message
     */
   private[entityreplication] final case class Routed(message: Any)
+
+  /** TypeName of Cluster Sharding on which Raft actors run */
+  private[entityreplication] def raftShardingTypeName(
+      replicationRegionTypeName: String,
+      memberIndex: MemberIndex,
+  ): String = {
+    s"raft-shard-$replicationRegionTypeName-${memberIndex.role}"
+  }
+
 }
 
 private[entityreplication] class ReplicationRegion(
@@ -86,6 +107,7 @@ private[entityreplication] class ReplicationRegion(
     settings: ClusterReplicationSettings,
     extractEntityId: ExtractEntityId,
     extractShardId: ExtractShardId,
+    possibleShardIds: Set[ReplicationRegion.ShardId],
     maybeCommitLogStore: Option[CommitLogStore],
 ) extends Actor
     with ActorLogging
@@ -126,7 +148,7 @@ private[entityreplication] class ReplicationRegion(
     }
     memberIndex -> {
       ClusterSharding(context.system).start(
-        typeName = s"raft-shard-$typeName-${memberIndex.role}",
+        typeName = raftShardingTypeName(typeName, memberIndex),
         entityProps = createRaftActorProps(),
         settings = ClusterShardingSettings(settings.raftSettings.clusterShardingConfig)
           .withRole(memberIndex.role),
@@ -192,6 +214,9 @@ private[entityreplication] class ReplicationRegion(
       memberIndexOf(member).foreach(regions(_).add(member))
     }
     updateState()
+    // This actor can determine whether it triggers all possible Raft actor starts
+    // once a node in which the actor runs receives the current cluster state.
+    triggerStartingAllPossibleRaftActorsIfNeeded()
   }
 
   def handleClusterDomainEvent(event: ClusterDomainEvent): Unit =
@@ -253,6 +278,39 @@ private[entityreplication] class ReplicationRegion(
       context.become(open)
       if (log.isDebugEnabled) log.debug("=== {} will be open ===", classOf[ReplicationRegion].getSimpleName)
       unstashAll()
+    }
+  }
+
+  /** Triggers all possible [[RaftActor]] starts.
+    *
+    * This method will trigger all Raft actor starts on the following all conditions meet:
+    *   - possibleShardIds is non-empty.
+    *   - The node on which this actor runs is the oldest.
+    */
+  private def triggerStartingAllPossibleRaftActorsIfNeeded(): Unit = {
+    // Only one raft actor runs on each shard.
+    val possibleRaftActorIds = possibleShardIds
+    // [Optimization]
+    // Only the oldest node should trigger all possible Raft actor starts.
+    // Newer nodes don't have to trigger starts since the oldest has already done such triggers.
+    // This optimization reduces unnecessary message exchanges.
+    def isOldest: Boolean = {
+      val membersInSelfRegion = regions(selfMemberIndex).toVector
+      val oldestMember        = membersInSelfRegion.minOption(Member.ageOrdering)
+      Option(cluster.selfMember) == oldestMember
+    }
+    val shouldTriggerStarting = possibleRaftActorIds.nonEmpty && isOldest
+    if (shouldTriggerStarting) {
+      // [Optimization]
+      // The oldest node on each member index should trigger starts against only non-proxy Shard Region.
+      // Each oldest node doesn't have to trigger starts against proxy Shard Region since another has already done such triggers.
+      // This optimization reduces unnecessary message exchanges.
+      val shardRegion = shardingRouters(selfMemberIndex)
+      // This spawned actor will stop itself after all possible Raft actors start.
+      context.spawn[Nothing](
+        ReplicationRegionRaftActorStarter(shardRegion, possibleRaftActorIds, settings.raftSettings),
+        "RaftActorStarter",
+      )
     }
   }
 

@@ -2,12 +2,14 @@ package lerna.akka.entityreplication.typed
 
 import akka.NotUsed
 import akka.actor.typed.ActorRef
+import akka.cluster.sharding.{ ClusterSharding, ShardRegion }
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
-import lerna.akka.entityreplication.{ STMultiNodeSerializable, STMultiNodeSpec }
-import com.typesafe.config.{ ConfigFactory, ConfigValueFactory }
+import com.typesafe.config.{ Config, ConfigFactory, ConfigValueFactory }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
+import lerna.akka.entityreplication.{ ReplicationRegion, STMultiNodeSerializable, STMultiNodeSpec }
 
+import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 
 object ClusterReplicationMultiNodeSpecConfig extends MultiNodeConfig {
@@ -21,12 +23,22 @@ object ClusterReplicationMultiNodeSpecConfig extends MultiNodeConfig {
     node3 -> MemberIndex("member-3"),
   )
 
+  private val testConfig: Config =
+    ConfigFactory.parseString(
+      """
+        |# Overwrite to speed up tests.
+        |lerna.akka.entityreplication.raft.number-of-shards = 50
+        |lerna.akka.entityreplication.raft.raft-actor-auto-start.number-of-actors = 20
+        |lerna.akka.entityreplication.raft.raft-actor-auto-start.frequency = 100ms
+        |""".stripMargin,
+    )
+
   commonConfig(
     debugConfig(false)
       .withValue(
         "lerna.akka.entityreplication.raft.multi-raft-roles",
         ConfigValueFactory.fromIterable(memberIndexes.values.map(_.role).toSet.asJava),
-      )
+      ).withFallback(testConfig)
       .withFallback(ConfigFactory.parseResources("multi-jvm-testing.conf")),
   )
   nodeConfig(node1)(ConfigFactory.parseString(s"""
@@ -53,6 +65,7 @@ abstract class ClusterReplicationMultiNodeSpec
 
   import akka.actor.typed.scaladsl.adapter._
 
+  private val settings                 = ClusterReplicationSettings(system.toTyped)
   private[this] val clusterReplication = ClusterReplication(system.toTyped)
 
   "ClusterReplication" should {
@@ -61,9 +74,54 @@ abstract class ClusterReplicationMultiNodeSpec
       joinCluster(node1, node2, node3)
     }
 
+    "start ClusterReplication" in {
+      clusterReplication.init(GetEntityContextEntity())
+      enterBarrier("ClusterReplication started.")
+    }
+
+    "start all Raft actors automatically" in {
+      val requiredTimeToStartAllRaftActors: FiniteDuration = {
+        val requiredRounds = {
+          // Only one Raft actor runs on each shard.
+          val numOfActors                   = settings.raftSettings.numberOfShards
+          val numOfActorsStartedOnEachRound = settings.raftSettings.raftActorAutoStartNumberOfActors
+          (numOfActors / numOfActorsStartedOnEachRound) +
+          (if (numOfActors % numOfActorsStartedOnEachRound > 0) 1 else 0)
+        }
+        settings.raftSettings.raftActorAutoStartFrequency * requiredRounds
+      }
+      val expectedShardRegionState = {
+        val allRaftActorIds = (0 until settings.raftSettings.numberOfShards).map(_.toString).toSet
+        ShardRegion.CurrentShardRegionState(allRaftActorIds.map(raftActorId => {
+          // Only one Raft actor runs on each shard.
+          // Both Shard ID and Entity ID is the same as Raft actor ID.
+          ShardRegion.ShardState(raftActorId, Set(raftActorId))
+        }))
+      }
+
+      Set(node1, node2, node3).foreach { node =>
+        runOn(node) {
+          val shardingTypeName = {
+            val clusterReplicationTypeName = GetEntityContextEntity.typeKey.name
+            ReplicationRegion.raftShardingTypeName(clusterReplicationTypeName, memberIndexes(node))
+          }
+          awaitAssert(
+            {
+              // We have to get the shard region in this awaitAssert assertion
+              // since the getting shard region would also succeed eventually.
+              ClusterSharding(system).shardRegion(shardingTypeName) ! ShardRegion.GetShardRegionState
+              expectMsg(expectedShardRegionState)
+            },
+            max = requiredTimeToStartAllRaftActors * 2.0,
+            interval = requiredTimeToStartAllRaftActors * 0.1,
+          )
+        }
+      }
+      enterBarrier("All Raft actors are running.")
+    }
+
     "provide a ReplicatedEntityContext to the entity behavior" in {
       import GetEntityContextEntity._
-      clusterReplication.init(GetEntityContextEntity())
       val entityId      = "test-entity"
       val entityRef     = clusterReplication.entityRefFor(GetEntityContextEntity.typeKey, entityId = entityId)
       val entityContext = (entityRef ask GetEntityContext).await.context
