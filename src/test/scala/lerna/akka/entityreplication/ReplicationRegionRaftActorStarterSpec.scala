@@ -8,7 +8,7 @@ import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
 
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.{ Duration, DurationInt, FiniteDuration }
 
 object ReplicationRegionRaftActorStarterSpec {
   private val config: Config = {
@@ -41,6 +41,12 @@ final class ReplicationRegionRaftActorStarterSpec
   private def expectStartEntityAndThenNoAck(shardRegionProbe: TestProbe): ShardRegion.EntityId = {
     val startMessage = shardRegionProbe.expectMsgType[ShardRegion.StartEntity]
     startMessage.entityId
+  }
+
+  /** Classic version of [[ManualTime.expectNoMessageFor]] */
+  private def expectNoMessageFor(duration: FiniteDuration, probe: TestProbe): Unit = {
+    manualTime.timePasses(duration)
+    probe.expectNoMessage(Duration.Zero)
   }
 
   "ReplicationRegionRaftActorStarter" should {
@@ -90,7 +96,7 @@ final class ReplicationRegionRaftActorStarterSpec
 
       // Advance the clock by `retry-interval`.
       // Then the starter will try again.
-      manualTime.expectNoMessageFor(defaultSettings.raftActorAutoStartRetryInterval - 1.milli)
+      expectNoMessageFor(defaultSettings.raftActorAutoStartRetryInterval - 1.milli, shardRegionProbe)
       manualTime.timePasses(1.milli)
 
       // Second round (all starts will succeed)
@@ -143,7 +149,7 @@ final class ReplicationRegionRaftActorStarterSpec
 
       // Advance the clock by `frequency`.
       // The starter will trigger starts on the second round.
-      manualTime.expectNoMessageFor(customSettings.raftActorAutoStartFrequency - 1.milli)
+      expectNoMessageFor(customSettings.raftActorAutoStartFrequency - 1.milli, shardRegionProbe)
       manualTime.timePasses(1.milli)
 
       // Second round
@@ -154,7 +160,7 @@ final class ReplicationRegionRaftActorStarterSpec
 
       // Advance the clock by `frequency`.
       // The starter will trigger starts on the third round.
-      manualTime.expectNoMessageFor(customSettings.raftActorAutoStartFrequency - 1.milli)
+      expectNoMessageFor(customSettings.raftActorAutoStartFrequency - 1.milli, shardRegionProbe)
       manualTime.timePasses(1.milli)
 
       // Third round
