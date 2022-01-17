@@ -5,7 +5,7 @@ import akka.actor.typed.ActorRef
 import akka.cluster.sharding.{ ClusterSharding, ShardRegion }
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
-import com.typesafe.config.{ Config, ConfigFactory, ConfigValueFactory }
+import com.typesafe.config.{ ConfigFactory, ConfigValueFactory }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.{ ReplicationRegion, STMultiNodeSerializable, STMultiNodeSpec }
 
@@ -52,7 +52,6 @@ abstract class ClusterReplicationMultiNodeSpec
 
   import ClusterReplicationMultiNodeSpec._
   import ClusterReplicationMultiNodeSpecConfig._
-
   import akka.actor.typed.scaladsl.adapter._
 
   private val settings                 = ClusterReplicationSettings(system.toTyped)
