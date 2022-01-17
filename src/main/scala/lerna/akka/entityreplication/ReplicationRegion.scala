@@ -151,7 +151,11 @@ private[entityreplication] class ReplicationRegion(
         typeName = raftShardingTypeName(typeName, memberIndex),
         entityProps = createRaftActorProps(),
         settings = ClusterShardingSettings(settings.raftSettings.clusterShardingConfig)
-          .withRole(memberIndex.role),
+          .withRole(memberIndex.role)
+          // All Raft actors should always be running
+          // since they perform some processing (e.g. event sourcing) in parallel with user requests.
+          // RememberEntities ensures that all Raft actors restart after a rebalance or entity crash.
+          .withRememberEntities(true),
         extractEntityId,
         extractShardId,
       )
