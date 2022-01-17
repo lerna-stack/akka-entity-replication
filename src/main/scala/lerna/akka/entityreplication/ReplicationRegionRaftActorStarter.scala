@@ -83,11 +83,13 @@ private[entityreplication] final class ReplicationRegionRaftActorStarter private
           val newAckWaitingIds = ackWaitingIds - entityId
           behavior(remainingIds, newAckWaitingIds)
         case ResendUnAckedStartEntity =>
-          context.log.info(
-            "Found [{}] Raft actors waiting for StartEntityAck. Resends StartEntity for those actors.",
-            ackWaitingIds.size,
-          )
-          ackWaitingIds.foreach(sendStartEntity)
+          if (ackWaitingIds.nonEmpty) {
+            context.log.info(
+              "Found [{}] Raft actors waiting for StartEntityAck. Resends StartEntity for those actors.",
+              ackWaitingIds.size,
+            )
+            ackWaitingIds.foreach(sendStartEntity)
+          }
           Behaviors.same
       }
     }
