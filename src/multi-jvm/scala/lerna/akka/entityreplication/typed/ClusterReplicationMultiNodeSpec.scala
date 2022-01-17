@@ -23,22 +23,12 @@ object ClusterReplicationMultiNodeSpecConfig extends MultiNodeConfig {
     node3 -> MemberIndex("member-3"),
   )
 
-  private val testConfig: Config =
-    ConfigFactory.parseString(
-      """
-        |# Overwrite to speed up tests.
-        |lerna.akka.entityreplication.raft.number-of-shards = 50
-        |lerna.akka.entityreplication.raft.raft-actor-auto-start.number-of-actors = 20
-        |lerna.akka.entityreplication.raft.raft-actor-auto-start.frequency = 100ms
-        |""".stripMargin,
-    )
-
   commonConfig(
     debugConfig(false)
       .withValue(
         "lerna.akka.entityreplication.raft.multi-raft-roles",
         ConfigValueFactory.fromIterable(memberIndexes.values.map(_.role).toSet.asJava),
-      ).withFallback(testConfig)
+      )
       .withFallback(ConfigFactory.parseResources("multi-jvm-testing.conf")),
   )
   nodeConfig(node1)(ConfigFactory.parseString(s"""
