@@ -75,8 +75,10 @@ private[entityreplication] final class ReplicationRegionRaftActorStarter private
         case StartBatch =>
           val (newBatch, newRemainingIds) = remainingIds.splitAt(batchSize)
           val newAckWaitingIds            = ackWaitingIds.union(newBatch)
-          newBatch.foreach(sendStartEntity)
-          context.log.info("Sent StartEntity(s) to trigger [{}] Raft actors starting.", newBatch.size)
+          if (newBatch.nonEmpty) {
+            newBatch.foreach(sendStartEntity)
+            context.log.info("Sent StartEntity(s) to trigger [{}] Raft actors starting.", newBatch.size)
+          }
           behavior(newRemainingIds, newAckWaitingIds)
         case ClassicStartEntityAck(entityId) =>
           context.log.debug("Received StartEntityAck [{}].", entityId)
