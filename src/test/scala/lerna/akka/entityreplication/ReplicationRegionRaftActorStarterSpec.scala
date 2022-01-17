@@ -124,6 +124,7 @@ final class ReplicationRegionRaftActorStarterSpec
       val startedRaftActorIdsOnFirstTry = (1 to 5).map { _ =>
         expectStartEntityAndThenAck(shardRegionProbe)
       }.toSet
+      startedRaftActorIdsOnFirstTry.size shouldBe 5
 
       // Advance the clock by `frequency`.
       // The starter will trigger starts on the second round.
@@ -134,6 +135,7 @@ final class ReplicationRegionRaftActorStarterSpec
       val startedRaftActorIdsOnSecondTry = (1 to 5).map { _ =>
         expectStartEntityAndThenAck(shardRegionProbe)
       }.toSet
+      startedRaftActorIdsOnSecondTry.size shouldBe 5
 
       // Advance the clock by `frequency`.
       // The starter will trigger starts on the third round.
@@ -144,6 +146,7 @@ final class ReplicationRegionRaftActorStarterSpec
       val startedRaftActorIdsOnThirdTry = (1 to 2).map { _ =>
         expectStartEntityAndThenAck(shardRegionProbe)
       }.toSet
+      startedRaftActorIdsOnThirdTry.size shouldBe 2
 
       val startedRaftActorIds =
         startedRaftActorIdsOnFirstTry
