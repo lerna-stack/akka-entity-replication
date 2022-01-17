@@ -107,15 +107,30 @@ final class ReplicationRegionRaftActorStarterSpec
     "trigger all actor starts in multiple rounds" in {
       val shardRegionProbe = TestProbe()
 
-      val defaultSettings = RaftSettings(system.settings.config)
+      val customSettings = RaftSettings(
+        ConfigFactory
+          .parseString(
+            """
+            |lerna.akka.entityreplication.raft.raft-actor-auto-start {
+            |  frequency = 200ms
+            |  number-of-actors = 5
+            |  retry-interval = 1s
+            |}
+            |""".stripMargin,
+          ).withFallback(system.settings.config),
+      )
       val raftActorStarter =
         spawnRaftActorStarter(
           shardRegionProbe.ref,
           Set("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12"),
-          defaultSettings,
+          customSettings,
         )
 
-      assume(defaultSettings.raftActorAutoStartNumberOfActors == 5)
+      assert(customSettings.raftActorAutoStartNumberOfActors == 5)
+      assert(
+        customSettings.raftActorAutoStartRetryInterval > customSettings.raftActorAutoStartFrequency * 3, // 3 rounds
+        "The starter should never send retries to simplify this test.",
+      )
 
       // The starter will stop at the end of this test.
       watch(raftActorStarter)
@@ -128,7 +143,7 @@ final class ReplicationRegionRaftActorStarterSpec
 
       // Advance the clock by `frequency`.
       // The starter will trigger starts on the second round.
-      manualTime.expectNoMessageFor(defaultSettings.raftActorAutoStartFrequency - 1.milli)
+      manualTime.expectNoMessageFor(customSettings.raftActorAutoStartFrequency - 1.milli)
       manualTime.timePasses(1.milli)
 
       // Second round
@@ -139,7 +154,7 @@ final class ReplicationRegionRaftActorStarterSpec
 
       // Advance the clock by `frequency`.
       // The starter will trigger starts on the third round.
-      manualTime.expectNoMessageFor(defaultSettings.raftActorAutoStartFrequency - 1.milli)
+      manualTime.expectNoMessageFor(customSettings.raftActorAutoStartFrequency - 1.milli)
       manualTime.timePasses(1.milli)
 
       // Third round
