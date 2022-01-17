@@ -9,7 +9,7 @@ import com.typesafe.config.{ ConfigFactory, ConfigValueFactory }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.{ ReplicationRegion, STMultiNodeSerializable, STMultiNodeSpec }
 
-import scala.concurrent.duration.FiniteDuration
+import scala.concurrent.duration.{ DurationInt, FiniteDuration }
 import scala.jdk.CollectionConverters._
 
 object ClusterReplicationMultiNodeSpecConfig extends MultiNodeConfig {
@@ -69,16 +69,7 @@ abstract class ClusterReplicationMultiNodeSpec
     }
 
     "start all Raft actors automatically" in {
-      val requiredTimeToStartAllRaftActors: FiniteDuration = {
-        val requiredRounds = {
-          // Only one Raft actor runs on each shard.
-          val numOfActors                   = settings.raftSettings.numberOfShards
-          val numOfActorsStartedOnEachRound = settings.raftSettings.raftActorAutoStartNumberOfActors
-          (numOfActors / numOfActorsStartedOnEachRound) +
-          (if (numOfActors % numOfActorsStartedOnEachRound > 0) 1 else 0)
-        }
-        settings.raftSettings.raftActorAutoStartFrequency * requiredRounds
-      }
+      val requiredTimeToStartAllRaftActors: FiniteDuration = 5.seconds
       val expectedShardRegionState = {
         val allRaftActorIds = (0 until settings.raftSettings.numberOfShards).map(_.toString).toSet
         ShardRegion.CurrentShardRegionState(allRaftActorIds.map(raftActorId => {
@@ -101,8 +92,8 @@ abstract class ClusterReplicationMultiNodeSpec
               ClusterSharding(system).shardRegion(shardingTypeName) ! ShardRegion.GetShardRegionState
               expectMsg(expectedShardRegionState)
             },
-            max = requiredTimeToStartAllRaftActors * 2.0,
-            interval = requiredTimeToStartAllRaftActors * 0.1,
+            max = requiredTimeToStartAllRaftActors,
+            interval = 100.millis,
           )
         }
       }
