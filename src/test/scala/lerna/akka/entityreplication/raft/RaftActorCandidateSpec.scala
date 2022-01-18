@@ -18,6 +18,151 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
 
   "Candidate" should {
 
+    "send RequestVote(lastLogIndex=0, lastLogTerm=0) if it has RaftMemberData(ancestorLastTerm=0, ancestorLastIndex=0, entries.size=0, ...)" in {
+      val shardId              = createUniqueShardId()
+      val candidateMemberIndex = createUniqueMemberIndex()
+      val regionProbe          = TestProbe()
+      val candidate = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = candidateMemberIndex,
+        region = regionProbe.ref,
+      )
+      val currentTerm   = Term(2)
+      val candidateData = createCandidateData(currentTerm, ReplicatedLog())
+      setState(candidate, Candidate, candidateData)
+
+      assert(candidateData.replicatedLog.ancestorLastIndex == LogEntryIndex(0))
+      assert(candidateData.replicatedLog.ancestorLastTerm == Term(0))
+      assert(candidateData.replicatedLog.entries.sizeIs == 0)
+
+      // ElectionTimeout triggers that this candidate sends a RequestVote.
+      candidate ! ElectionTimeout
+      val expectedRequestVote =
+        RequestVote(
+          shardId,
+          term = Term(3),
+          candidate = candidateMemberIndex,
+          lastLogIndex = LogEntryIndex(0),
+          lastLogTerm = Term(0),
+        )
+      regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+    }
+
+    "send RequestVote(lastLogIndex=entries.last.index, lastLogTerm=entries.last.term) if it has RaftMemberData(ancestorLastTerm=0, ancestorLastIndex=0, entries.size>0, ...)" in {
+      val shardId              = createUniqueShardId()
+      val candidateMemberIndex = createUniqueMemberIndex()
+      val regionProbe          = TestProbe()
+      val candidate = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = candidateMemberIndex,
+        region = regionProbe.ref,
+      )
+      val currentTerm = Term(2)
+      val replicatedLog = {
+        val candidateLogEntries = Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "a"), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "c"), Term(2)),
+        )
+        ReplicatedLog().merge(candidateLogEntries, LogEntryIndex.initial())
+      }
+      val candidateData = createCandidateData(currentTerm, replicatedLog)
+      setState(candidate, Candidate, candidateData)
+
+      assert(candidateData.replicatedLog.ancestorLastIndex == LogEntryIndex(0))
+      assert(candidateData.replicatedLog.ancestorLastTerm == Term(0))
+      assert(candidateData.replicatedLog.entries.sizeIs > 0)
+
+      // ElectionTimeout triggers that this candidate sends a RequestVote.
+      candidate ! ElectionTimeout
+      val expectedRequestVote =
+        RequestVote(
+          shardId,
+          term = Term(3),
+          candidate = candidateMemberIndex,
+          lastLogIndex = LogEntryIndex(3),
+          lastLogTerm = Term(2),
+        )
+      regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+    }
+
+    "send RequestVote(lastLogIndex=ancestorLastIndex, lastLogTerm=ancestorLastTerm) if it has RaftMemberData(ancestorLastTerm>0, ancestorLastIndex>0, entries.size=0, ...)" in {
+      val shardId              = createUniqueShardId()
+      val candidateMemberIndex = createUniqueMemberIndex()
+      val regionProbe          = TestProbe()
+      val candidate = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = candidateMemberIndex,
+        region = regionProbe.ref,
+      )
+      val currentTerm       = Term(2)
+      val ancestorLastTerm  = Term(1)
+      val ancestorLastIndex = LogEntryIndex(5)
+      val candidateData = {
+        val replicatedLog = ReplicatedLog().reset(ancestorLastTerm, ancestorLastIndex)
+        createCandidateData(currentTerm, replicatedLog)
+      }
+      setState(candidate, Candidate, candidateData)
+
+      assert(candidateData.replicatedLog.ancestorLastIndex == ancestorLastIndex)
+      assert(candidateData.replicatedLog.ancestorLastTerm == ancestorLastTerm)
+      assert(candidateData.replicatedLog.entries.sizeIs == 0)
+
+      // ElectionTimeout triggers that this candidate sends a RequestVote.
+      candidate ! ElectionTimeout
+      val expectedRequestVote =
+        RequestVote(
+          shardId,
+          term = Term(3),
+          candidate = candidateMemberIndex,
+          lastLogIndex = ancestorLastIndex,
+          lastLogTerm = ancestorLastTerm,
+        )
+      regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+    }
+
+    "send RequestVote(lastLogIndex=entries.last.index, lastLogTerm=entries.last.term) if it has RaftMemberData(ancestorLastTerm>0, ancestorLastIndex>0, entries.size>0, ...)" in {
+      val shardId              = createUniqueShardId()
+      val candidateMemberIndex = createUniqueMemberIndex()
+      val regionProbe          = TestProbe()
+      val candidate = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = candidateMemberIndex,
+        region = regionProbe.ref,
+      )
+      val currentTerm       = Term(2)
+      val ancestorLastTerm  = Term(1)
+      val ancestorLastIndex = LogEntryIndex(3)
+      val candidateData = {
+        val candidateLogEntries = Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "a"), Term(2)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "b"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "c"), Term(2)),
+        )
+        val replicatedLog = ReplicatedLog()
+          .reset(ancestorLastTerm, ancestorLastIndex)
+          .merge(candidateLogEntries, LogEntryIndex(0))
+        createCandidateData(currentTerm, replicatedLog)
+      }
+      setState(candidate, Candidate, candidateData)
+
+      assert(candidateData.replicatedLog.ancestorLastIndex == ancestorLastIndex)
+      assert(candidateData.replicatedLog.ancestorLastTerm == ancestorLastTerm)
+      assert(candidateData.replicatedLog.entries.sizeIs > 0)
+
+      // ElectionTimeout triggers that this candidate sends a RequestVote.
+      candidate ! ElectionTimeout
+      val expectedRequestVote =
+        RequestVote(
+          shardId,
+          term = Term(3),
+          candidate = candidateMemberIndex,
+          lastLogIndex = LogEntryIndex(6),
+          lastLogTerm = Term(2),
+        )
+      regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+    }
+
     "自分の RequestVote には Accept する" in {
       val candidateMemberIndex = createUniqueMemberIndex()
       val candidate            = createRaftActor(selfMemberIndex = candidateMemberIndex)
