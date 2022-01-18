@@ -18,7 +18,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
 
   "Candidate" should {
 
-    "send RequestVote(lastLogIndex=0, lastLogTerm=0) if it has RaftMemberData(ancestorLastTerm=0, ancestorLastIndex=0, entries.size=0, ...)" in {
+    "send RequestVote(lastLogIndex=0, lastLogTerm=0) on ElectionTimeout if it has RaftMemberData(ancestorLastTerm=0, ancestorLastIndex=0, entries.size=0, ...)" in {
       val shardId              = createUniqueShardId()
       val candidateMemberIndex = createUniqueMemberIndex()
       val regionProbe          = TestProbe()
@@ -48,7 +48,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
     }
 
-    "send RequestVote(lastLogIndex=entries.last.index, lastLogTerm=entries.last.term) if it has RaftMemberData(ancestorLastTerm=0, ancestorLastIndex=0, entries.size>0, ...)" in {
+    "send RequestVote(lastLogIndex=entries.last.index, lastLogTerm=entries.last.term) on ElectionTimeout if it has RaftMemberData(ancestorLastTerm=0, ancestorLastIndex=0, entries.size>0, ...)" in {
       val shardId              = createUniqueShardId()
       val candidateMemberIndex = createUniqueMemberIndex()
       val regionProbe          = TestProbe()
@@ -86,7 +86,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
     }
 
-    "send RequestVote(lastLogIndex=ancestorLastIndex, lastLogTerm=ancestorLastTerm) if it has RaftMemberData(ancestorLastTerm>0, ancestorLastIndex>0, entries.size=0, ...)" in {
+    "send RequestVote(lastLogIndex=ancestorLastIndex, lastLogTerm=ancestorLastTerm) on ElectionTimeout if it has RaftMemberData(ancestorLastTerm>0, ancestorLastIndex>0, entries.size=0, ...)" in {
       val shardId              = createUniqueShardId()
       val candidateMemberIndex = createUniqueMemberIndex()
       val regionProbe          = TestProbe()
@@ -121,7 +121,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
     }
 
-    "send RequestVote(lastLogIndex=entries.last.index, lastLogTerm=entries.last.term) if it has RaftMemberData(ancestorLastTerm>0, ancestorLastIndex>0, entries.size>0, ...)" in {
+    "send RequestVote(lastLogIndex=entries.last.index, lastLogTerm=entries.last.term) on ElectionTimeout if it has RaftMemberData(ancestorLastTerm>0, ancestorLastIndex>0, entries.size>0, ...)" in {
       val shardId              = createUniqueShardId()
       val candidateMemberIndex = createUniqueMemberIndex()
       val regionProbe          = TestProbe()
