@@ -69,7 +69,8 @@ abstract class ClusterReplicationMultiNodeSpec
     }
 
     "start all Raft actors automatically" in {
-      val requiredTimeToStartAllRaftActors: FiniteDuration = 5.seconds
+      // All Raft actors should start within this timeout.
+      val autoStartTimeout: FiniteDuration = 10.seconds
       val expectedShardRegionState = {
         val allRaftActorIds = (0 until settings.raftSettings.numberOfShards).map(_.toString).toSet
         ShardRegion.CurrentShardRegionState(allRaftActorIds.map(raftActorId => {
@@ -78,7 +79,6 @@ abstract class ClusterReplicationMultiNodeSpec
           ShardRegion.ShardState(raftActorId, Set(raftActorId))
         }))
       }
-
       Set(node1, node2, node3).foreach { node =>
         runOn(node) {
           val shardingTypeName = {
@@ -92,8 +92,7 @@ abstract class ClusterReplicationMultiNodeSpec
               ClusterSharding(system).shardRegion(shardingTypeName) ! ShardRegion.GetShardRegionState
               expectMsg(expectedShardRegionState)
             },
-            max = requiredTimeToStartAllRaftActors,
-            interval = 100.millis,
+            max = autoStartTimeout,
           )
         }
       }

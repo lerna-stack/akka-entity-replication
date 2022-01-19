@@ -10,6 +10,7 @@ import akka.persistence.query.scaladsl.CurrentEventsByTagQuery
 import akka.persistence.query.{ EventEnvelope, Offset, PersistenceQuery }
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
+import akka.util.Timeout
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.util.AtLeastOnceComplete
 import lerna.akka.entityreplication.{ STMultiNodeSerializable, STMultiNodeSpec }
@@ -26,9 +27,6 @@ object EventSourcingAutoStartMultiNodeSpecConfig extends MultiNodeConfig {
   val node4: RoleName = role("node4")
   val node5: RoleName = role("node5")
   val node6: RoleName = role("node6")
-
-  /** ClusterReplication should persist events eventually within this timeout. */
-  val propagationTimeout: FiniteDuration = 10.seconds
 
   private val testConfig: Config =
     ConfigFactory.parseString(s"""
@@ -121,6 +119,12 @@ class EventSourcingAutoStartMultiNodeSpec
 
   override def initialParticipants: Int = 3
 
+  /** ClusterReplication should be ready to handle requests whitin this timeout */
+  val initializationTimeout: FiniteDuration = 10.seconds
+
+  /** ClusterReplication should persist events eventually within this timeout. */
+  val propagationTimeout: FiniteDuration = 10.seconds
+
   private implicit val typedSystem: ActorSystem[Nothing] = system.toTyped
   private val clusterReplication: ClusterReplication     = ClusterReplication(typedSystem)
   private val readJournal: CurrentEventsByTagQuery =
@@ -143,10 +147,15 @@ class EventSourcingAutoStartMultiNodeSpec
 
     "persist events via node1" in {
       runOn(node1) {
+        // Use the initialization timeout as a Ask Timeout
+        // since it is not ensured that the ClusterReplication can handle user requests immediately.
+        implicit val timeout: Timeout     = initializationTimeout
+        val retryInterval: FiniteDuration = 200.millis
+
         val entityRef = clusterReplication.entityRefFor(Catalog.typeKey, "example-1")
-        val reply1    = AtLeastOnceComplete.askTo(entityRef, Catalog.Add("1", _), retryInterval = 100.millis).await
+        val reply1    = AtLeastOnceComplete.askTo(entityRef, Catalog.Add("1", _), retryInterval).await
         reply1 shouldBe Catalog.AddReply(Set("1"))
-        val reply2 = AtLeastOnceComplete.askTo(entityRef, Catalog.Add("2", _), retryInterval = 100.millis).await
+        val reply2 = AtLeastOnceComplete.askTo(entityRef, Catalog.Add("2", _), retryInterval).await
         reply2 shouldBe Catalog.AddReply(Set("2", "1"))
       }
       enterBarrier("Done event persists")
@@ -165,7 +174,6 @@ class EventSourcingAutoStartMultiNodeSpec
             events shouldBe Seq.empty
           },
           propagationTimeout,
-          100.millis,
         )
       }
       enterBarrier("Done persisted-event reads on [node1,node2,node3]")
@@ -201,8 +209,7 @@ class EventSourcingAutoStartMultiNodeSpec
               Catalog.Added("2"),
             )
           },
-          propagationTimeout,
-          100.millis,
+          initializationTimeout + propagationTimeout,
         )
       }
       enterBarrier("Done persisted-event reads on [node4,node5,node6]")
