@@ -101,6 +101,10 @@ private[entityreplication] object RaftSettingsImpl {
     )
 
     val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
+    require(
+      maxAppendEntriesSize > 0,
+      s"max-append-entries-size ($maxAppendEntriesSize) should be greater than 0",
+    )
 
     val maxAppendEntriesBatchSize: Int = config.getInt("max-append-entries-batch-size")
 
