@@ -1,6 +1,5 @@
 package lerna.akka.entityreplication.raft
 
-import akka.cluster.sharding.ClusterShardingSettings
 import com.typesafe.config.{ Config, ConfigFactory }
 
 import java.util.concurrent.TimeUnit.NANOSECONDS
@@ -133,12 +132,7 @@ private[entityreplication] object RaftSettingsImpl {
     val snapshotSyncPersistenceOperationTimeout: FiniteDuration =
       config.getDuration("snapshot-sync.persistence-operation-timeout").toScala
 
-    val clusterShardingConfig: Config                    = config.getConfig("sharding")
-    val clusterShardingSettings: ClusterShardingSettings = ClusterShardingSettings(clusterShardingConfig)
-    require(
-      clusterShardingSettings.rememberEntitiesStore == "ddata",
-      s"remember-entities-store (${clusterShardingSettings.rememberEntitiesStore}) should always be `ddata`.",
-    )
+    val clusterShardingConfig: Config = config.getConfig("sharding")
 
     val raftActorAutoStartFrequency: FiniteDuration =
       config.getDuration("raft-actor-auto-start.frequency").toScala

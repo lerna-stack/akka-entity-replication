@@ -57,17 +57,6 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       )
     }
 
-    "throw an IllegalArgumentException if the given `raft.sharding.remember-entities-store` is not `ddata`" in {
-      val config = ConfigFactory
-        .parseString("""
-                       |lerna.akka.entityreplication.raft.sharding.remember-entities-store = "eventsourced"
-                       |""".stripMargin)
-        .withFallback(defaultConfig)
-      a[IllegalArgumentException] shouldBe thrownBy {
-        RaftSettings(config)
-      }
-    }
-
     "throw an IllegalArgumentException if the given raft-actor-auto-start.frequency is 0 milli" in {
       val config = ConfigFactory
         .parseString("""
