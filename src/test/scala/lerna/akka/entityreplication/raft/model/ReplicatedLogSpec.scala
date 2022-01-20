@@ -42,6 +42,23 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       log.getFrom(target, maxEntryCount = 10, maxBatchCount = 1) should be(expected)
     }
 
+    "return only one part of entries by getFrom(..., maxBatchCount=1) even if it has more succeeding entries" in {
+
+      val logEntries = Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, "b"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, "c"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, "d"), Term(1)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, "e"), Term(1)),
+        LogEntry(LogEntryIndex(6), EntityEvent(None, "f"), Term(1)),
+      )
+      val log = new ReplicatedLog(logEntries)
+
+      val expectedParts = Seq(Seq(logEntries(2), logEntries(3)))
+      log.getFrom(LogEntryIndex(3), maxEntryCount = 2, maxBatchCount = 1) shouldBe expectedParts
+
+    }
+
     "return part of logEntries by getFrom(LogEntryIndex, maxEntryCount, maxBatchCount) when (maxEntryCount * maxBatchCount) is lower value than count of logEntries" in {
       val logEntries = Seq(
         LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),
