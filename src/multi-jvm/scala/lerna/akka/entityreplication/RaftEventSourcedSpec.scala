@@ -12,6 +12,7 @@ import lerna.akka.entityreplication.raft.protocol.SnapshotOffer
 
 import java.util.concurrent.atomic.AtomicInteger
 import scala.annotation.nowarn
+import scala.concurrent.duration.{ DurationInt, FiniteDuration }
 
 object RaftEventSourcedSpecConfig extends MultiNodeConfig {
   val node1: RoleName = role("node1")
@@ -158,6 +159,12 @@ class RaftEventSourcedSpec extends MultiNodeSpec(RaftEventSourcedSpecConfig) wit
   import RaftEventSourcedSpec._
   import RaftEventSourcedSpecConfig._
 
+  /** ClusterReplication should be ready to handle requests whitin this timeout */
+  val initializationTimeout: FiniteDuration = 10.seconds
+
+  /** ClusterReplication should persist events eventually within this timeout. */
+  val propagationTimeout: FiniteDuration = 10.seconds
+
   override def initialParticipants: Int = roles.size
 
   private[this] val typeName = "test"
@@ -186,10 +193,17 @@ class RaftEventSourcedSpec extends MultiNodeSpec(RaftEventSourcedSpecConfig) wit
       val requestId1 = generateUniqueRequestId()
       val requestId2 = generateUniqueRequestId()
       runOn(node2) {
-        awaitAssert {
-          clusterReplication ! DummyReplicationActor.Increment(entityId, requestId1, amount = 3)
-          expectMsgType[DummyReplicationActor.State].knownRequestId should contain(requestId1)
-        }
+
+        // Use the initialization timeout for the first request
+        // since it is not ensured that the ClusterReplication can handle user requests immediately.
+        awaitAssert(
+          {
+            clusterReplication ! DummyReplicationActor.Increment(entityId, requestId1, amount = 3)
+            expectMsgType[DummyReplicationActor.State].knownRequestId should contain(requestId1)
+          },
+          initializationTimeout,
+        )
+
         awaitAssert {
           clusterReplication ! DummyReplicationActor.Increment(entityId, requestId2, amount = 10)
           expectMsgType[DummyReplicationActor.State].knownRequestId should contain(requestId2)
@@ -200,20 +214,23 @@ class RaftEventSourcedSpec extends MultiNodeSpec(RaftEventSourcedSpecConfig) wit
             readJournalPluginId = "lerna.akka.entityreplication.util.persistence.query.proxy",
           )
 
-        val source = readJournal
-          .currentEventsByTag(DummyEventAdapter.transactionTag, Offset.noOffset)
+        awaitAssert(
+          {
+            import DummyReplicationActor.Incremented
 
-        awaitAssert {
-          import DummyReplicationActor.Incremented
-          val result = source.runFold(Seq.empty[EventEnvelope])(_ :+ _).await.collect {
-            case EventEnvelope(_, _, _, event: Incremented) => event
-          }
+            val source = readJournal
+              .currentEventsByTag(DummyEventAdapter.transactionTag, Offset.noOffset)
+            val result = source.runFold(Seq.empty[EventEnvelope])(_ :+ _).await.collect {
+              case EventEnvelope(_, _, _, event: Incremented) => event
+            }
 
-          result should contain theSameElementsInOrderAs Seq(
-            Incremented(amount = 3, requestId1),
-            Incremented(amount = 10, requestId2),
-          )
-        }
+            result should contain theSameElementsInOrderAs Seq(
+              Incremented(amount = 3, requestId1),
+              Incremented(amount = 10, requestId2),
+            )
+          },
+          propagationTimeout,
+        )
       }
     }
   }
