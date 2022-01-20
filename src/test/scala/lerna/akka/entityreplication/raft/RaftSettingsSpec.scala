@@ -76,6 +76,28 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       }
     }
 
+    "throw an IllegalArgumentException if the given max-append-entries-batch-size is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.max-append-entries-batch-size = 0
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      a[IllegalArgumentException] shouldBe thrownBy {
+        RaftSettings(config)
+      }
+    }
+
+    "throw an IllegalArgumentException if the given max-append-entries-batch-size is -1" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.max-append-entries-batch-size = -1
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      a[IllegalArgumentException] shouldBe thrownBy {
+        RaftSettings(config)
+      }
+    }
+
     "throw an IllegalArgumentException if the given snapshot-every is out of range" in {
       val config = ConfigFactory
         .parseString("""
