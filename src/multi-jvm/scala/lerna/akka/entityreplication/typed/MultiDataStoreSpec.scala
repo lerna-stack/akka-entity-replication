@@ -102,11 +102,6 @@ class MultiDataStoreSpec extends MultiNodeSpec(MultiDataStoreSpecConfig) with ST
       joinCluster(node1, node2, node3)
     }
 
-    "initialize ClusterReplication" in {
-      clusterReplication.init(PingPongEntity(defaultDataStoreTypeKey, typedSystem))
-      clusterReplication.init(PingPongEntity(storageExtensionDataStoreTypeKey, typedSystem))
-    }
-
     /*
      * Rearranging the order of test cases will cause to fail the test:
      * https://github.com/lerna-stack/akka-entity-replication/pull/88#discussion_r661128422
@@ -114,12 +109,14 @@ class MultiDataStoreSpec extends MultiNodeSpec(MultiDataStoreSpecConfig) with ST
 
     "not persist data to StorageExtension when use default data store which is defined in configuration" in {
 
+      clusterReplication.init(PingPongEntity(defaultDataStoreTypeKey, typedSystem))
+
       runOn(node1) {
         val entityRef = clusterReplication.entityRefFor(defaultDataStoreTypeKey, entityId = "test")
 
-        val reply1 = AtLeastOnceComplete.askTo(entityRef, PingPongEntity.Ping(_), retryInterval = 100.millis)
+        val reply1 = AtLeastOnceComplete.askTo(entityRef, PingPongEntity.Ping(_), retryInterval = 200.millis)
         reply1.await shouldBe a[PingPongEntity.Pong]
-        val reply2 = AtLeastOnceComplete.askTo(entityRef, PingPongEntity.Ping(_), retryInterval = 100.millis)
+        val reply2 = AtLeastOnceComplete.askTo(entityRef, PingPongEntity.Ping(_), retryInterval = 200.millis)
         reply2.await shouldBe a[PingPongEntity.Pong]
 
         fetchAllJournalEntriesFromSecondaryStorage() should be(empty)
@@ -129,12 +126,14 @@ class MultiDataStoreSpec extends MultiNodeSpec(MultiDataStoreSpecConfig) with ST
 
     "persist data to StorageExtension when set persistent plugins to ClusterReplicationSettings" in {
 
+      clusterReplication.init(PingPongEntity(storageExtensionDataStoreTypeKey, typedSystem))
+
       runOn(node1) {
         val entityRef = clusterReplication.entityRefFor(storageExtensionDataStoreTypeKey, entityId = "test")
 
-        val reply1 = AtLeastOnceComplete.askTo(entityRef, PingPongEntity.Ping(_), retryInterval = 100.millis)
+        val reply1 = AtLeastOnceComplete.askTo(entityRef, PingPongEntity.Ping(_), retryInterval = 200.millis)
         reply1.await shouldBe a[PingPongEntity.Pong]
-        val reply2 = AtLeastOnceComplete.askTo(entityRef, PingPongEntity.Ping(_), retryInterval = 100.millis)
+        val reply2 = AtLeastOnceComplete.askTo(entityRef, PingPongEntity.Ping(_), retryInterval = 200.millis)
         reply2.await shouldBe a[PingPongEntity.Pong]
 
         fetchAllJournalEntriesFromSecondaryStorage() should not be empty
