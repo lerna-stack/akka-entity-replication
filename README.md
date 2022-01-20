@@ -59,6 +59,9 @@ For more information on how to implement an application using this library, plea
 - [Implementation Guide](docs/typed/implementation_guide.md)
 - [Testing Guide](docs/typed/testing_guide.md)
 
+**NOTE**: It is highly recommended that you carefully do cluster operations.
+For more details, please refer to [Operation Guide](docs/operation_guide.md).
+
 ## For Contributors
 
 [CONTRIBUTING](CONTRIBUTING.md) may help us.
