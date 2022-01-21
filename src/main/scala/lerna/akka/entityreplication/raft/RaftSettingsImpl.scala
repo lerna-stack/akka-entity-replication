@@ -101,8 +101,16 @@ private[entityreplication] object RaftSettingsImpl {
     )
 
     val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
+    require(
+      maxAppendEntriesSize > 0,
+      s"max-append-entries-size ($maxAppendEntriesSize) should be greater than 0",
+    )
 
     val maxAppendEntriesBatchSize: Int = config.getInt("max-append-entries-batch-size")
+    require(
+      maxAppendEntriesBatchSize > 0,
+      s"max-append-entries-batch-size ($maxAppendEntriesBatchSize) should be greater than 0",
+    )
 
     val compactionSnapshotCacheTimeToLive: FiniteDuration =
       config.getDuration("compaction.snapshot-cache-time-to-live").toScala
