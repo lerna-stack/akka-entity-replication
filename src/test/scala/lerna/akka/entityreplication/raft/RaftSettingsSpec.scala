@@ -57,6 +57,50 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       )
     }
 
+    "throw an IllegalArgumentException if the given max-append-entries-size is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.max-append-entries-size = 0
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      a[IllegalArgumentException] shouldBe thrownBy {
+        RaftSettings(config)
+      }
+    }
+
+    "throw an IllegalArgumentException if the given max-append-entries-size is -1" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.max-append-entries-size = -1
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      a[IllegalArgumentException] shouldBe thrownBy {
+        RaftSettings(config)
+      }
+    }
+
+    "throw an IllegalArgumentException if the given max-append-entries-batch-size is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.max-append-entries-batch-size = 0
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      a[IllegalArgumentException] shouldBe thrownBy {
+        RaftSettings(config)
+      }
+    }
+
+    "throw an IllegalArgumentException if the given max-append-entries-batch-size is -1" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.max-append-entries-batch-size = -1
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      a[IllegalArgumentException] shouldBe thrownBy {
+        RaftSettings(config)
+      }
+    }
+
     "throw an IllegalArgumentException if the given raft-actor-auto-start.frequency is 0 milli" in {
       val config = ConfigFactory
         .parseString("""
