@@ -79,22 +79,20 @@ abstract class ClusterReplicationMultiNodeSpec
           ShardRegion.ShardState(raftActorId, Set(raftActorId))
         }))
       }
-      Set(node1, node2, node3).foreach { node =>
-        runOn(node) {
-          val shardingTypeName = {
-            val clusterReplicationTypeName = GetEntityContextEntity.typeKey.name
-            ReplicationRegion.raftShardingTypeName(clusterReplicationTypeName, memberIndexes(node))
-          }
-          awaitAssert(
-            {
-              // We have to get the shard region in this awaitAssert assertion
-              // since the getting shard region would also succeed eventually.
-              ClusterSharding(system).shardRegion(shardingTypeName) ! ShardRegion.GetShardRegionState
-              expectMsg(expectedShardRegionState)
-            },
-            max = autoStartTimeout,
-          )
+      runOn(node1, node2, node3) {
+        val shardingTypeName = {
+          val clusterReplicationTypeName = GetEntityContextEntity.typeKey.name
+          ReplicationRegion.raftShardingTypeName(clusterReplicationTypeName, memberIndexes(myself))
         }
+        awaitAssert(
+          {
+            // We have to get the shard region in this awaitAssert assertion
+            // since the getting shard region would also succeed eventually.
+            ClusterSharding(system).shardRegion(shardingTypeName) ! ShardRegion.GetShardRegionState
+            expectMsg(expectedShardRegionState)
+          },
+          max = autoStartTimeout,
+        )
       }
       enterBarrier("All Raft actors are running.")
     }
