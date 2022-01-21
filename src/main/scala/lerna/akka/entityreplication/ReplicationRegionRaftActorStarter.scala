@@ -69,6 +69,7 @@ private[entityreplication] final class ReplicationRegionRaftActorStarter private
     if (isDone) {
       Behaviors.stopped { () =>
         context.log.info("Triggered starting all Raft actors on Shard Region [{}]", shardRegion)
+        context.log.info("Stops itself [{}]", context.self)
       }
     } else {
       Behaviors.receiveMessage {

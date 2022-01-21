@@ -294,9 +294,9 @@ private[entityreplication] class ReplicationRegion(
     // Only the oldest node should trigger all possible Raft actor starts.
     // Newer nodes don't have to trigger starts since the oldest has already done such triggers.
     // This optimization reduces unnecessary message exchanges.
+    val membersInSelfRegion = regions(selfMemberIndex).toVector
     def isOldest: Boolean = {
-      val membersInSelfRegion = regions(selfMemberIndex).toVector
-      val oldestMember        = membersInSelfRegion.minOption(Member.ageOrdering)
+      val oldestMember = membersInSelfRegion.minOption(Member.ageOrdering)
       Option(cluster.selfMember) == oldestMember
     }
     val shouldTriggerStarting = possibleRaftActorIds.nonEmpty && isOldest
@@ -310,6 +310,11 @@ private[entityreplication] class ReplicationRegion(
       context.spawn[Nothing](
         ReplicationRegionRaftActorStarter(shardRegion, possibleRaftActorIds, settings.raftSettings),
         "RaftActorStarter",
+      )
+      log.info(
+        "Started ReplicationRegionRaftActorStarter for Shard Region [{}] (members: [{}])",
+        shardRegion,
+        membersInSelfRegion,
       )
     }
   }
