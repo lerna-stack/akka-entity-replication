@@ -145,6 +145,30 @@ trait STMultiNodeSpec
     enterBarrier("started up cluster members")
   }
 
+  /** Forms a new cluster consisting of the given nodes.
+    *
+    * Fails on the following:
+    *   - A cluster already exists.
+    *   - Any of the given nodes have left from any of the previous clusters.
+    */
+  def newCluster(seedNode: RoleName, nodes: RoleName*): Unit = {
+    require(_activeNodes.isEmpty, "A cluster already exists")
+
+    val allNodes         = seedNode +: nodes
+    val alreadyLeftNodes = leftNodes.intersect(allNodes)
+    require(alreadyLeftNodes.isEmpty, s"$alreadyLeftNodes already left. They can't join cluster again.")
+
+    runOn(allNodes: _*) {
+      cluster.join(node(seedNode).address)
+      clusterEventSubscriber.fishForSpecificMessage(max = 60.seconds) {
+        case up: MemberUp if up.member.address == myAddress => Done
+      }
+    }
+
+    enterBarrier("Started a new cluster")
+    _activeNodes ++= allNodes
+  }
+
   def joinCluster(nodes: RoleName*): Unit = {
     val alreadyLeftNodes = leftNodes.intersect(nodes)
     require(alreadyLeftNodes.isEmpty, s"$alreadyLeftNodes already left. They can't join cluster again.")

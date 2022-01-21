@@ -34,6 +34,9 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.snapshotSyncCopyingParallelism shouldBe 10
       settings.snapshotSyncPersistenceOperationTimeout shouldBe 10.seconds
       settings.clusterShardingConfig shouldBe defaultConfig.getConfig("lerna.akka.entityreplication.raft.sharding")
+      settings.raftActorAutoStartFrequency shouldBe 3.seconds
+      settings.raftActorAutoStartNumberOfActors shouldBe 5
+      settings.raftActorAutoStartRetryInterval shouldBe 5.seconds
       settings.journalPluginId shouldBe ""
       settings.snapshotStorePluginId shouldBe ""
       settings.queryPluginId shouldBe ""
@@ -91,6 +94,39 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       val config = ConfigFactory
         .parseString("""
                        |lerna.akka.entityreplication.raft.max-append-entries-batch-size = -1
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      a[IllegalArgumentException] shouldBe thrownBy {
+        RaftSettings(config)
+      }
+    }
+
+    "throw an IllegalArgumentException if the given raft-actor-auto-start.frequency is 0 milli" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.raft-actor-auto-start.frequency = 0ms
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      a[IllegalArgumentException] shouldBe thrownBy {
+        RaftSettings(config)
+      }
+    }
+
+    "throw an IllegalArgumentException if the given raft-actor-auto-start.number-of-actors is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.raft-actor-auto-start.number-of-actors = 0
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      a[IllegalArgumentException] shouldBe thrownBy {
+        RaftSettings(config)
+      }
+    }
+
+    "throw an IllegalArgumentException if the given raft-actor-auto-start.retry-interval is 0 milli" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.raft-actor-auto-start.retry-interval = 0ms
                        |""".stripMargin)
         .withFallback(defaultConfig)
       a[IllegalArgumentException] shouldBe thrownBy {

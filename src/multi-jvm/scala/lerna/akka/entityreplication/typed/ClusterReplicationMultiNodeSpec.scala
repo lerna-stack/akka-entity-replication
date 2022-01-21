@@ -2,12 +2,14 @@ package lerna.akka.entityreplication.typed
 
 import akka.NotUsed
 import akka.actor.typed.ActorRef
+import akka.cluster.sharding.{ ClusterSharding, ShardRegion }
 import akka.remote.testconductor.RoleName
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
-import lerna.akka.entityreplication.{ STMultiNodeSerializable, STMultiNodeSpec }
 import com.typesafe.config.{ ConfigFactory, ConfigValueFactory }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
+import lerna.akka.entityreplication.{ ReplicationRegion, STMultiNodeSerializable, STMultiNodeSpec }
 
+import scala.concurrent.duration.{ DurationInt, FiniteDuration }
 import scala.jdk.CollectionConverters._
 
 object ClusterReplicationMultiNodeSpecConfig extends MultiNodeConfig {
@@ -50,9 +52,9 @@ abstract class ClusterReplicationMultiNodeSpec
 
   import ClusterReplicationMultiNodeSpec._
   import ClusterReplicationMultiNodeSpecConfig._
-
   import akka.actor.typed.scaladsl.adapter._
 
+  private val settings                 = ClusterReplicationSettings(system.toTyped)
   private[this] val clusterReplication = ClusterReplication(system.toTyped)
 
   "ClusterReplication" should {
@@ -61,9 +63,42 @@ abstract class ClusterReplicationMultiNodeSpec
       joinCluster(node1, node2, node3)
     }
 
+    "start ClusterReplication" in {
+      clusterReplication.init(GetEntityContextEntity())
+      enterBarrier("ClusterReplication started.")
+    }
+
+    "start all Raft actors automatically" in {
+      // All Raft actors should start within this timeout.
+      val autoStartTimeout: FiniteDuration = 10.seconds
+      val expectedShardRegionState = {
+        val allRaftActorIds = (0 until settings.raftSettings.numberOfShards).map(_.toString).toSet
+        ShardRegion.CurrentShardRegionState(allRaftActorIds.map(raftActorId => {
+          // Only one Raft actor runs on each shard.
+          // Both Shard ID and Entity ID is the same as Raft actor ID.
+          ShardRegion.ShardState(raftActorId, Set(raftActorId))
+        }))
+      }
+      runOn(node1, node2, node3) {
+        val shardingTypeName = {
+          val clusterReplicationTypeName = GetEntityContextEntity.typeKey.name
+          ReplicationRegion.raftShardingTypeName(clusterReplicationTypeName, memberIndexes(myself))
+        }
+        awaitAssert(
+          {
+            // We have to get the shard region in this awaitAssert assertion
+            // since the getting shard region would also succeed eventually.
+            ClusterSharding(system).shardRegion(shardingTypeName) ! ShardRegion.GetShardRegionState
+            expectMsg(expectedShardRegionState)
+          },
+          max = autoStartTimeout,
+        )
+      }
+      enterBarrier("All Raft actors are running.")
+    }
+
     "provide a ReplicatedEntityContext to the entity behavior" in {
       import GetEntityContextEntity._
-      clusterReplication.init(GetEntityContextEntity())
       val entityId      = "test-entity"
       val entityRef     = clusterReplication.entityRefFor(GetEntityContextEntity.typeKey, entityId = entityId)
       val entityContext = (entityRef ask GetEntityContext).await.context

@@ -48,6 +48,12 @@ trait RaftSettings {
 
   def clusterShardingConfig: Config
 
+  def raftActorAutoStartFrequency: FiniteDuration
+
+  def raftActorAutoStartNumberOfActors: Int
+
+  def raftActorAutoStartRetryInterval: FiniteDuration
+
   def journalPluginId: String
 
   def journalPluginAdditionalConfig: Config

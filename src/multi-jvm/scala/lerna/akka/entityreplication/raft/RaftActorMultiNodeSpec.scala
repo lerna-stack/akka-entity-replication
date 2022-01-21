@@ -595,6 +595,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
           ClusterReplicationSettings.create(system),
           extractEntityId,
           extractShardId,
+          possibleShardIds = Set.empty,
           maybeCommitLogStore = None,
         ) {
           override def createRaftActorProps(): Props = {
