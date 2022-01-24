@@ -37,7 +37,8 @@ class ClusterReplication private (system: ExtendedActorSystem) extends Extension
       extractEntityId: ReplicationRegion.ExtractEntityId,
       extractShardId: ReplicationRegion.ExtractShardId,
   ): ActorRef = {
-    internalStart(typeName, _ => entityProps, settings, extractEntityId, extractShardId)
+    val possibleShardIds = Set.empty[ReplicationRegion.ShardId]
+    internalStart(typeName, _ => entityProps, settings, extractEntityId, extractShardId, possibleShardIds)
   }
 
   private[entityreplication] def internalStart(
@@ -46,6 +47,7 @@ class ClusterReplication private (system: ExtendedActorSystem) extends Extension
       settings: ClusterReplicationSettings,
       extractEntityId: ReplicationRegion.ExtractEntityId,
       extractShardId: ReplicationRegion.ExtractShardId,
+      possibleShardIds: Set[ReplicationRegion.ShardId],
   ): ActorRef = {
 
     implicit val timeout = Timeout(30.seconds)
@@ -56,6 +58,7 @@ class ClusterReplication private (system: ExtendedActorSystem) extends Extension
       settings,
       extractEntityId,
       extractShardId,
+      possibleShardIds,
     )
 
     Await.result((guardian ? start).mapTo[Started], timeout.duration).regionRef
@@ -73,6 +76,7 @@ private[entityreplication] object ClusterReplicationGuardian {
       settings: ClusterReplicationSettings,
       extractEntityId: ReplicationRegion.ExtractEntityId,
       extractShardId: ReplicationRegion.ExtractShardId,
+      possibleShardIds: Set[ReplicationRegion.ShardId],
   ) extends Command
 
   final case class Started(regionRef: ActorRef)
@@ -83,7 +87,7 @@ private[entityreplication] class ClusterReplicationGuardian extends Actor {
 
   override def receive: Receive = {
 
-    case Start(typeName, entityProps, settings, extractEntityId, extractShardId) =>
+    case Start(typeName, entityProps, settings, extractEntityId, extractShardId, possibleShardIds) =>
       try {
         val _typeName  = TypeName.from(typeName)
         val regionName = ActorIds.actorName(_typeName.underlying)
@@ -106,6 +110,7 @@ private[entityreplication] class ClusterReplicationGuardian extends Actor {
                   settings,
                   extractEntityId,
                   extractShardId,
+                  possibleShardIds,
                   maybeCommitLogStore,
                 ),
                 regionName,

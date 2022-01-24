@@ -7,16 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 [Unreleased]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.0.0...master
 
+### Added
+- Efficient recovery of commit log store, which is on the query side [#112](https://github.com/lerna-stack/akka-entity-replication/issues/112)
+
+  This change will improve the performance of the recovery on the query side.
+  You should migrate settings described at [Migration Guide](docs/migration_guide.md#210-from-200).
+
+- Raft actors start automatically after an initialization of `ClusterReplication` [#118](https://github.com/lerna-stack/akka-entity-replication/issues/118)
+
+  This feature is enabled only by using `typed.ClusterReplication`.
+  It is highly recommended that you switch using the typed API since the classic API was deprecated.
+
 ### Changed
 - Bump up Akka version to 2.6.17 [PR#98](https://github.com/lerna-stack/akka-entity-replication/pull/98)
 
   This change will show you deserialization warnings during the rolling update, it's safe to ignore. 
   For more details, see [Akka 2.6.16 release note](https://akka.io/blog/news/2021/08/19/akka-2.6.16-released#rolling-upgrades)
-
-- Efficient recovery of commit log store, which is on the query side [PR#112](https://github.com/lerna-stack/akka-entity-replication/issues/112)
-
-  This change will improve the performance of the recovery on the query side.
-  You should migrate settings described at [Migration Guide](docs/migration_guide.md#210-from-200).
 
 ### Fixed
 - TestKit throws "Shard received unexpected message" exception after the entity passivated [PR#100](https://github.com/lerna-stack/akka-entity-replication/pull/100)
