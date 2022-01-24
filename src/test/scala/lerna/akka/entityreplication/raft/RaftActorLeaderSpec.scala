@@ -19,6 +19,8 @@ import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, Snapshot
 import lerna.akka.entityreplication.util.EventStore
 import org.scalatest.Inside
 
+import scala.concurrent.duration.DurationInt
+
 class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase with Inside {
 
   import RaftActor._
@@ -432,6 +434,179 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
           // don't reply to the leader
           msg.index
       } should contain theSameElementsAs (Set(follower1Index, follower2Index))
+    }
+
+    "send at most `max-append-entries-batch-size` AppendEntries messages to followers on HeartbeatTimeout if it has more logs than `max-append-entries-size`" in {
+      // The leader will send 3 AppendEntries messages to follower1.
+      // The leader will send 2 AppendEntries messages to follower2.
+      val leaderIndex    = createUniqueMemberIndex()
+      val follower1Index = createUniqueMemberIndex()
+      val follower2Index = createUniqueMemberIndex()
+      val regionProbe    = TestProbe()
+      val shardId        = createUniqueShardId()
+      val leader = {
+        val testConfig = ConfigFactory.parseString(
+          """
+            |lerna.akka.entityreplication.raft {
+            |  # Heartbeat never happen for simplicity of this test case.
+            |  heartbeat-interval = 1000s
+            |  max-append-entries-size = 2
+            |  max-append-entries-batch-size = 3
+            |}
+            |""".stripMargin,
+        )
+        val customSettings = RaftSettings(testConfig.withFallback(defaultRaftConfig))
+        customSettings.heartbeatInterval shouldBe 1000.seconds
+        customSettings.maxAppendEntriesSize shouldBe 2
+        customSettings.maxAppendEntriesBatchSize shouldBe 3
+        createRaftActor(
+          shardId = shardId,
+          selfMemberIndex = leaderIndex,
+          otherMemberIndexes = Set(follower1Index, follower2Index),
+          region = regionProbe.ref,
+          settings = customSettings,
+        )
+      }
+      val currentTerm = Term(2)
+      val logEntries = Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "a"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "c"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "d"), Term(1)),
+        LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "e"), Term(2)),
+        LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "f"), Term(2)),
+        LogEntry(LogEntryIndex(7), EntityEvent(Option(entityId), "g"), Term(2)),
+        LogEntry(LogEntryIndex(8), EntityEvent(None, NoOp), Term(2)),
+      )
+      val logEntryByIndex = logEntries.map(entry => entry.index -> entry).toMap
+      val leaderData = {
+        val replicatedLog = ReplicatedLog().merge(logEntries, LogEntryIndex(0))
+        createLeaderData(currentTerm, replicatedLog, commitIndex = LogEntryIndex(1))
+          .syncLastLogIndex(follower1Index, LogEntryIndex(1))
+          .syncLastLogIndex(follower2Index, LogEntryIndex(5))
+      }
+      leaderData.nextIndexFor(follower1Index) shouldBe LogEntryIndex(2)
+      leaderData.nextIndexFor(follower2Index) shouldBe LogEntryIndex(6)
+      setState(leader, Leader, leaderData)
+
+      def assertEquals(value: AppendEntries, expected: AppendEntries, clue: String): Unit = {
+        withClue(clue) {
+          value shouldBe expected
+          // The following verification is needed since `LogEntry.equals` does not take `event` field into account.
+          value.entries.zip(expected.entries).foreach {
+            case (entry, expectedEntry) =>
+              entry.event shouldBe expectedEntry.event
+          }
+        }
+      }
+
+      // Sending HeartbeatTimeout triggers that leader send AppendEntries messages to followers.
+      leader ! HeartbeatTimeout
+
+      // Fish AppendEntries messages sent by the leader.
+      val appendEntriesSentByLeader = regionProbe.fishForMessageN(messages = 3 + 2) {
+        case ReplicationRegion.DeliverTo(followerIndex, cmd: AppendEntries) =>
+          val appendEntries = followerIndex match {
+            case `follower1Index` => cmd
+            case `follower2Index` => cmd
+            case otherIndex       => fail(s"Got an AppendEntries with unexpected memberIndex($otherIndex)")
+          }
+          followerIndex -> appendEntries
+      }
+      val appendEntriesFollower1Received = appendEntriesSentByLeader.filter(_._1 == follower1Index).map(_._2)
+      val appendEntriesFollower2Received = appendEntriesSentByLeader.filter(_._1 == follower2Index).map(_._2)
+
+      // Verify all AppendEntries messages.
+      appendEntriesFollower1Received.size shouldBe 3
+      assertEquals(
+        appendEntriesFollower1Received(0),
+        AppendEntries(
+          shardId,
+          currentTerm,
+          leaderIndex,
+          prevLogIndex = LogEntryIndex(1),
+          prevLogTerm = Term(1),
+          entries = Seq(
+            logEntryByIndex(LogEntryIndex(2)),
+            logEntryByIndex(LogEntryIndex(3)),
+          ),
+          leaderCommit = LogEntryIndex(1),
+        ),
+        "The 1st AppendEntries follower1 received: ",
+      )
+      assertEquals(
+        appendEntriesFollower1Received(1),
+        AppendEntries(
+          shardId,
+          currentTerm,
+          leaderIndex,
+          prevLogIndex = LogEntryIndex(3),
+          prevLogTerm = Term(1),
+          entries = Seq(
+            logEntryByIndex(LogEntryIndex(4)),
+            logEntryByIndex(LogEntryIndex(5)),
+          ),
+          leaderCommit = LogEntryIndex(1),
+        ),
+        "The 2nd AppendEntries follower1 received: ",
+      )
+      assertEquals(
+        appendEntriesFollower1Received(2),
+        AppendEntries(
+          shardId,
+          currentTerm,
+          leaderIndex,
+          prevLogIndex = LogEntryIndex(5),
+          prevLogTerm = Term(2),
+          entries = Seq(
+            logEntryByIndex(LogEntryIndex(6)),
+            logEntryByIndex(LogEntryIndex(7)),
+          ),
+          leaderCommit = LogEntryIndex(1),
+        ),
+        "The 3rd AppendEntries follower1 received: ",
+      )
+
+      appendEntriesFollower2Received.size shouldBe 2
+      assertEquals(
+        appendEntriesFollower2Received(0),
+        AppendEntries(
+          shardId,
+          currentTerm,
+          leaderIndex,
+          prevLogIndex = LogEntryIndex(5),
+          prevLogTerm = Term(2),
+          entries = Seq(
+            logEntryByIndex(LogEntryIndex(6)),
+            logEntryByIndex(LogEntryIndex(7)),
+          ),
+          leaderCommit = LogEntryIndex(1),
+        ),
+        "The 1st AppendEntries follower2 received: ",
+      )
+      assertEquals(
+        appendEntriesFollower2Received(1),
+        AppendEntries(
+          shardId,
+          currentTerm,
+          leaderIndex,
+          prevLogIndex = LogEntryIndex(7),
+          prevLogTerm = Term(2),
+          entries = Seq(
+            logEntryByIndex(LogEntryIndex(8)),
+          ),
+          leaderCommit = LogEntryIndex(1),
+        ),
+        "The 2nd AppendEntries follower2 received: ",
+      )
+
+      // The leader should send no more AppendEntries on this HeartbeatTimeout.
+      assertThrows[AssertionError] {
+        regionProbe.fishForMessage(hint = "The leader sent an unexpected AppendEntries") {
+          case ReplicationRegion.DeliverTo(_, _: AppendEntries) => true
+          case _                                                => false
+        }
+      }
     }
 
     "send InstallSnapshot to the follower when the leader loses logs that the follower requires by compaction" in {

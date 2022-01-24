@@ -242,16 +242,20 @@ private[raft] trait Leader { this: RaftActor =>
                   ),
                 )
               case batchEntries =>
-                batchEntries.map { entries =>
-                  AppendEntries(
+                batchEntries.foldLeft(Seq.empty[AppendEntries]) { (previousBatches, entriesOfThisBatch) =>
+                  val lastEntryOfPreviousBatches = previousBatches.lastOption.flatMap(_.entries.lastOption)
+                  val prevLogIndexOfThisBatch    = lastEntryOfPreviousBatches.fold(prevLogIndex)(_.index)
+                  val prevLogTermOfThisBatch     = lastEntryOfPreviousBatches.fold(prevLogTerm)(_.term)
+                  val thisBatch = AppendEntries(
                     shardId,
                     currentData.currentTerm,
                     selfMemberIndex,
-                    prevLogIndex,
-                    prevLogTerm,
-                    entries,
+                    prevLogIndexOfThisBatch,
+                    prevLogTermOfThisBatch,
+                    entriesOfThisBatch,
                     currentData.commitIndex,
                   )
+                  previousBatches :+ thisBatch
                 }
             }
           case None =>
