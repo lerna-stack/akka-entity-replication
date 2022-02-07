@@ -45,12 +45,8 @@ private[raft] trait Leader { this: RaftActor =>
     res match {
 
       case RequestVote(_, term, candidate, lastLogIndex, lastLogTerm)
-          if term.isNewerThan(
-            currentData.currentTerm,
-          ) && (
-            lastLogTerm > currentData.replicatedLog.lastLogTerm ||
-            (lastLogTerm == currentData.replicatedLog.lastLogTerm && lastLogIndex >= currentData.replicatedLog.lastLogIndex)
-          ) =>
+          if term.isNewerThan(currentData.currentTerm) &&
+          currentData.replicatedLog.isGivenLogUpToDate(lastLogTerm, lastLogIndex) =>
         if (log.isDebugEnabled) log.debug("=== [Leader] accept RequestVote({}, {}) ===", term, candidate)
         cancelHeartbeatTimeoutTimer()
         applyDomainEvent(Voted(term, candidate)) { domainEvent =>
