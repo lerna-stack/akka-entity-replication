@@ -337,4 +337,95 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       updated.lastLogIndex should be(ancestorLastIndex)
     }
   }
+
+  "ReplicatedLog.isGivenLogUpToDate" should {
+
+    "return true if term > lastLogTerm" in {
+
+      val empty = ReplicatedLog()
+      assert(empty.isGivenLogUpToDate(Term(1), LogEntryIndex(0))) // index = lastLogIndex
+      assert(empty.isGivenLogUpToDate(Term(1), LogEntryIndex(1))) // index > lastLogIndex
+
+      val emptyWithAncestor = ReplicatedLog().reset(Term(3), LogEntryIndex(7))
+      assert(emptyWithAncestor.isGivenLogUpToDate(Term(4), LogEntryIndex(6))) // index < lastLogIndex
+      assert(emptyWithAncestor.isGivenLogUpToDate(Term(4), LogEntryIndex(7))) // index = lastLogIndex
+      assert(emptyWithAncestor.isGivenLogUpToDate(Term(4), LogEntryIndex(8))) // index > lastLogIndex
+
+      val nonEmpty = ReplicatedLog().merge(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+        ),
+        LogEntryIndex(0),
+      )
+      assert(nonEmpty.isGivenLogUpToDate(Term(3), LogEntryIndex(2))) // index < lastLogIndex
+      assert(nonEmpty.isGivenLogUpToDate(Term(3), LogEntryIndex(3))) // index = lastLogIndex
+      assert(nonEmpty.isGivenLogUpToDate(Term(3), LogEntryIndex(4))) // index > lastLogIndex
+
+    }
+
+    "return true if term = lastLogTerm & index >= lastLogIndex" in {
+
+      val empty = ReplicatedLog()
+      assert(empty.isGivenLogUpToDate(Term(0), LogEntryIndex(0))) // index = lastLogIndex
+      assert(empty.isGivenLogUpToDate(Term(0), LogEntryIndex(1))) // index > lastLogIndex
+
+      val emptyWithAncestor = ReplicatedLog().reset(Term(3), LogEntryIndex(7))
+      assert(emptyWithAncestor.isGivenLogUpToDate(Term(3), LogEntryIndex(7))) // index = lastLogIndex
+      assert(emptyWithAncestor.isGivenLogUpToDate(Term(3), LogEntryIndex(8))) // index > lastLogIndex
+
+      val nonEmpty = ReplicatedLog().merge(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+        ),
+        LogEntryIndex(0),
+      )
+      assert(nonEmpty.isGivenLogUpToDate(Term(2), LogEntryIndex(3))) // index = lastLogIndex
+      assert(nonEmpty.isGivenLogUpToDate(Term(2), LogEntryIndex(4))) // index > lastLogIndex
+
+    }
+
+    "return false if term = lastLogTerm & index < lastLogIndex" in {
+
+      val emptyWithAncestor = ReplicatedLog().reset(Term(3), LogEntryIndex(7))
+      assert(!emptyWithAncestor.isGivenLogUpToDate(Term(3), LogEntryIndex(6))) // index < lastLogIndex
+
+      val nonEmpty = ReplicatedLog().merge(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+        ),
+        LogEntryIndex(0),
+      )
+      assert(!nonEmpty.isGivenLogUpToDate(Term(2), LogEntryIndex(2))) // index < lastLogIndex
+
+    }
+
+    "return false if term < lastLogTerm" in {
+
+      val emptyWithAncestor = ReplicatedLog().reset(Term(3), LogEntryIndex(7))
+      assert(!emptyWithAncestor.isGivenLogUpToDate(Term(2), LogEntryIndex(6))) // index < lastLogIndex
+      assert(!emptyWithAncestor.isGivenLogUpToDate(Term(2), LogEntryIndex(7))) // index = lastLogIndex
+      assert(!emptyWithAncestor.isGivenLogUpToDate(Term(2), LogEntryIndex(8))) // index > lastLogIndex
+
+      val nonEmpty = ReplicatedLog().merge(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+        ),
+        LogEntryIndex(0),
+      )
+      assert(!nonEmpty.isGivenLogUpToDate(Term(1), LogEntryIndex(2))) // index < lastLogIndex
+      assert(!nonEmpty.isGivenLogUpToDate(Term(1), LogEntryIndex(3))) // index = lastLogIndex
+      assert(!nonEmpty.isGivenLogUpToDate(Term(1), LogEntryIndex(4))) // index > lastLogIndex
+
+    }
+
+  }
+
 }

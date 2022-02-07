@@ -61,6 +61,21 @@ private[entityreplication] final case class ReplicatedLog private[model] (
       case logEntryIndex       => get(logEntryIndex).map(_.term)
     }
 
+  /** Return true if the given log with the term and index is at least as up-to-date as this log.
+    *
+    * Determines which log is more up-to-date by comparing the term and index of the last entry.
+    * If two logs have last entries with different terms, the greater term is more up-to-date.
+    * If two logs have last entries with the same term, greater index is more up-to-date.
+    *
+    * Note: Returns true if two logs have last entries with the same term and the same index.
+    *
+    * @see [[https://github.com/ongardie/dissertation Raft thesis]] section 3.6.1
+    */
+  def isGivenLogUpToDate(term: Term, index: LogEntryIndex): Boolean = {
+    term > lastLogTerm ||
+    (term == lastLogTerm && index >= lastLogIndex)
+  }
+
   def merge(thatEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): ReplicatedLog = {
     val newEntries = this.entries.takeWhile(_.index <= prevLogIndex) ++ thatEntries
     copy(newEntries)
