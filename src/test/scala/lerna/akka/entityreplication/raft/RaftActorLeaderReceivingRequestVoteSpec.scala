@@ -134,7 +134,7 @@ final class RaftActorLeaderReceivingRequestVoteSpec extends TestKit(ActorSystem(
       verifyReceivingRequestVote(selfMemberIndex, leaderData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "accept RequestVote(term > currentTerm, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" ignore {
+    "accept RequestVote(term > currentTerm, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" in {
       val selfMemberIndex      = createUniqueMemberIndex()
       val candidateMemberIndex = createUniqueMemberIndex()
 
