@@ -71,7 +71,7 @@ final class RaftActorCandidateReceivingRequestVoteSpec
 
   "Candidate" should {
 
-    "自分の RequestVote には Accept する" in {
+    "accept RequestVote(term = currentTerm, candidate = self, ...)" in {
       val selfMemberIndex = createUniqueMemberIndex()
 
       val candidateData        = createCandidateData(Term(1), votedFor = None, acceptedMembers = Set.empty, newReplicatedLog())
@@ -82,7 +82,7 @@ final class RaftActorCandidateReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "他のメンバーの同じ Term の RequestVote には Deny する" in {
+    "deny RequestVote(term = currentTerm, candidate = other, ...)" in {
       val selfMemberIndex           = createUniqueMemberIndex()
       val otherCandidateMemberIndex = createUniqueMemberIndex()
 
@@ -94,7 +94,7 @@ final class RaftActorCandidateReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "他のメンバーの進んだ Term の RequestVote には Accept して Follower になる" ignore {
+    "accept RequestVote(term > currentTerm, lastLogIndex = log.lastLogIndex, lastLogTerm = log.lastLogTerm, ...)" in {
       val selfMemberIndex           = createUniqueMemberIndex()
       val otherCandidateMemberIndex = createUniqueMemberIndex()
 
@@ -111,7 +111,7 @@ final class RaftActorCandidateReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "deny RequestVote if lastLogIndex is older than own even if the request has same lastLogTerm" in {
+    "deny RequestVote(term > currentTerm, lastLogIndex < log.lastLogIndex, lastLogTerm = log.lastLogTerm, ...)" in {
       val selfMemberIndex           = createUniqueMemberIndex()
       val otherCandidateMemberIndex = createUniqueMemberIndex()
 
@@ -134,7 +134,7 @@ final class RaftActorCandidateReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "deny RequestVote if lastLogTerm is older than own even if the request has newer lastLogIndex than own" in {
+    "deny RequestVote(term > currentTerm, lastLogIndex > log.lastLogIndex, lastLogTerm < log.lastLogTerm, ...)" in {
       val selfMemberIndex           = createUniqueMemberIndex()
       val otherCandidateMemberIndex = createUniqueMemberIndex()
 
@@ -157,7 +157,8 @@ final class RaftActorCandidateReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "RequestVote の Term が新しくてもログが古い場合は否認する" in {
+    "!!! deny RequestVote(term > currentTerm, lastLogIndex < log.lastLogIndex, lastLogTerm = log.lastLogTerm, ...)" in {
+      // TODO: This case is duplicated.
       val selfMemberIndex           = createUniqueMemberIndex()
       val otherCandidateMemberIndex = createUniqueMemberIndex()
 
