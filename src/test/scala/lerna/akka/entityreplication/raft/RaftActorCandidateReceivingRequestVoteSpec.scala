@@ -143,7 +143,7 @@ final class RaftActorCandidateReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "accept RequestVote(term > currentTerm, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" ignore {
+    "accept RequestVote(term > currentTerm, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" in {
       val selfMemberIndex           = createUniqueMemberIndex()
       val otherCandidateMemberIndex = createUniqueMemberIndex()
 
