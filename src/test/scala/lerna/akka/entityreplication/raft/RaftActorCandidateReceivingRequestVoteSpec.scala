@@ -3,7 +3,7 @@ package lerna.akka.entityreplication.raft
 import akka.actor.ActorSystem
 import akka.testkit.TestKit
 import lerna.akka.entityreplication.model.NormalizedEntityId
-import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, ReplicatedLog, Term }
+import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, NoOp, ReplicatedLog, Term }
 import lerna.akka.entityreplication.raft.protocol.RaftCommands.{
   RequestVote,
   RequestVoteAccepted,
@@ -71,6 +71,17 @@ final class RaftActorCandidateReceivingRequestVoteSpec
 
   "Candidate" should {
 
+    "deny RequestVote(term < currentTerm, ...)" in {
+      val selfMemberIndex = createUniqueMemberIndex()
+
+      val candidateData        = createCandidateData(Term(2), votedFor = None, acceptedMembers = Set.empty, newReplicatedLog())
+      val requestVote          = RequestVote(shardId, Term(1), selfMemberIndex, LogEntryIndex(0), Term(0))
+      val expectedReplyMessage = RequestVoteDenied(Term(2))
+      val verifyState          = expectCandidateState(selfMemberIndex, Term(2), None)(_)
+
+      verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
+    }
+
     "accept RequestVote(term = currentTerm, candidate = self, ...)" in {
       val selfMemberIndex = createUniqueMemberIndex()
 
@@ -90,6 +101,90 @@ final class RaftActorCandidateReceivingRequestVoteSpec
       val requestVote          = RequestVote(shardId, Term(1), otherCandidateMemberIndex, LogEntryIndex(0), Term(0))
       val expectedReplyMessage = RequestVoteDenied(Term(1))
       val verifyState          = expectCandidateState(selfMemberIndex, Term(1), None)(_)
+
+      verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
+    }
+
+    "accept RequestVote(term > currentTerm, lastLogIndex > log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" in {
+      val selfMemberIndex           = createUniqueMemberIndex()
+      val otherCandidateMemberIndex = createUniqueMemberIndex()
+
+      val candidateData = createCandidateData(
+        Term(2),
+        votedFor = Some(selfMemberIndex),
+        acceptedMembers = Set.empty,
+        newReplicatedLog(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+        ),
+      )
+      val requestVote          = RequestVote(shardId, Term(3), otherCandidateMemberIndex, LogEntryIndex(2), Term(2))
+      val expectedReplyMessage = RequestVoteAccepted(Term(3), selfMemberIndex)
+      val verifyState          = expectFollowerState(Term(3), Some(otherCandidateMemberIndex))(_)
+
+      verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
+    }
+
+    "accept RequestVote(term > currentTerm, lastLogIndex = log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" in {
+      val selfMemberIndex           = createUniqueMemberIndex()
+      val otherCandidateMemberIndex = createUniqueMemberIndex()
+
+      val candidateData = createCandidateData(
+        Term(2),
+        votedFor = Some(selfMemberIndex),
+        acceptedMembers = Set.empty,
+        newReplicatedLog(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+        ),
+      )
+      val requestVote          = RequestVote(shardId, Term(3), otherCandidateMemberIndex, LogEntryIndex(1), Term(2))
+      val expectedReplyMessage = RequestVoteAccepted(Term(3), selfMemberIndex)
+      val verifyState          = expectFollowerState(Term(3), Some(otherCandidateMemberIndex))(_)
+
+      verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
+    }
+
+    "accept RequestVote(term > currentTerm, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" ignore {
+      val selfMemberIndex           = createUniqueMemberIndex()
+      val otherCandidateMemberIndex = createUniqueMemberIndex()
+
+      val candidateData = {
+        val entityId = NormalizedEntityId.from("test-entity")
+        createCandidateData(
+          Term(2),
+          votedFor = Some(selfMemberIndex),
+          acceptedMembers = Set.empty,
+          newReplicatedLog(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "a"), Term(1)),
+          ),
+        )
+      }
+      val requestVote          = RequestVote(shardId, Term(3), otherCandidateMemberIndex, LogEntryIndex(1), Term(2))
+      val expectedReplyMessage = RequestVoteAccepted(Term(3), selfMemberIndex)
+      val verifyState          = expectFollowerState(Term(3), Some(otherCandidateMemberIndex))(_)
+
+      verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
+    }
+
+    "accept RequestVote(term > currentTerm, lastLogIndex > log.lastLogIndex, lastLogTerm = log.lastLogTerm, ...)" in {
+      val selfMemberIndex           = createUniqueMemberIndex()
+      val otherCandidateMemberIndex = createUniqueMemberIndex()
+
+      val candidateData = {
+        val entityId = NormalizedEntityId.from("test-entity")
+        createCandidateData(
+          Term(2),
+          votedFor = Some(selfMemberIndex),
+          acceptedMembers = Set.empty,
+          newReplicatedLog(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "a"), Term(1)),
+          ),
+        )
+      }
+      val requestVote          = RequestVote(shardId, Term(3), otherCandidateMemberIndex, LogEntryIndex(3), Term(1))
+      val expectedReplyMessage = RequestVoteAccepted(Term(3), selfMemberIndex)
+      val verifyState          = expectFollowerState(Term(3), Some(otherCandidateMemberIndex))(_)
 
       verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
     }
@@ -157,25 +252,46 @@ final class RaftActorCandidateReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "!!! deny RequestVote(term > currentTerm, lastLogIndex < log.lastLogIndex, lastLogTerm = log.lastLogTerm, ...)" in {
-      // TODO: This case is duplicated.
+    "deny RequestVote(term > currentTerm, lastLogIndex = log.lastLogIndex, lastLogTerm < log.lastLogTerm, ...)" in {
       val selfMemberIndex           = createUniqueMemberIndex()
       val otherCandidateMemberIndex = createUniqueMemberIndex()
 
       val candidateData = {
-        val entityId = NormalizedEntityId.from("test-entity")
         createCandidateData(
-          Term(1),
+          Term(3),
           votedFor = Some(selfMemberIndex),
           acceptedMembers = Set.empty,
           newReplicatedLog(
-            LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "a"), Term(1)),
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
           ),
         )
       }
-      val requestVote          = RequestVote(shardId, Term(2), otherCandidateMemberIndex, LogEntryIndex(0), Term(1))
-      val expectedReplyMessage = RequestVoteDenied(Term(2))
-      val verifyState          = expectFollowerState(Term(2), None)(_)
+      val requestVote          = RequestVote(shardId, Term(4), otherCandidateMemberIndex, LogEntryIndex(2), Term(1))
+      val expectedReplyMessage = RequestVoteDenied(Term(4))
+      val verifyState          = expectFollowerState(Term(4), None)(_)
+
+      verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
+    }
+
+    "deny RequestVote(term > currentTerm, lastLogIndex < log.lastLogIndex, lastLogTerm < log.lastLogTerm, ...)" in {
+      val selfMemberIndex           = createUniqueMemberIndex()
+      val otherCandidateMemberIndex = createUniqueMemberIndex()
+
+      val candidateData = {
+        createCandidateData(
+          Term(3),
+          votedFor = Some(selfMemberIndex),
+          acceptedMembers = Set.empty,
+          newReplicatedLog(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+          ),
+        )
+      }
+      val requestVote          = RequestVote(shardId, Term(4), otherCandidateMemberIndex, LogEntryIndex(1), Term(1))
+      val expectedReplyMessage = RequestVoteDenied(Term(4))
+      val verifyState          = expectFollowerState(Term(4), None)(_)
 
       verifyReceivingRequestVote(selfMemberIndex, candidateData, requestVote, expectedReplyMessage, verifyState)
     }
