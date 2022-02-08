@@ -46,7 +46,7 @@ private[raft] trait Follower { this: RaftActor =>
         sender() ! RequestVoteDenied(currentData.currentTerm)
 
       case request: RequestVote
-          if request.lastLogTerm < currentData.replicatedLog.lastLogTerm || request.lastLogIndex < currentData.replicatedLog.lastLogIndex =>
+          if !currentData.replicatedLog.isGivenLogUpToDate(request.lastLogTerm, request.lastLogIndex) =>
         if (log.isDebugEnabled) log.debug("=== [Follower] deny {} ===", request)
         if (request.term.isNewerThan(currentData.currentTerm)) {
           applyDomainEvent(DetectedNewTerm(request.term)) { _ =>

@@ -117,7 +117,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "accept RequestVote(term = currentTerm, candidate = newCandidate, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" ignore {
+    "accept RequestVote(term = currentTerm, candidate = newCandidate, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" in {
       val selfMemberIndex      = createUniqueMemberIndex()
       val candidateMemberIndex = createUniqueMemberIndex()
 
@@ -305,7 +305,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "accept RequestVote(term = currentTerm, candidate = sameCandidate, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" ignore {
+    "accept RequestVote(term = currentTerm, candidate = sameCandidate, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" in {
       val selfMemberIndex  = createUniqueMemberIndex()
       val votedMemberIndex = createUniqueMemberIndex()
 
@@ -493,7 +493,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "accept RequestVote(term > currentTerm, candidate = newCandidate, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" ignore {
+    "accept RequestVote(term > currentTerm, candidate = newCandidate, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" in {
       val selfMemberIndex      = createUniqueMemberIndex()
       val candidateMemberIndex = createUniqueMemberIndex()
 
@@ -671,7 +671,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "accept RequestVote(term > currentTerm, candidate = otherCandidate, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" ignore {
+    "accept RequestVote(term > currentTerm, candidate = otherCandidate, lastLogIndex < log.lastLogIndex, lastLogTerm > log.lastLogTerm, ...)" in {
       val selfMemberIndex           = createUniqueMemberIndex()
       val votedMemberIndex          = createUniqueMemberIndex()
       val otherCandidateMemberIndex = createUniqueMemberIndex()
