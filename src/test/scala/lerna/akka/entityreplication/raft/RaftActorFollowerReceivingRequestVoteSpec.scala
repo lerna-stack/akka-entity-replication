@@ -55,7 +55,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
 
   "Follower" should {
 
-    "一度目の RequestVote には Accept する" in {
+    "accept RequestVote(term > currentTerm, candidate = newCandidate, lastLogIndex = log.lastLogIndex, lastLogTerm = log.lastLogTerm, ...)" in {
       val selfMemberIndex      = createUniqueMemberIndex()
       val candidateMemberIndex = createUniqueMemberIndex()
 
@@ -67,7 +67,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "同じ Term の二度目の RequestVote には Deny する" in {
+    "deny RequestVote(term = currentTerm, candidate = otherCandidate, ...)" in {
       val selfMemberIndex           = createUniqueMemberIndex()
       val votedMemberIndex          = createUniqueMemberIndex()
       val otherCandidateMemberIndex = createUniqueMemberIndex()
@@ -81,7 +81,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "既に Vote していても Term が進んでいれば Accept する" in {
+    "accept RequestVote(term > currentTerm, candidate = otherCandidate, lastLogIndex = log.lastLogIndex, lastLogTerm = log.lastLogTerm, ...)" in {
       val selfMemberIndex           = createUniqueMemberIndex()
       val votedMemberIndex          = createUniqueMemberIndex()
       val otherCandidateMemberIndex = createUniqueMemberIndex()
@@ -95,7 +95,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "同じ Term の二度目の RequestVote でも、Candidate が同じなら Accept する" in {
+    "accept RequestVote(term = currentTerm, candidate = sameCandidate, lastLogIndex = log.lastLogIndex, lastLogTerm = log.lastLogTerm, ...)" in {
       val selfMemberIndex  = createUniqueMemberIndex()
       val votedMemberIndex = createUniqueMemberIndex()
 
@@ -108,7 +108,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "deny RequestVote if the term is older than own" in {
+    "deny RequestVote(term < currentTerm, ...)" in {
       val selfMemberIndex      = createUniqueMemberIndex()
       val candidateMemberIndex = createUniqueMemberIndex()
 
@@ -132,7 +132,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "deny RequestVote from a Candidate which has the same term if lastLogIndex is older than own even if the request has the same lastLogTerm" in {
+    "deny RequestVote(term = currentTerm, candidate = newCandidate, lastLogIndex < log.lastLogIndex, lastLogTerm = log.lastLogTerm, ...)" in {
       val selfMemberIndex      = createUniqueMemberIndex()
       val candidateMemberIndex = createUniqueMemberIndex()
 
@@ -156,7 +156,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "deny RequestVote from a Candidate which has the newer term if lastLogIndex is older than own even if the request has the same lastLogTerm" in {
+    "deny RequestVote(term > currentTerm, candidate = newCandidate, lastLogIndex < log.lastLogIndex, lastLogTerm = log.lastLogTerm, ...)" in {
       val selfMemberIndex      = createUniqueMemberIndex()
       val candidateMemberIndex = createUniqueMemberIndex()
 
@@ -180,7 +180,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "deny RequestVote if lastLogTerm is older than own even if the request has newer lastLogIndex than own" in {
+    "deny RequestVote(term > currentTerm, candidate = newCandidate, lastLogIndex > log.lastLogIndex, lastLogTerm < log.lastLogTerm, ...)" in {
       val selfMemberIndex      = createUniqueMemberIndex()
       val candidateMemberIndex = createUniqueMemberIndex()
 
@@ -204,7 +204,7 @@ final class RaftActorFollowerReceivingRequestVoteSpec
       verifyReceivingRequestVote(selfMemberIndex, followerData, requestVote, expectedReplyMessage, verifyState)
     }
 
-    "Candidate のログよりも新しいログを持っている場合 RequestVote を否認する" in {
+    "deny RequestVote(term > currentTerm, candidate = newCandidate, lastLogIndex < log.lastLogIndex, lastLogTerm < log.lastLogTerm, ...)" in {
       val selfMemberIndex      = createUniqueMemberIndex()
       val candidateMemberIndex = createUniqueMemberIndex()
 
