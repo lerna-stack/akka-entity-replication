@@ -58,9 +58,8 @@ private[raft] trait Candidate { this: RaftActor =>
         }
 
       case RequestVote(_, term, otherCandidate, lastLogIndex, lastLogTerm)
-          if term.isNewerThan(
-            currentData.currentTerm,
-          ) && lastLogTerm >= currentData.replicatedLog.lastLogTerm && lastLogIndex >= currentData.replicatedLog.lastLogIndex =>
+          if term.isNewerThan(currentData.currentTerm) &&
+          currentData.replicatedLog.isGivenLogUpToDate(lastLogTerm, lastLogIndex) =>
         if (log.isDebugEnabled) log.debug("=== [Candidate] accept RequestVote({}, {}) ===", term, otherCandidate)
         cancelElectionTimeoutTimer()
         applyDomainEvent(Voted(term, otherCandidate)) { domainEvent =>
