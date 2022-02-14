@@ -87,7 +87,12 @@ private[entityreplication] object SnapshotSyncManager {
 
   final case class SyncProgress(offset: Offset) extends State with ClusterReplicationSerializable
 
-  final case class CompactionEnvelope(event: CompactionCompleted, offset: Offset)
+  final case class CompactionEnvelope(
+      snapshotLastLogTerm: Term,
+      snapshotLastLogIndex: LogEntryIndex,
+      entityIds: Set[NormalizedEntityId],
+      offset: Offset,
+  )
 
   sealed trait SyncStatus
 
@@ -316,10 +321,13 @@ private[entityreplication] class SnapshotSyncManager(
       .collect {
         case EventEnvelope(offset, _, _, event: CompactionCompleted)
             if dstLatestSnapshotLastLogTerm <= event.snapshotLastLogTerm && dstLatestSnapshotLastLogIndex < event.snapshotLastLogIndex =>
-          CompactionEnvelope(event, offset)
+          CompactionEnvelope(event.snapshotLastLogTerm, event.snapshotLastLogIndex, event.entityIds, offset)
+        case EventEnvelope(offset, _, _, event: SnapshotCopied)
+            if dstLatestSnapshotLastLogTerm <= event.snapshotLastLogTerm && dstLatestSnapshotLastLogIndex < event.snapshotLastLogIndex =>
+          CompactionEnvelope(event.snapshotLastLogTerm, event.snapshotLastLogIndex, event.entityIds, offset)
       }
       .flatMapConcat { envelope =>
-        Source(envelope.event.entityIds)
+        Source(envelope.entityIds)
           .mapAsync(settings.snapshotSyncCopyingParallelism) { entityId =>
             for {
               fetchSnapshotResult <- {
@@ -365,7 +373,7 @@ private[entityreplication] class SnapshotSyncManager(
             killSwitch,
             envelope.map {
               case Some(e) =>
-                SyncCompleteAll(e.event.snapshotLastLogTerm, e.event.snapshotLastLogIndex, e.offset)
+                SyncCompleteAll(e.snapshotLastLogTerm, e.snapshotLastLogIndex, e.offset)
               case None =>
                 SyncIncomplete()
             },
