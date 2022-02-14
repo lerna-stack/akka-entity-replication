@@ -33,6 +33,7 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.compactionLogSizeCheckInterval shouldBe 10.seconds
       settings.snapshotSyncCopyingParallelism shouldBe 10
       settings.snapshotSyncPersistenceOperationTimeout shouldBe 10.seconds
+      settings.snapshotSyncMaxSnapshotBatchSize shouldBe 1_000
       settings.clusterShardingConfig shouldBe defaultConfig.getConfig("lerna.akka.entityreplication.raft.sharding")
       settings.raftActorAutoStartFrequency shouldBe 3.seconds
       settings.raftActorAutoStartNumberOfActors shouldBe 5
