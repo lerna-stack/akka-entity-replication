@@ -46,11 +46,12 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   // raft.snapshot
   private val EntitySnapshotManifest = "DA"
   // raft.snapshot.sync
-  private val SyncCompletedManifest = "EA"
-  private val SyncProgressManifest  = "EB"
-  private val NoOffsetManifest      = "EC"
-  private val SequenceManifest      = "ED"
-  private val TimeBasedUUIDManifest = "EE"
+  private val SyncCompletedManifest  = "EA"
+  private val SyncProgressManifest   = "EB"
+  private val NoOffsetManifest       = "EC"
+  private val SequenceManifest       = "ED"
+  private val TimeBasedUUIDManifest  = "EE"
+  private val SnapshotCopiedManifest = "EF"
   // raft.model
   private val NoOpManifest = "FA"
   // typed
@@ -87,11 +88,12 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     // raft.snapshot
     EntitySnapshotManifest -> entitySnapshotFromBinary,
     // raft.snapshot.sync
-    SyncCompletedManifest -> syncCompletedFromBinary,
-    SyncProgressManifest  -> syncProgressFromBinary,
-    NoOffsetManifest      -> noOffsetEnvelopeFromBinary,
-    SequenceManifest      -> sequenceEnvelopeFromBinary,
-    TimeBasedUUIDManifest -> timeBasedUUIDEnvelopeFromBinary,
+    SyncCompletedManifest  -> syncCompletedFromBinary,
+    SyncProgressManifest   -> syncProgressFromBinary,
+    NoOffsetManifest       -> noOffsetEnvelopeFromBinary,
+    SequenceManifest       -> sequenceEnvelopeFromBinary,
+    TimeBasedUUIDManifest  -> timeBasedUUIDEnvelopeFromBinary,
+    SnapshotCopiedManifest -> snapshotCopiedFromBinary,
     // raft.model
     NoOpManifest -> noOpFromBinary,
     // typed
@@ -156,11 +158,12 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     // raft.snapsnot
     case _: raft.snapshot.SnapshotProtocol.EntitySnapshot => EntitySnapshotManifest
     // raft.snapshot.sync
-    case _: raft.snapshot.sync.SnapshotSyncManager.SyncCompleted => SyncCompletedManifest
-    case _: raft.snapshot.sync.SnapshotSyncManager.SyncProgress  => SyncProgressManifest
-    case _: NoOffsetEnvelope.type                                => NoOffsetManifest
-    case _: SequenceEnvelope                                     => SequenceManifest
-    case _: TimeBasedUUIDEnvelope                                => TimeBasedUUIDManifest
+    case _: raft.snapshot.sync.SnapshotSyncManager.SyncCompleted  => SyncCompletedManifest
+    case _: raft.snapshot.sync.SnapshotSyncManager.SyncProgress   => SyncProgressManifest
+    case _: NoOffsetEnvelope.type                                 => NoOffsetManifest
+    case _: SequenceEnvelope                                      => SequenceManifest
+    case _: TimeBasedUUIDEnvelope                                 => TimeBasedUUIDManifest
+    case _: raft.snapshot.sync.SnapshotSyncManager.SnapshotCopied => SnapshotCopiedManifest
     // raft.model
     case _: raft.model.NoOp.type => NoOpManifest
     // typed
@@ -197,11 +200,12 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     // raft.snapshot
     case m: raft.snapshot.SnapshotProtocol.EntitySnapshot => entitySnapShotToBinary(m)
     // raft.snapshot.sync
-    case m: raft.snapshot.sync.SnapshotSyncManager.SyncCompleted => syncCompletedToBinary(m)
-    case m: raft.snapshot.sync.SnapshotSyncManager.SyncProgress  => syncProgressToBinary(m)
-    case m: NoOffsetEnvelope.type                                => noOffsetEnvelopeToBinary(m)
-    case m: SequenceEnvelope                                     => sequenceEnvelopeToBinary(m)
-    case m: TimeBasedUUIDEnvelope                                => timeBasedUUIDEnvelopeToBinary(m)
+    case m: raft.snapshot.sync.SnapshotSyncManager.SyncCompleted  => syncCompletedToBinary(m)
+    case m: raft.snapshot.sync.SnapshotSyncManager.SyncProgress   => syncProgressToBinary(m)
+    case m: NoOffsetEnvelope.type                                 => noOffsetEnvelopeToBinary(m)
+    case m: SequenceEnvelope                                      => sequenceEnvelopeToBinary(m)
+    case m: TimeBasedUUIDEnvelope                                 => timeBasedUUIDEnvelopeToBinary(m)
+    case m: raft.snapshot.sync.SnapshotSyncManager.SnapshotCopied => snapshotCopiedToBinary(m)
     // raft.model
     case m: raft.model.NoOp.type => noOpToBinary(m)
     // typed
@@ -787,6 +791,30 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
       }
     TimeBasedUUIDEnvelope(
       underlying = TimeBasedUUID(value = uuid),
+    )
+  }
+
+  private def snapshotCopiedToBinary(message: raft.snapshot.sync.SnapshotSyncManager.SnapshotCopied): Array[Byte] = {
+    msg.SnapshotCopied
+      .of(
+        offset = offsetToProto(message.offset),
+        memberIndex = memberIndexToProto(message.memberIndex),
+        shardId = normalizedShardIdToProto(message.shardId),
+        snapshotLastLogTerm = termToProto(message.snapshotLastLogTerm),
+        snapshotLastLogIndex = logEntryIndexToProto(message.snapshotLastLogIndex),
+        entityIds = message.entityIds.map(normalizedEntityIdToProto).toSeq,
+      ).toByteArray
+  }
+
+  private def snapshotCopiedFromBinary(bytes: Array[Byte]): raft.snapshot.sync.SnapshotSyncManager.SnapshotCopied = {
+    val proto = msg.SnapshotCopied.parseFrom(bytes)
+    raft.snapshot.sync.SnapshotSyncManager.SnapshotCopied(
+      offset = offsetFromProto(proto.offset),
+      memberIndex = memberIndexFromProto(proto.memberIndex),
+      shardId = normalizedShardIdFromProto(proto.shardId),
+      snapshotLastLogTerm = termFromProto(proto.snapshotLastLogTerm),
+      snapshotLastLogIndex = logEntryIndexFromProto(proto.snapshotLastLogIndex),
+      entityIds = proto.entityIds.map(normalizedEntityIdFromProto).toSet,
     )
   }
 

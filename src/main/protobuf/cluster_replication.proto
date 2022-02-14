@@ -198,6 +198,14 @@ message TimeBasedUUID {
   required int64 least_sig_bits = 2;
 }
 
+message SnapshotCopied {
+  required Offset offset = 1;
+  required MemberIndex member_index = 2;
+  required NormalizedShardId shard_id = 3;
+  required Term snapshot_last_log_term = 4;
+  required LogEntryIndex snapshot_last_log_index = 5;
+  repeated NormalizedEntityId entity_ids = 6;
+}
 
 // ===
 // model

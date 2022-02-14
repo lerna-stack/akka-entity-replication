@@ -71,6 +71,16 @@ private[entityreplication] object SnapshotSyncManager {
 
   sealed trait Event
 
+  final case class SnapshotCopied(
+      offset: Offset,
+      memberIndex: MemberIndex,
+      shardId: NormalizedShardId,
+      snapshotLastLogTerm: Term,
+      snapshotLastLogIndex: LogEntryIndex,
+      entityIds: Set[NormalizedEntityId],
+  ) extends Event
+      with ClusterReplicationSerializable
+
   final case class SyncCompleted(offset: Offset) extends Event with ClusterReplicationSerializable
 
   sealed trait State
