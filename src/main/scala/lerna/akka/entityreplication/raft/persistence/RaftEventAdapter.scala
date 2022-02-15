@@ -13,9 +13,9 @@ private[entityreplication] class RaftEventAdapter extends EventAdapter {
   override def toJournal(event: Any): Any = {
     event match {
       case event: CompactionCompleted =>
-        Tagged(event, Set(CompactionCompletedTag(event.memberIndex, event.shardId).toString))
+        Tagged(event, Set(EntitySnapshotsUpdatedTag(event.memberIndex, event.shardId).toString))
       case event: SnapshotCopied =>
-        Tagged(event, Set(CompactionCompletedTag(event.memberIndex, event.shardId).toString))
+        Tagged(event, Set(EntitySnapshotsUpdatedTag(event.memberIndex, event.shardId).toString))
       case event => event
     }
   }

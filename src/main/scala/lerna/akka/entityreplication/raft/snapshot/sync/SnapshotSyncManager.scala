@@ -14,7 +14,7 @@ import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardI
 import lerna.akka.entityreplication.raft.RaftActor.CompactionCompleted
 import lerna.akka.entityreplication.raft.RaftSettings
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, Term }
-import lerna.akka.entityreplication.raft.persistence.CompactionCompletedTag
+import lerna.akka.entityreplication.raft.persistence.EntitySnapshotsUpdatedTag
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshotMetadata
 import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, SnapshotProtocol }
@@ -393,7 +393,7 @@ private[entityreplication] class SnapshotSyncManager(
     implicit val timeout: Timeout = Timeout(settings.snapshotSyncPersistenceOperationTimeout)
 
     readJournal
-      .currentEventsByTag(CompactionCompletedTag(srcMemberIndex, shardId).toString, offset)
+      .currentEventsByTag(EntitySnapshotsUpdatedTag(srcMemberIndex, shardId).toString, offset)
       .viaMat(KillSwitches.single)(Keep.right)
       .collect {
         case EventEnvelope(offset, _, _, event: CompactionCompleted)
