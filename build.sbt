@@ -53,6 +53,7 @@ lazy val lerna = (project in file("."))
         // TODO 2.6.x 系に対応できる方法に変更する。
         "com.github.dnvriend" %% "akka-persistence-inmemory" % "2.5.15.2"  % Test,
         "com.typesafe.akka"   %% "akka-persistence-testkit"  % akkaVersion % Test,
+        "com.typesafe.akka"   %% "akka-stream-testkit"       % akkaVersion % Test,
       ),
     inConfig(MultiJvm)(
       // multi-jvm ディレクトリをフォーマットするために必要
