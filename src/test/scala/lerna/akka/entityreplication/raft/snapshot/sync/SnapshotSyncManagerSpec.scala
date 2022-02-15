@@ -72,22 +72,28 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
     "synchronize snapshots in dst member with src member by copying snapshots in src member" in {
       /* prepare */
+      val entity1      = createUniqueEntityId()
+      val entity2      = createUniqueEntityId()
+      val entity3      = createUniqueEntityId()
+      val allEntityIds = Set(entity1, entity2, entity3)
+
       val dstSnapshotTerm     = Term(1)
       val dstSnapshotLogIndex = LogEntryIndex(1)
       val dstSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, dstSnapshotLogIndex), EntityState("state-1-1")),
       )
       dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
       val srcSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), srcSnapshotLogIndex), EntityState("state-1-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("2"), srcSnapshotLogIndex), EntityState("state-2-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex), EntityState("state-3-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, srcSnapshotLogIndex), EntityState("state-1-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity2, srcSnapshotLogIndex), EntityState("state-2-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity3, srcSnapshotLogIndex), EntityState("state-3-3")),
       )
       val entityIds = srcSnapshots.map(_.metadata.entityId)
       srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+
       raftEventJournalTestKit.persistEvents(
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, LogEntryIndex(1), entityIds),
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex, entityIds),
@@ -103,16 +109,20 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
           replyTo = testActor,
         )
         expectMsg(SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex))
-        dstRaftSnapshotStoreTestKit.fetchSnapshots(entityIds) should be(srcSnapshots)
+        dstRaftSnapshotStoreTestKit.fetchSnapshots(allEntityIds) should be(srcSnapshots)
       }
     }
 
     "not update snapshots of old LogIndex which is already applied by dst member" in {
       /* prepare */
+      val entity1 = createUniqueEntityId()
+      val entity2 = createUniqueEntityId()
+      val entity3 = createUniqueEntityId()
+
       val dstSnapshotTerm     = Term(1)
       val dstSnapshotLogIndex = LogEntryIndex(2)
       val dstSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, dstSnapshotLogIndex), EntityState("state-1-1")),
       )
       dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
@@ -120,9 +130,9 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val srcSnapshotLogIndex1 = LogEntryIndex(1)
       val srcSnapshotLogIndex2 = LogEntryIndex(3)
       val srcSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), srcSnapshotLogIndex1), EntityState("ignored")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("2"), srcSnapshotLogIndex2), EntityState("state-2-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex2), EntityState("state-3-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, srcSnapshotLogIndex1), EntityState("ignored")),
+        EntitySnapshot(EntitySnapshotMetadata(entity2, srcSnapshotLogIndex2), EntityState("state-2-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity3, srcSnapshotLogIndex2), EntityState("state-3-3")),
       )
       srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
       val entityIds1 = srcSnapshots.filter(_.metadata.logEntryIndex == srcSnapshotLogIndex1).map(_.metadata.entityId)
@@ -153,19 +163,23 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
     "respond SyncSnapshotAlreadySucceeded if the dst snapshot has already synchronized to src snapshot" in {
       /* prepare */
+      val entity1 = createUniqueEntityId()
+      val entity2 = createUniqueEntityId()
+      val entity3 = createUniqueEntityId()
+
       val dstSnapshotTerm     = Term(1)
       val dstSnapshotLogIndex = LogEntryIndex(1)
       val dstSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, dstSnapshotLogIndex), EntityState("state-1-1")),
       )
       dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
       val srcSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), srcSnapshotLogIndex), EntityState("state-1-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("2"), srcSnapshotLogIndex), EntityState("state-2-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex), EntityState("state-3-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, srcSnapshotLogIndex), EntityState("state-1-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity2, srcSnapshotLogIndex), EntityState("state-2-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity3, srcSnapshotLogIndex), EntityState("state-3-3")),
       )
       val entityIds = srcSnapshots.map(_.metadata.entityId)
       srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
@@ -204,19 +218,23 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
     "stop after snapshot synchronization is succeeded" in {
       /* prepare */
+      val entity1 = createUniqueEntityId()
+      val entity2 = createUniqueEntityId()
+      val entity3 = createUniqueEntityId()
+
       val dstSnapshotTerm     = Term(1)
       val dstSnapshotLogIndex = LogEntryIndex(1)
       val dstSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, dstSnapshotLogIndex), EntityState("state-1-1")),
       )
       dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
       val srcSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), srcSnapshotLogIndex), EntityState("state-1-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("2"), srcSnapshotLogIndex), EntityState("state-2-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex), EntityState("state-3-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, srcSnapshotLogIndex), EntityState("state-1-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity2, srcSnapshotLogIndex), EntityState("state-2-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity3, srcSnapshotLogIndex), EntityState("state-3-3")),
       )
       val entityIds = srcSnapshots.map(_.metadata.entityId)
       srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
@@ -262,20 +280,24 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
     "abort synchronizing if it founds newer than an expected snapshot" in {
       /* prepare */
+      val entity1 = createUniqueEntityId()
+      val entity2 = createUniqueEntityId()
+      val entity3 = createUniqueEntityId()
+
       val dstSnapshotTerm     = Term(1)
       val dstSnapshotLogIndex = LogEntryIndex(1)
       val dstSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, dstSnapshotLogIndex), EntityState("state-1-1")),
       )
       dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
       val srcSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), srcSnapshotLogIndex), EntityState("state-1-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("2"), srcSnapshotLogIndex), EntityState("state-2-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, srcSnapshotLogIndex), EntityState("state-1-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity2, srcSnapshotLogIndex), EntityState("state-2-3")),
         EntitySnapshot(
-          EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex.next()),
+          EntitySnapshotMetadata(entity3, srcSnapshotLogIndex.next()),
           EntityState("state-3-new"),
         ),
       )
@@ -300,19 +322,23 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
     "abort synchronizing if it couldn't fetch a snapshot" in {
       /* prepare */
+      val entity1 = createUniqueEntityId()
+      val entity2 = createUniqueEntityId()
+      val entity3 = createUniqueEntityId()
+
       val dstSnapshotTerm     = Term(1)
       val dstSnapshotLogIndex = LogEntryIndex(1)
       val dstSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, dstSnapshotLogIndex), EntityState("state-1-1")),
       )
       dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
       val srcSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), srcSnapshotLogIndex), EntityState("state-1-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("2"), srcSnapshotLogIndex), EntityState("state-2-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex), EntityState("state-3-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, srcSnapshotLogIndex), EntityState("state-1-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity2, srcSnapshotLogIndex), EntityState("state-2-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity3, srcSnapshotLogIndex), EntityState("state-3-3")),
       )
       val entityIds = srcSnapshots.map(_.metadata.entityId) + NormalizedEntityId("4") // that lost the snapshot
       srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
@@ -335,19 +361,23 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
     "abort synchronizing if it failed saving snapshot" in {
       /* prepare */
+      val entity1 = createUniqueEntityId()
+      val entity2 = createUniqueEntityId()
+      val entity3 = createUniqueEntityId()
+
       val dstSnapshotTerm     = Term(1)
       val dstSnapshotLogIndex = LogEntryIndex(1)
       val dstSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), dstSnapshotLogIndex), EntityState("state-1-1")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, dstSnapshotLogIndex), EntityState("state-1-1")),
       )
       dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
 
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
       val srcSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("1"), srcSnapshotLogIndex), EntityState("state-1-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("2"), srcSnapshotLogIndex), EntityState("state-2-3")),
-        EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("3"), srcSnapshotLogIndex), EntityState("state-3-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity1, srcSnapshotLogIndex), EntityState("state-1-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity2, srcSnapshotLogIndex), EntityState("state-2-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity3, srcSnapshotLogIndex), EntityState("state-3-3")),
       )
       val entityIds = srcSnapshots.map(_.metadata.entityId)
       srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
@@ -376,6 +406,8 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
     "stop after snapshot synchronization is failed" in {
       /* prepare */
+      val entity1 = createUniqueEntityId()
+
       val dstSnapshotTerm     = Term(1)
       val dstSnapshotLogIndex = LogEntryIndex(1)
       val dstSnapshots        = Set.empty[EntitySnapshot]
@@ -384,7 +416,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val srcSnapshotTerm     = Term(1)
       val srcSnapshotLogIndex = LogEntryIndex(3)
       val srcSnapshots        = Set.empty[EntitySnapshot]
-      val entityIds           = Set(NormalizedEntityId("1")) // that lost the snapshot
+      val entityIds           = Set(entity1) // that lost the snapshot
       srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
       raftEventJournalTestKit.persistEvents(
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex, entityIds),
@@ -402,5 +434,14 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       expectMsgType[SnapshotSyncManager.SyncSnapshotFailed]
       expectTerminated(snapshotSyncManager)
     }
+  }
+
+  lazy val createUniqueEntityId: () => NormalizedEntityId = {
+    var entityId = 0
+    def next() = {
+      entityId += 1
+      entityId
+    }
+    () => NormalizedEntityId.from(s"Entity-${next()}")
   }
 }
