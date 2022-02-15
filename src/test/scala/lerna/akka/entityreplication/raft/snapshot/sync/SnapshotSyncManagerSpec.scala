@@ -5,9 +5,10 @@ import akka.actor.{ ActorRef, ActorSystem, Status }
 import akka.persistence.inmemory.extension.{ InMemoryJournalStorage, InMemorySnapshotStorage, StorageExtension }
 import akka.persistence.query.{ Offset, Sequence }
 import akka.testkit.{ TestKit, TestProbe }
+import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ClusterReplicationSettings
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
-import lerna.akka.entityreplication.raft.ActorSpec
+import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettingsImpl }
 import lerna.akka.entityreplication.raft.RaftActor.CompactionCompleted
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, Term }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -60,6 +61,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
   private[this] def createSnapshotSyncManager(
       dstSnapshotStore: ActorRef = dstRaftSnapshotStoreTestKit.snapshotStoreActorRef,
+      overwriteConfig: Config = ConfigFactory.empty(),
   ): ActorRef =
     system.actorOf(
       SnapshotSyncManager.props(
@@ -68,7 +70,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         dstMemberIndex,
         dstSnapshotStore,
         shardId,
-        settings.raftSettings,
+        RaftSettingsImpl(overwriteConfig.withFallback(system.settings.config)),
       ),
       s"snapshotSyncManager:${snapshotSyncManagerUniqueId.getAndIncrement()}",
     )
@@ -263,6 +265,86 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         SnapshotSyncManager.SyncSnapshotAlreadySucceeded(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex),
       )
       expectTerminated(snapshotSyncManager)
+    }
+
+    "persist SnapshotCopied event every copying snapshots batch" in {
+      /* prepare */
+      val smallBatchSizeConfig = ConfigFactory.parseString {
+        """
+        lerna.akka.entityreplication.raft.snapshot-sync.max-snapshot-batch-size = 2
+        """
+      }
+      val entity1      = createUniqueEntityId()
+      val entity2      = createUniqueEntityId()
+      val entity3      = createUniqueEntityId()
+      val entity4      = createUniqueEntityId()
+      val allEntityIds = Set(entity1, entity2, entity3, entity4)
+
+      val dstSnapshotTerm     = Term(1)
+      val dstSnapshotLogIndex = LogEntryIndex(1)
+      val dstSnapshots = Set(
+        EntitySnapshot(EntitySnapshotMetadata(entity1, dstSnapshotLogIndex), EntityState("state-1-1")),
+      )
+      dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
+
+      val srcSnapshotTerm1     = Term(1)
+      val srcSnapshotTerm2     = Term(2)
+      val srcSnapshotLogIndex1 = LogEntryIndex(2)
+      val srcSnapshotLogIndex2 = LogEntryIndex(3)
+      val srcSnapshotLogIndex3 = LogEntryIndex(4)
+      val srcSnapshots = Set(
+        EntitySnapshot(EntitySnapshotMetadata(entity1, srcSnapshotLogIndex1), EntityState("state-1-4")),
+        EntitySnapshot(EntitySnapshotMetadata(entity2, srcSnapshotLogIndex3), EntityState("state-2-4")),
+        EntitySnapshot(EntitySnapshotMetadata(entity3, srcSnapshotLogIndex3), EntityState("state-3-4")),
+        EntitySnapshot(EntitySnapshotMetadata(entity4, srcSnapshotLogIndex3), EntityState("state-4-4")),
+      )
+      val entityIds = srcSnapshots.map(_.metadata.entityId)
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+
+      raftEventJournalTestKit.persistEvents(
+        CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm1, LogEntryIndex(1), entityIds),
+        CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm1, srcSnapshotLogIndex1, Set(entity1)),
+        SnapshotCopied(nextOffset(), srcMemberIndex, shardId, srcSnapshotTerm2, srcSnapshotLogIndex2, Set(entity2)),
+        CompactionCompleted(
+          srcMemberIndex,
+          shardId,
+          srcSnapshotTerm2,
+          srcSnapshotLogIndex3,
+          Set(entity2, entity3, entity4),
+        ),
+      )
+
+      /* check */
+      awaitAssert { // Persistent events may not be retrieved immediately
+        val manager = createSnapshotSyncManager(overwriteConfig = smallBatchSizeConfig)
+        manager ! SnapshotSyncManager.SyncSnapshot(
+          srcLatestSnapshotLastLogTerm = srcSnapshotTerm2,
+          srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex3,
+          dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
+          dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
+          replyTo = testActor,
+        )
+        expectMsg(SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm2, srcSnapshotLogIndex3, srcMemberIndex))
+
+        forAll(receiveSnapshotSyncManagerPersisted[SnapshotSyncManager.SnapshotCopied](1)) { event =>
+          // CompactionCompleted and SnapshotCopied will be merged into single SnapshotCopied.
+          // The process prefers the last term, index and offset.
+          event.snapshotLastLogTerm should be(srcSnapshotTerm2)
+          event.snapshotLastLogIndex should be(srcSnapshotLogIndex2)
+          event.entityIds should be(Set(entity1, entity2))
+        }
+        forAll(receiveSnapshotSyncManagerPersisted[SnapshotSyncManager.SnapshotCopied](1)) { event =>
+          event.snapshotLastLogTerm should be(srcSnapshotTerm2)
+          event.snapshotLastLogIndex should be(srcSnapshotLogIndex3)
+          // NOTE:
+          // The last CompactionCompleted event contains more than max-snapshot-batch-size of entityId.
+          // The snapshots the event indicates will be copied over max-snapshot-batch-size.
+          event.entityIds should be(Set(entity2, entity3, entity4))
+        }
+        receiveSnapshotSyncManagerPersisted[SnapshotSyncManager.SyncCompleted](1)
+        expectSnapshotSyncManagerNothingPersisted()
+        dstRaftSnapshotStoreTestKit.fetchSnapshots(allEntityIds) should be(srcSnapshots)
+      }
     }
 
     "stop after snapshot synchronization is succeeded" in {
