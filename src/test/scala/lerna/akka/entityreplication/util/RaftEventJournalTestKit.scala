@@ -2,10 +2,12 @@ package lerna.akka.entityreplication.util
 
 import akka.Done
 import akka.actor.ActorSystem
-import akka.persistence.query.{ EventEnvelope, PersistenceQuery }
-import akka.persistence.query.scaladsl.CurrentEventsByPersistenceIdQuery
+import akka.persistence.query.{ EventEnvelope, Offset, PersistenceQuery }
+import akka.persistence.query.scaladsl.{ CurrentEventsByPersistenceIdQuery, EventsByTagQuery }
 import akka.stream.Materializer
-import akka.stream.scaladsl.Sink
+import akka.stream.scaladsl._
+import akka.stream.testkit.TestSubscriber
+import akka.stream.testkit.scaladsl.TestSink
 import akka.testkit.{ ImplicitSender, TestKit }
 import lerna.akka.entityreplication.ClusterReplicationSettings
 
@@ -27,8 +29,10 @@ final class RaftEventJournalTestKit(system: ActorSystem, settings: ClusterReplic
 
   private val eventStore = system.actorOf(EventStore.props(settings), "RaftEventPersistenceTestKitEventStore")
 
+  private type ReadJournalType = CurrentEventsByPersistenceIdQuery with EventsByTagQuery
+
   private val readJournal =
-    PersistenceQuery(system).readJournalFor[CurrentEventsByPersistenceIdQuery](settings.raftSettings.queryPluginId)
+    PersistenceQuery(system).readJournalFor[ReadJournalType](settings.raftSettings.queryPluginId)
 
   /**
     * Persists events in specified order.
@@ -90,6 +94,12 @@ final class RaftEventJournalTestKit(system: ActorSystem, settings: ClusterReplic
       s"Found persisted event [${persistedEvents.mkString(", ")}], but expected nothing instead",
     )
   }
+
+  /**
+    * Return the probe to verify tagged events with particular tag.
+    */
+  def verifyEventsByTag(tag: String): TestSubscriber.Probe[EventEnvelope] =
+    readJournal.eventsByTag(tag, Offset.noOffset).runWith(TestSink.probe(system))
 
   def reset(): Unit = {
     nextSeqNoByPersistenceId = Map.empty

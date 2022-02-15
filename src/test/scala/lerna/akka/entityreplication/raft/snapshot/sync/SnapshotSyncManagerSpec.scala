@@ -11,6 +11,7 @@ import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardI
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettingsImpl }
 import lerna.akka.entityreplication.raft.RaftActor.CompactionCompleted
 import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, Term }
+import lerna.akka.entityreplication.raft.persistence.EntitySnapshotsUpdatedTag
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
@@ -123,6 +124,10 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex2, Set(entity2, entity3)),
       )
 
+      val dstEventsByTagProbe =
+        raftEventJournalTestKit.verifyEventsByTag(EntitySnapshotsUpdatedTag(dstMemberIndex, shardId).toString)
+      dstEventsByTagProbe.request(1).expectNoMessage()
+
       /* check */
       awaitAssert { // Persistent events may not be retrieved immediately
         createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
@@ -133,7 +138,8 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
           replyTo = testActor,
         )
         expectMsg(SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex2, srcMemberIndex))
-        forAll(receiveSnapshotSyncManagerPersisted[SnapshotSyncManager.SnapshotCopied](1)) { event =>
+        val persistedSnapshotCopied = receiveSnapshotSyncManagerPersisted[SnapshotSyncManager.SnapshotCopied](1)
+        forAll(persistedSnapshotCopied) { event =>
           event.offset shouldNot be(null) // offset is storage-specific and non-deterministic
           event.memberIndex should be(dstMemberIndex)
           event.shardId should be(shardId)
@@ -145,6 +151,10 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
           event.offset shouldNot be(null) // offset is storage-specific and non-deterministic
         }
         expectSnapshotSyncManagerNothingPersisted()
+        dstEventsByTagProbe.request(2) // to detect extra events
+        dstEventsByTagProbe.expectNextN(1).map(_.event) should be(persistedSnapshotCopied)
+        dstEventsByTagProbe.expectNoMessage()
+
         dstRaftSnapshotStoreTestKit.fetchSnapshots(allEntityIds) should be(srcSnapshots)
       }
     }

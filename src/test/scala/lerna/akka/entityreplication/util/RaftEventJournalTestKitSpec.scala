@@ -3,10 +3,34 @@ package lerna.akka.entityreplication.util
 import akka.actor.ActorSystem
 import akka.actor.Status
 import akka.testkit.{ ImplicitSender, TestKit }
-import lerna.akka.entityreplication.typed.ClusterReplicationSettings
-import akka.actor.typed.scaladsl.adapter._
+import akka.cluster.Cluster
 import akka.persistence.inmemory.extension.{ InMemoryJournalStorage, StorageExtension }
+import akka.persistence.journal.{ EventAdapter, EventSeq, Tagged }
+import com.typesafe.config.ConfigFactory
+import lerna.akka.entityreplication.internal.ClusterReplicationSettingsImpl
+import lerna.akka.entityreplication.testkit.KryoSerializable
 import org.scalatest.{ BeforeAndAfterEach, FlatSpecLike, Matchers }
+
+object RaftEventJournalTestKitSpec {
+
+  class TestEventAdapter extends EventAdapter {
+
+    override def manifest(event: Any): String = "" // No need
+
+    override def fromJournal(event: Any, manifest: String): EventSeq = EventSeq.single(event)
+
+    override def toJournal(event: Any): Any =
+      event match {
+        case event: TaggedEvent => Tagged(event, Set(TaggedEvent.tag))
+        case other              => throw new IllegalArgumentException(s"unknown: ${other}")
+      }
+  }
+
+  object TaggedEvent {
+    val tag: String = TaggedEvent.getClass.getName
+  }
+  case class TaggedEvent() extends KryoSerializable
+}
 
 class RaftEventJournalTestKitSpec
     extends TestKit(ActorSystem("RaftSnapshotStoreTestKitSpec"))
@@ -15,7 +39,23 @@ class RaftEventJournalTestKitSpec
     with BeforeAndAfterEach
     with ImplicitSender {
 
-  private val settings = ClusterReplicationSettings(system.toTyped)
+  private val cluster = Cluster(system)
+
+  private val config = ConfigFactory
+    .parseString {
+      """
+      lerna.akka.entityreplication.raft.persistence.journal-plugin-additional {
+        event-adapters {
+          test-event-adapter = "lerna.akka.entityreplication.util.RaftEventJournalTestKitSpec$TestEventAdapter"
+        }
+        event-adapter-bindings {
+          "lerna.akka.entityreplication.util.RaftEventJournalTestKitSpec$TaggedEvent" = test-event-adapter
+        }
+      }
+    """
+    }.withFallback(system.settings.config)
+
+  private val settings = ClusterReplicationSettingsImpl(config, cluster.settings.Roles)
 
   private val raftEventJournalTestKit = RaftEventJournalTestKit(system, settings)
 
@@ -94,5 +134,15 @@ class RaftEventJournalTestKitSpec
         raftEventJournalTestKit.expectNothingPersisted(EventStore.persistenceId())
       }
     ex.getMessage should be("assertion failed: Found persisted event [event1, event2], but expected nothing instead")
+  }
+
+  it should "return probe to verify tagged events" in {
+    import RaftEventJournalTestKitSpec._
+    val persistedEvent = TaggedEvent()
+    raftEventJournalTestKit.persistEvents(persistedEvent)
+
+    val probe = raftEventJournalTestKit.verifyEventsByTag(TaggedEvent.tag)
+    probe.request(1)
+    probe.expectNext().event should be(persistedEvent)
   }
 }
