@@ -3,12 +3,13 @@ package lerna.akka.entityreplication.raft.snapshot.sync
 import akka.actor.{ ActorLogging, ActorRef, Props, Status }
 import akka.pattern.extended.ask
 import akka.pattern.pipe
-import akka.persistence.{ PersistentActor, SnapshotOffer }
+import akka.persistence.{ PersistentActor, RuntimePluginConfig, SnapshotOffer }
 import akka.persistence.query.{ EventEnvelope, Offset, PersistenceQuery }
 import akka.persistence.query.scaladsl.CurrentEventsByTagQuery
 import akka.stream.{ KillSwitches, UniqueKillSwitch }
 import akka.stream.scaladsl.{ Keep, Sink, Source }
 import akka.util.Timeout
+import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftActor.CompactionCompleted
@@ -166,7 +167,8 @@ private[entityreplication] class SnapshotSyncManager(
     shardId: NormalizedShardId,
     settings: RaftSettings,
 ) extends PersistentActor
-    with ActorLogging {
+    with ActorLogging
+    with RuntimePluginConfig {
   import SnapshotSyncManager._
 
   /**
@@ -177,7 +179,11 @@ private[entityreplication] class SnapshotSyncManager(
     */
   override def journalPluginId: String = settings.journalPluginId
 
+  override def journalPluginConfig: Config = settings.journalPluginAdditionalConfig
+
   override def snapshotPluginId: String = settings.snapshotStorePluginId
+
+  override def snapshotPluginConfig: Config = ConfigFactory.empty()
 
   override def persistenceId: String =
     SnapshotSyncManager.persistenceId(
