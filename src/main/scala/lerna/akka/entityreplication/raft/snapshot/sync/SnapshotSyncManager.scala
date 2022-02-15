@@ -169,6 +169,12 @@ private[entityreplication] class SnapshotSyncManager(
     with ActorLogging {
   import SnapshotSyncManager._
 
+  /**
+    * NOTE:
+    * [[SnapshotSyncManager]] has to use the same journal plugin as RaftActor
+    * because snapshot synchronization is achieved by reading both the events
+    * [[CompactionCompleted]] which RaftActor persisted and SnapshotCopied which [[SnapshotSyncManager]] persisted.
+    */
   override def journalPluginId: String = settings.journalPluginId
 
   override def snapshotPluginId: String = settings.snapshotStorePluginId
