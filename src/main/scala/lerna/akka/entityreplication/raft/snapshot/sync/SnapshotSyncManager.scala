@@ -88,7 +88,7 @@ private[entityreplication] object SnapshotSyncManager {
 
   final case class SyncProgress(offset: Offset) extends State with ClusterReplicationSerializable
 
-  final case class CompactionEnvelope(
+  final case class EntitySnapshotsUpdated(
       snapshotLastLogTerm: Term,
       snapshotLastLogIndex: LogEntryIndex,
       entityIds: Set[NormalizedEntityId],
@@ -409,20 +409,20 @@ private[entityreplication] class SnapshotSyncManager(
       .viaMat(KillSwitches.single)(Keep.right)
       .collect {
         case EventEnvelope(offset, _, _, event: CompactionCompleted) =>
-          CompactionEnvelope(event.snapshotLastLogTerm, event.snapshotLastLogIndex, event.entityIds, offset)
+          EntitySnapshotsUpdated(event.snapshotLastLogTerm, event.snapshotLastLogIndex, event.entityIds, offset)
         case EventEnvelope(offset, _, _, event: SnapshotCopied) =>
-          CompactionEnvelope(event.snapshotLastLogTerm, event.snapshotLastLogIndex, event.entityIds, offset)
+          EntitySnapshotsUpdated(event.snapshotLastLogTerm, event.snapshotLastLogIndex, event.entityIds, offset)
       }
-      .filter { envelope =>
-        dstLatestSnapshotLastLogTerm <= envelope.snapshotLastLogTerm &&
-        dstLatestSnapshotLastLogIndex < envelope.snapshotLastLogIndex
+      .filter { event =>
+        dstLatestSnapshotLastLogTerm <= event.snapshotLastLogTerm &&
+        dstLatestSnapshotLastLogIndex < event.snapshotLastLogIndex
       }
       .statefulMapConcat { () =>
         var numberOfElements, numberOfEntities = 0;
-        { envelope =>
+        { event =>
           numberOfElements += 1
-          numberOfEntities += envelope.entityIds.size
-          (numberOfElements, envelope, numberOfEntities) :: Nil
+          numberOfEntities += event.entityIds.size
+          (numberOfElements, event, numberOfEntities) :: Nil
         }
       }
       .takeWhile {
@@ -431,8 +431,8 @@ private[entityreplication] class SnapshotSyncManager(
           numberOfElements <= 1 || numberOfEntities <= settings.snapshotSyncMaxSnapshotBatchSize
       }
       .flatMapConcat {
-        case (_, envelope, _) =>
-          Source(envelope.entityIds)
+        case (_, event, _) =>
+          Source(event.entityIds)
             .mapAsync(settings.snapshotSyncCopyingParallelism) { entityId =>
               for {
                 fetchSnapshotResult <- {
@@ -471,10 +471,10 @@ private[entityreplication] class SnapshotSyncManager(
             }
             .fold(
               SyncCompletePartially(
-                envelope.snapshotLastLogTerm,
-                envelope.snapshotLastLogIndex,
+                event.snapshotLastLogTerm,
+                event.snapshotLastLogIndex,
                 entityIds = Set.empty,
-                envelope.offset,
+                event.offset,
               ),
             )((status, e) => status.addEntityId(e.metadata.entityId))
       }
