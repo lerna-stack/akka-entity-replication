@@ -408,12 +408,14 @@ private[entityreplication] class SnapshotSyncManager(
       .currentEventsByTag(EntitySnapshotsUpdatedTag(srcMemberIndex, shardId).toString, offset)
       .viaMat(KillSwitches.single)(Keep.right)
       .collect {
-        case EventEnvelope(offset, _, _, event: CompactionCompleted)
-            if dstLatestSnapshotLastLogTerm <= event.snapshotLastLogTerm && dstLatestSnapshotLastLogIndex < event.snapshotLastLogIndex =>
+        case EventEnvelope(offset, _, _, event: CompactionCompleted) =>
           CompactionEnvelope(event.snapshotLastLogTerm, event.snapshotLastLogIndex, event.entityIds, offset)
-        case EventEnvelope(offset, _, _, event: SnapshotCopied)
-            if dstLatestSnapshotLastLogTerm <= event.snapshotLastLogTerm && dstLatestSnapshotLastLogIndex < event.snapshotLastLogIndex =>
+        case EventEnvelope(offset, _, _, event: SnapshotCopied) =>
           CompactionEnvelope(event.snapshotLastLogTerm, event.snapshotLastLogIndex, event.entityIds, offset)
+      }
+      .filter { envelope =>
+        dstLatestSnapshotLastLogTerm <= envelope.snapshotLastLogTerm &&
+        dstLatestSnapshotLastLogIndex < envelope.snapshotLastLogIndex
       }
       .statefulMapConcat { () =>
         var numberOfElements, numberOfEntities = 0;
