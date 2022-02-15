@@ -142,6 +142,20 @@ private[entityreplication] object SnapshotSyncManager {
         s"Newer (logEntryIndex: $actualLogIndex) snapshot found than expected (logEntryIndex: $expectLogIndex) in [typeName: $typeName, memberIndex: $srcMemberIndex, entityId: $entityId]",
       )
       with SyncFailures
+
+  def persistenceId(
+      typeName: TypeName,
+      srcMemberIndex: MemberIndex,
+      dstMemberIndex: MemberIndex,
+      shardId: NormalizedShardId,
+  ): String =
+    ActorIds.persistenceId(
+      "SnapshotSyncManager",
+      typeName.underlying,
+      srcMemberIndex.role,
+      dstMemberIndex.role,
+      shardId.underlying,
+    )
 }
 
 private[entityreplication] class SnapshotSyncManager(
@@ -160,12 +174,11 @@ private[entityreplication] class SnapshotSyncManager(
   override def snapshotPluginId: String = settings.snapshotStorePluginId
 
   override def persistenceId: String =
-    ActorIds.persistenceId(
-      "SnapshotSyncManager",
-      typeName.underlying,
-      srcMemberIndex.role,
-      dstMemberIndex.role,
-      shardId.underlying,
+    SnapshotSyncManager.persistenceId(
+      typeName,
+      srcMemberIndex = srcMemberIndex,
+      dstMemberIndex = dstMemberIndex,
+      shardId,
     )
 
   private[this] val readJournal =
