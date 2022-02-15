@@ -72,6 +72,25 @@ final class RaftEventJournalTestKit(system: ActorSystem, settings: ClusterReplic
     result.map(_.event.asInstanceOf[T])
   }
 
+  /**
+    * Check that nothing was persisted in the journal for particular persistence id.
+    */
+  def expectNothingPersisted(persistenceId: String): Unit = {
+    val query =
+      readJournal
+        .currentEventsByPersistenceId(
+          persistenceId,
+          fromSequenceNr = nextSeqNo(persistenceId),
+          toSequenceNr = Long.MaxValue,
+        )
+        .runWith(Sink.seq[EventEnvelope])
+    val persistedEvents = Await.result(query, remainingOrDefault).map(_.event)
+    assert(
+      persistedEvents.isEmpty,
+      s"Found persisted event [${persistedEvents.mkString(", ")}], but expected nothing instead",
+    )
+  }
+
   def reset(): Unit = {
     nextSeqNoByPersistenceId = Map.empty
   }

@@ -81,4 +81,18 @@ class RaftEventJournalTestKitSpec
       raftEventJournalTestKit.receivePersisted[String](EventStore.persistenceId(), 2)
     result2 should be(Seq("event1", "event2"))
   }
+
+  it should "pass when any persisted events don't exist on expectNothingPersisted" in {
+    // nothing to persist
+    raftEventJournalTestKit.expectNothingPersisted(EventStore.persistenceId())
+  }
+
+  it should "raise AssertionError when any persisted events exist on expectNothingPersisted" in {
+    raftEventJournalTestKit.persistEvents("event1", "event2")
+    val ex =
+      intercept[AssertionError] {
+        raftEventJournalTestKit.expectNothingPersisted(EventStore.persistenceId())
+      }
+    ex.getMessage should be("assertion failed: Found persisted event [event1, event2], but expected nothing instead")
+  }
 }
