@@ -93,7 +93,11 @@ private[entityreplication] object SnapshotSyncManager {
       snapshotLastLogIndex: LogEntryIndex,
       entityIds: Set[NormalizedEntityId],
       offset: Offset,
-  )
+  ) {
+
+    def mergeEntityIds(other: EntitySnapshotsUpdated): EntitySnapshotsUpdated =
+      copy(entityIds = entityIds ++ other.entityIds)
+  }
 
   sealed trait SyncStatus
   final case class SyncCompletePartially(
@@ -105,9 +109,6 @@ private[entityreplication] object SnapshotSyncManager {
 
     def addEntityId(entityId: NormalizedEntityId): SyncCompletePartially =
       copy(entityIds = entityIds + entityId)
-
-    def mergeEntityIds(other: SyncCompletePartially): SyncCompletePartially =
-      copy(entityIds = entityIds ++ other.entityIds)
   }
   final case class SyncIncomplete() extends SyncStatus
 
@@ -430,60 +431,64 @@ private[entityreplication] class SnapshotSyncManager(
           // take at least one element
           numberOfElements <= 1 || numberOfEntities <= settings.snapshotSyncMaxSnapshotBatchSize
       }
-      .flatMapConcat {
-        case (_, event, _) =>
-          Source(event.entityIds)
-            .mapAsync(settings.snapshotSyncCopyingParallelism) { entityId =>
-              for {
-                fetchSnapshotResult <- {
-                  ask(sourceShardSnapshotStore, replyTo => SnapshotProtocol.FetchSnapshot(entityId, replyTo))
-                    .mapTo[SnapshotProtocol.FetchSnapshotResponse]
-                    .flatMap {
-                      case response: SnapshotProtocol.SnapshotFound
-                          if srcLatestSnapshotLastLogIndex < response.snapshot.metadata.logEntryIndex =>
-                        Future.failed(
-                          SnapshotUpdateConflictException(
-                            typeName,
-                            srcMemberIndex,
-                            entityId,
-                            expectLogIndex = srcLatestSnapshotLastLogIndex,
-                            actualLogIndex = response.snapshot.metadata.logEntryIndex,
-                          ),
-                        )
-                      case response: SnapshotProtocol.SnapshotFound =>
-                        Future.successful(response)
-                      case response: SnapshotProtocol.SnapshotNotFound =>
-                        Future.failed(SnapshotNotFoundException(typeName, srcMemberIndex, response.entityId))
-                    }
-                }
-                saveSnapshotResult <- {
-                  val snapshot = fetchSnapshotResult.snapshot
-                  ask(dstShardSnapshotStore, replyTo => SnapshotProtocol.SaveSnapshot(snapshot, replyTo))
-                    .mapTo[SnapshotProtocol.SaveSnapshotResponse]
-                    .flatMap {
-                      case response: SnapshotProtocol.SaveSnapshotSuccess =>
-                        Future.successful(response)
-                      case response: SnapshotProtocol.SaveSnapshotFailure =>
-                        Future.failed(SaveSnapshotFailureException(typeName, dstMemberIndex, response.metadata))
-                    }
-                }
-              } yield saveSnapshotResult
-            }
-            .fold(
-              SyncCompletePartially(
-                event.snapshotLastLogTerm,
-                event.snapshotLastLogIndex,
-                entityIds = Set.empty,
-                event.offset,
-              ),
-            )((status, e) => status.addEntityId(e.metadata.entityId))
-      }
-      .toMat(Sink.fold[SyncStatus, SyncCompletePartially](SyncIncomplete()) {
-        case (_: SyncIncomplete, newResult)             => newResult
-        case (status: SyncCompletePartially, newResult) =>
+      .map { case (_, event, _) => event }
+      .fold(Option.empty[EntitySnapshotsUpdated]) {
+        // merge into single EntitySnapshotsUpdated
+        case (None, newEvent)        => Option(newEvent)
+        case (Some(event), newEvent) =>
           // prefer the latest term, index and offset
-          newResult.mergeEntityIds(status)
-      })(Keep.both)
+          Option(newEvent.mergeEntityIds(event))
+      }
+      .flatMapConcat(e => Source(e.toSeq))
+      .flatMapConcat { event =>
+        Source(event.entityIds)
+          .mapAsync(settings.snapshotSyncCopyingParallelism) { entityId =>
+            for {
+              fetchSnapshotResult <- {
+                ask(sourceShardSnapshotStore, replyTo => SnapshotProtocol.FetchSnapshot(entityId, replyTo))
+                  .mapTo[SnapshotProtocol.FetchSnapshotResponse]
+                  .flatMap {
+                    case response: SnapshotProtocol.SnapshotFound
+                        if srcLatestSnapshotLastLogIndex < response.snapshot.metadata.logEntryIndex =>
+                      Future.failed(
+                        SnapshotUpdateConflictException(
+                          typeName,
+                          srcMemberIndex,
+                          entityId,
+                          expectLogIndex = srcLatestSnapshotLastLogIndex,
+                          actualLogIndex = response.snapshot.metadata.logEntryIndex,
+                        ),
+                      )
+                    case response: SnapshotProtocol.SnapshotFound =>
+                      Future.successful(response)
+                    case response: SnapshotProtocol.SnapshotNotFound =>
+                      Future.failed(SnapshotNotFoundException(typeName, srcMemberIndex, response.entityId))
+                  }
+              }
+              saveSnapshotResult <- {
+                val snapshot = fetchSnapshotResult.snapshot
+                ask(dstShardSnapshotStore, replyTo => SnapshotProtocol.SaveSnapshot(snapshot, replyTo))
+                  .mapTo[SnapshotProtocol.SaveSnapshotResponse]
+                  .flatMap {
+                    case response: SnapshotProtocol.SaveSnapshotSuccess =>
+                      Future.successful(response)
+                    case response: SnapshotProtocol.SaveSnapshotFailure =>
+                      Future.failed(SaveSnapshotFailureException(typeName, dstMemberIndex, response.metadata))
+                  }
+              }
+            } yield saveSnapshotResult
+          }
+          .fold(
+            SyncCompletePartially(
+              event.snapshotLastLogTerm,
+              event.snapshotLastLogIndex,
+              entityIds = Set.empty,
+              event.offset,
+            ),
+          )((status, e) => status.addEntityId(e.metadata.entityId))
+      }
+      .orElse(Source.single(SyncIncomplete()))
+      .toMat(Sink.last)(Keep.both)
       .run()
   }
 }
