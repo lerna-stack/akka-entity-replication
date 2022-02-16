@@ -1,0 +1,8 @@
+# It is safe to exclude the following since CompactionCompletedTag (that is renamed to EntitySnapshotsUpdatedTag) is package-private.
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.raft.persistence.CompactionCompletedTag")
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.raft.persistence.CompactionCompletedTag$")
+# It is safe to exclude the following since SnapshotSyncManager is package-private.
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager$CompactionEnvelope")
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager$CompactionEnvelope$")
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager$SyncCompleteAll")
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager$SyncCompleteAll$")
