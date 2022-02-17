@@ -36,10 +36,10 @@ object MultiSnapshotSyncSpecConfig extends MultiNodeConfig {
           |lerna.akka.entityreplication {
           |  // RaftActors will recover entities as possible quick.
           |  recovery-entity-timeout = 1s
-          |  // Using this default value, RaftActors have a chance to become the leader.
-          |  // By using a larger value, RaftActors don't have such a chance.
-          |  election-timeout = 1s
           |  raft {
+          |    // Using this default value, RaftActors have a chance to become the leader.
+          |    // By using a larger value, RaftActors don't have such a chance.
+          |    election-timeout = 1s
           |    // EntityReplication runs only one RaftActor group for the sake of simplicity.
           |    number-of-shards = 1
           |    raft-actor-auto-start {
