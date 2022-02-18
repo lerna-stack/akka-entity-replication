@@ -194,7 +194,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val entityIds  = entityIds1 ++ entityIds2 ++ entityIds3
       raftEventJournalTestKit.persistEvents(
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex1, entityIds1),
-        SnapshotCopied(nextOffset(), srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex1, entityIds2),
+        SnapshotCopied(nextOffset(), srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex2, entityIds2),
         CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex3, entityIds3),
       )
 
