@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.typed
 
 import akka.actor
+import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.{ actor => classic }
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
@@ -217,6 +218,25 @@ class MultiSnapshotSyncSpec extends MultiNodeSpec(MultiSnapshotSyncSpecConfig) w
     }
   }
 
+  /** Executes the given block of code only on other than the given nodes */
+  private def runOnOtherThan(nodes: RoleName*)(thunk: => Unit): Unit = {
+    val otherNodes = roles.filterNot(nodes.contains(_))
+    runOn(otherNodes: _*)(thunk)
+  }
+
+  /** Verifies compaction completed by inspecting logging
+    *
+    * The compaction should completes in the given block of code.
+    */
+  private def expectCompactionCompleted[T](code: => T): T = {
+    LoggingTestKit.info("compaction completed").expect(code)
+  }
+
+  /** Waits for compaction completed by sleeping the current thread.
+    *
+    * The compaction will complete automatically and asynchronously.
+    * Use [[expectCompactionCompleted]] if this test verifies the compaction completed.
+    */
   private def waitForCompactionCompleted(): Unit = {
     Thread.sleep(compactionTimeout.toMillis)
   }
@@ -241,19 +261,17 @@ class MultiSnapshotSyncSpec extends MultiNodeSpec(MultiSnapshotSyncSpecConfig) w
     enterBarrier("The cluster has nodes: [2,3].")
   }
 
-  "The leader replicates some log entries" in {
-    runOn(node2) { // Can choose any of nodes: [2,3,_]
-      setValue("0", 0)(initializationTimeout) shouldBe 0
-      (1 to 10).foreach { n =>
-        setValue(n.toString, n) shouldBe n
+  "The leader replicates some log entries and then it compacts the entries" in {
+    runOn(node2) {
+      expectCompactionCompleted {
+        setValue("0", 0)(initializationTimeout) shouldBe 0
+        (1 to 10).foreach { n =>
+          setValue(n.toString, n) shouldBe n
+        }
+        waitForCompactionCompleted()
       }
     }
-    enterBarrier("Replicated log entries (entity ids = 1 ~ 10).")
-  }
-
-  "RaftActors on node2 compacts log entries" in {
-    waitForCompactionCompleted()
-    enterBarrier("The node2 compacted their log entries.")
+    enterBarrier("Nodes([2,3]) replicated log entries (entity ids = 1 ~ 10) and node2 compacts its log entries.")
   }
 
   "The cluster has nodes: [4,_,5]" in {
@@ -265,19 +283,34 @@ class MultiSnapshotSyncSpec extends MultiNodeSpec(MultiSnapshotSyncSpecConfig) w
     enterBarrier("The cluster has nodes: [4,_,5].")
   }
 
-  "The leader (which is on node4) replicates some log entries" in {
-    runOn(node4) { // Can choose any of nodes [4,_,5]
-      setValue("0", 0)(initializationTimeout) shouldBe 0
-      (11 to 20).foreach { n =>
-        setValue(n.toString, n) shouldBe n
+  "The leader (which is on node4) replicates some log entries. Nodes ([4,5]) compacts their log entries" in {
+    object BarrierNames {
+      val ExpectingCompactionCompleted = "Expecting compaction completed"
+      val ReplicatedLogEntries         = "Replicated log entries"
+    }
+    runOn(node4) {
+      expectCompactionCompleted {
+        enterBarrier(BarrierNames.ExpectingCompactionCompleted)
+        setValue("0", 0)(initializationTimeout) shouldBe 0
+        (11 to 20).foreach { n =>
+          setValue(n.toString, n) shouldBe n
+        }
+        enterBarrier(BarrierNames.ReplicatedLogEntries)
+        waitForCompactionCompleted()
       }
     }
-    enterBarrier("Replicated log entries (entity ids = 11 ~ 20).")
-  }
-
-  "RaftActors on node: [4,_,5] compacts their log entries" in {
-    waitForCompactionCompleted()
-    enterBarrier("The nodes [4,_,5] compacted their log entries.")
+    runOn(node5) {
+      expectCompactionCompleted {
+        enterBarrier(BarrierNames.ExpectingCompactionCompleted)
+        enterBarrier(BarrierNames.ReplicatedLogEntries)
+        waitForCompactionCompleted()
+      }
+    }
+    runOnOtherThan(node4, node5) {
+      enterBarrier(BarrierNames.ExpectingCompactionCompleted)
+      enterBarrier(BarrierNames.ReplicatedLogEntries)
+    }
+    enterBarrier("Nodes([4,5]) replicated log entries (entity ids = 11 ~ 20) and compacted their log entries.")
   }
 
   "The cluster has nodes: [6,7,8]" in {
@@ -290,18 +323,33 @@ class MultiSnapshotSyncSpec extends MultiNodeSpec(MultiSnapshotSyncSpecConfig) w
   }
 
   "The leader (which is on node8) replicates some log entries" in {
-    runOn(node6) { // Can choose any of nodes [6,7,8]
-      setValue("0", 0)(initializationTimeout) shouldBe 0
-      (21 to 30).foreach { n =>
-        setValue(n.toString, n) shouldBe n
+    object BarrierNames {
+      val ExpectingCompactionCompleted = "Expecting compaction completed"
+      val ReplicatedLogEntries         = "Replicated log entries"
+    }
+    runOn(node6) {
+      expectCompactionCompleted {
+        enterBarrier(BarrierNames.ExpectingCompactionCompleted)
+        setValue("0", 0)(initializationTimeout) shouldBe 0
+        (21 to 30).foreach { n =>
+          setValue(n.toString, n) shouldBe n
+        }
+        enterBarrier(BarrierNames.ReplicatedLogEntries)
+        waitForCompactionCompleted()
       }
     }
+    runOn(node7, node8) {
+      expectCompactionCompleted {
+        enterBarrier(BarrierNames.ExpectingCompactionCompleted)
+        enterBarrier(BarrierNames.ReplicatedLogEntries)
+        waitForCompactionCompleted()
+      }
+    }
+    runOnOtherThan(node6, node7, node8) {
+      enterBarrier(BarrierNames.ExpectingCompactionCompleted)
+      enterBarrier(BarrierNames.ReplicatedLogEntries)
+    }
     enterBarrier("Replicated log entries (entity ids = 21 ~ 30).")
-  }
-
-  "RaftActors on node: [6,7,8] compacts their log entries" in {
-    waitForCompactionCompleted()
-    enterBarrier("The nodes [6,7,8] compacted their log entries.")
   }
 
   "The new cluster has nodes: [9,10,11]" in {
