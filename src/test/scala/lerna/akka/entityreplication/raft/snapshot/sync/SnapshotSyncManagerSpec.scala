@@ -1,7 +1,10 @@
 package lerna.akka.entityreplication.raft.snapshot.sync
 
 import akka.Done
+import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.{ ActorRef, ActorSystem, Status }
+import akka.actor.typed
+import akka.actor.typed.scaladsl.adapter._
 import akka.persistence.inmemory.extension.{ InMemoryJournalStorage, InMemorySnapshotStorage, StorageExtension }
 import akka.persistence.query.{ Offset, Sequence }
 import akka.testkit.{ TestKit, TestProbe }
@@ -28,6 +31,8 @@ import java.util.concurrent.atomic.AtomicInteger
 import scala.reflect.ClassTag
 
 class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with BeforeAndAfterEach {
+
+  private implicit val typedSystem: typed.ActorSystem[_] = system.toTyped
 
   private[this] val settings = ClusterReplicationSettings.create(system)
 
@@ -543,6 +548,98 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       }
       expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
       // SnapshotStore is in an inconsistent state which is updated partially
+    }
+
+    "abort synchronizing if the reordered event is found (same Term, older LogEntryIndex)" in {
+      /* prepare */
+      val smallBatchSizeConfig = ConfigFactory.parseString {
+        """
+        // This settings allows us to verify that SnapshotSyncManager can detect error even if events are handled in small batch
+        lerna.akka.entityreplication.raft.snapshot-sync.max-snapshot-batch-size = 1
+        """
+      }
+      val entity1      = createUniqueEntityId()
+      val entity2      = createUniqueEntityId()
+      val allEntityIds = Set(entity1, entity2)
+
+      val dstSnapshotTerm     = Term(1)
+      val dstSnapshotLogIndex = LogEntryIndex(1)
+      val dstSnapshots = Set(
+        EntitySnapshot(EntitySnapshotMetadata(entity1, dstSnapshotLogIndex), EntityState("state-1-1")),
+      )
+      dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
+
+      val srcSnapshotTerm     = Term(1)
+      val srcSnapshotLogIndex = LogEntryIndex(3)
+      val srcSnapshots = Set(
+        EntitySnapshot(EntitySnapshotMetadata(entity1, srcSnapshotLogIndex), EntityState("state-1-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity2, srcSnapshotLogIndex), EntityState("state-1-3")),
+      )
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+      raftEventJournalTestKit.persistEvents(
+        // CompactionCompleted has an older index than SnapshotCopied
+        SnapshotCopied(nextOffset(), srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex, allEntityIds),
+        CompactionCompleted(srcMemberIndex, shardId, srcSnapshotTerm, srcSnapshotLogIndex.prev(), allEntityIds),
+      )
+
+      /* check */
+      LoggingTestKit
+        .error("It must process events in ascending order of snapshotLastLogTerm and snapshotLastLogIndex").expect {
+          createSnapshotSyncManager(overwriteConfig = smallBatchSizeConfig) ! SnapshotSyncManager.SyncSnapshot(
+            srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
+            srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
+            dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
+            dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
+            replyTo = testActor,
+          )
+          expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
+        }
+    }
+
+    "abort synchronizing if the reordered event is found (older Term, newer LogEntryIndex) (usually impossible)" in {
+      /* prepare */
+      val smallBatchSizeConfig = ConfigFactory.parseString {
+        """
+        // This settings allows us to verify that SnapshotSyncManager can detect error even if events are handled in small batch
+        lerna.akka.entityreplication.raft.snapshot-sync.max-snapshot-batch-size = 1
+        """
+      }
+      val entity1      = createUniqueEntityId()
+      val entity2      = createUniqueEntityId()
+      val allEntityIds = Set(entity1, entity2)
+
+      val dstSnapshotTerm     = Term(1)
+      val dstSnapshotLogIndex = LogEntryIndex(1)
+      val dstSnapshots = Set(
+        EntitySnapshot(EntitySnapshotMetadata(entity1, dstSnapshotLogIndex), EntityState("state-1-1")),
+      )
+      dstRaftSnapshotStoreTestKit.saveSnapshots(dstSnapshots)
+
+      val srcSnapshotTerm     = Term(2)
+      val srcSnapshotLogIndex = LogEntryIndex(3)
+      val srcSnapshots = Set(
+        EntitySnapshot(EntitySnapshotMetadata(entity1, srcSnapshotLogIndex), EntityState("state-1-3")),
+        EntitySnapshot(EntitySnapshotMetadata(entity2, srcSnapshotLogIndex), EntityState("state-2-3")),
+      )
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+      raftEventJournalTestKit.persistEvents(
+        // CompactionCompleted has an older Term than SnapshotCopied but has an newer LogEntryIndex (usually impossible)
+        SnapshotCopied(nextOffset(), srcMemberIndex, shardId, srcSnapshotTerm, LogEntryIndex(2), allEntityIds),
+        CompactionCompleted(srcMemberIndex, shardId, Term(1), srcSnapshotLogIndex, allEntityIds),
+      )
+
+      /* check */
+      LoggingTestKit
+        .error("It must process events in ascending order of snapshotLastLogTerm and snapshotLastLogIndex").expect {
+          createSnapshotSyncManager(overwriteConfig = smallBatchSizeConfig) ! SnapshotSyncManager.SyncSnapshot(
+            srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
+            srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
+            dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
+            dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
+            replyTo = testActor,
+          )
+          expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
+        }
     }
 
     "stop after snapshot synchronization is failed" in {

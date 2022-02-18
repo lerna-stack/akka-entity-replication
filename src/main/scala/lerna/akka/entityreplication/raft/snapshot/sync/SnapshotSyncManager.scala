@@ -92,11 +92,30 @@ private[entityreplication] object SnapshotSyncManager {
       snapshotLastLogTerm: Term,
       snapshotLastLogIndex: LogEntryIndex,
       entityIds: Set[NormalizedEntityId],
+      eventType: Class[_],
+      persistenceId: String,
+      sequenceNr: Long,
       offset: Offset,
   ) {
 
     def mergeEntityIds(other: EntitySnapshotsUpdated): EntitySnapshotsUpdated =
       copy(entityIds = entityIds ++ other.entityIds)
+
+    /**
+      * This format is used by logging
+      */
+    override def toString: String = {
+      // omitted entityIds for simplicity
+      val args = Seq(
+        s"snapshotLastLogTerm: ${snapshotLastLogTerm.term}",
+        s"snapshotLastLogIndex: ${snapshotLastLogIndex.underlying}",
+        s"eventType: ${eventType.getName}",
+        s"persistenceId: ${persistenceId}",
+        s"sequenceNr: ${sequenceNr}",
+        s"offset: ${offset}",
+      )
+      s"${getClass.getSimpleName}(${args.mkString(", ")})"
+    }
   }
 
   sealed trait SyncStatus
@@ -409,15 +428,60 @@ private[entityreplication] class SnapshotSyncManager(
       .currentEventsByTag(EntitySnapshotsUpdatedTag(srcMemberIndex, shardId).toString, offset)
       .viaMat(KillSwitches.single)(Keep.right)
       .collect {
-        case EventEnvelope(offset, _, _, event: CompactionCompleted) =>
-          EntitySnapshotsUpdated(event.snapshotLastLogTerm, event.snapshotLastLogIndex, event.entityIds, offset)
-        case EventEnvelope(offset, _, _, event: SnapshotCopied) =>
-          EntitySnapshotsUpdated(event.snapshotLastLogTerm, event.snapshotLastLogIndex, event.entityIds, offset)
+        case EventEnvelope(offset, persistenceId, sequenceNr, event: CompactionCompleted) =>
+          EntitySnapshotsUpdated(
+            event.snapshotLastLogTerm,
+            event.snapshotLastLogIndex,
+            event.entityIds,
+            eventType = event.getClass,
+            persistenceId = persistenceId,
+            sequenceNr = sequenceNr,
+            offset,
+          )
+        case EventEnvelope(offset, persistenceId, sequenceNr, event: SnapshotCopied) =>
+          EntitySnapshotsUpdated(
+            event.snapshotLastLogTerm,
+            event.snapshotLastLogIndex,
+            event.entityIds,
+            eventType = event.getClass,
+            persistenceId = persistenceId,
+            sequenceNr = sequenceNr,
+            offset,
+          )
       }
       .filter { event =>
         dstLatestSnapshotLastLogTerm <= event.snapshotLastLogTerm &&
         dstLatestSnapshotLastLogIndex < event.snapshotLastLogIndex
       }
+      .scan(Option.empty[EntitySnapshotsUpdated]) {
+        // verify events ordering
+        //
+        // It is important to do this before `takeWhile`
+        // because an extra element that `takeWhile` discards and the next batch will process
+        // allows us verify all events without omissions.
+        case (None, current) =>
+          Option(current) // No comparisons
+        case (Some(prev), current) =>
+          if (
+            prev.snapshotLastLogTerm <= current.snapshotLastLogTerm &&
+            prev.snapshotLastLogIndex <= current.snapshotLastLogIndex
+          ) {
+            // correct order
+            Option(current)
+          } else {
+            val ex =
+              new IllegalStateException(s"The current EntitySnapshotsUpdated event is older than the previous one")
+            if (log.isErrorEnabled)
+              log.error(
+                ex,
+                "It must process events in ascending order of snapshotLastLogTerm and snapshotLastLogIndex [prev: {}, current: {}]",
+                prev,
+                current,
+              )
+            throw ex
+          }
+      }
+      .mapConcat(identity) // flatten the `Option` element
       .statefulMapConcat { () =>
         var numberOfElements, numberOfEntities = 0;
         { event =>
