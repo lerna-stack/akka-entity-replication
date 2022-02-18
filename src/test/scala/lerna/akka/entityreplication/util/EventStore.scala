@@ -10,7 +10,7 @@ object EventStore {
   def props(settings: ClusterReplicationSettings): Props = Props(new EventStore(settings))
   final case class PersistEvents(events: Seq[Any])
 
-  def persistenceId(): String = getClass.getCanonicalName
+  def persistenceId: String = getClass.getCanonicalName
 }
 
 class EventStore(settings: ClusterReplicationSettings) extends PersistentActor with RuntimePluginConfig {
@@ -24,7 +24,7 @@ class EventStore(settings: ClusterReplicationSettings) extends PersistentActor w
 
   override def snapshotPluginConfig: Config = ConfigFactory.empty()
 
-  override def persistenceId: String = EventStore.persistenceId()
+  override def persistenceId: String = EventStore.persistenceId
 
   override def receiveRecover: Receive = Actor.emptyBehavior
 
