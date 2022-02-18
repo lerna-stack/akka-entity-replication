@@ -143,6 +143,10 @@ private[entityreplication] object RaftSettingsImpl {
 
     val snapshotSyncMaxSnapshotBatchSize: Int =
       config.getInt("snapshot-sync.max-snapshot-batch-size")
+    require(
+      snapshotSyncMaxSnapshotBatchSize > 0,
+      s"snapshot-sync.max-snapshot-batch-size (${snapshotSyncMaxSnapshotBatchSize}) should be larger than 0",
+    )
 
     val clusterShardingConfig: Config = config.getConfig("sharding")
 
