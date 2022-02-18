@@ -503,7 +503,7 @@ private[entityreplication] class SnapshotSyncManager(
           // prefer the latest term, index and offset
           Option(newEvent.mergeEntityIds(event))
       }
-      .flatMapConcat(e => Source(e.toSeq))
+      .mapConcat(identity) // flatten the `Option` element
       .flatMapConcat { event =>
         Source(event.entityIds)
           .mapAsync(settings.snapshotSyncCopyingParallelism) { entityId =>
