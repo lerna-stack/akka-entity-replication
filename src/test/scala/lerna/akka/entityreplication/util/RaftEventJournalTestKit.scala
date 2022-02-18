@@ -59,19 +59,27 @@ final class RaftEventJournalTestKit(system: ActorSystem, settings: ClusterReplic
     */
   def receivePersisted[T](persistenceId: String, n: Int)(implicit tag: ClassTag[T]): Seq[T] = {
     require(n > 0, s"argument 'n'[${n}] should be greater than zero")
-    val query =
-      readJournal
-        .currentEventsByPersistenceId(
-          persistenceId,
-          fromSequenceNr = nextSeqNo(persistenceId),
-          toSequenceNr = Long.MaxValue,
-        )
-        .take(n)
-        .runWith(Sink.seq[EventEnvelope])
-    val result   = Await.result(query, remainingOrDefault)
-    val filtered = result.map(_.event).filterNot(e => tag.runtimeClass.isInstance(e))
-    assert(result.sizeIs == n, s"Could read only ${result.size} events instead of expected $n")
-    assert(filtered.isEmpty, s"Persisted events [${filtered.mkString(", ")}] do not correspond to expected type")
+    val result =
+      awaitAssert(
+        {
+          val query = {
+            readJournal
+              .currentEventsByPersistenceId(
+                persistenceId,
+                fromSequenceNr = nextSeqNo(persistenceId),
+                toSequenceNr = Long.MaxValue,
+              )
+              .take(n)
+              .runWith(Sink.seq[EventEnvelope])
+          }
+          val result   = Await.result(query, remainingOrDefault)
+          val filtered = result.map(_.event).filterNot(e => tag.runtimeClass.isInstance(e))
+          assert(result.sizeIs == n, s"Could read only ${result.size} events instead of expected $n")
+          assert(filtered.isEmpty, s"Persisted events [${filtered.mkString(", ")}] do not correspond to expected type")
+          result
+        },
+        max = remainingOrDefault,
+      )
     setNextSeqNo(result.last)
     result.map(_.event.asInstanceOf[T])
   }
@@ -80,25 +88,30 @@ final class RaftEventJournalTestKit(system: ActorSystem, settings: ClusterReplic
     * Check that nothing was persisted in the journal for particular persistence id.
     */
   def expectNothingPersisted(persistenceId: String): Unit = {
-    val query =
-      readJournal
-        .currentEventsByPersistenceId(
-          persistenceId,
-          fromSequenceNr = nextSeqNo(persistenceId),
-          toSequenceNr = Long.MaxValue,
+    assertForDuration(
+      {
+        val query =
+          readJournal
+            .currentEventsByPersistenceId(
+              persistenceId,
+              fromSequenceNr = nextSeqNo(persistenceId),
+              toSequenceNr = Long.MaxValue,
+            )
+            .runWith(Sink.seq[EventEnvelope])
+        val persistedEvents = Await.result(query, remainingOrDefault).map(_.event)
+        assert(
+          persistedEvents.isEmpty,
+          s"Found persisted event [${persistedEvents.mkString(", ")}], but expected nothing instead",
         )
-        .runWith(Sink.seq[EventEnvelope])
-    val persistedEvents = Await.result(query, remainingOrDefault).map(_.event)
-    assert(
-      persistedEvents.isEmpty,
-      s"Found persisted event [${persistedEvents.mkString(", ")}], but expected nothing instead",
+      },
+      max = remainingOrDefault,
     )
   }
 
   /**
     * Return the probe to verify tagged events with particular tag.
     */
-  def verifyEventsByTag(tag: String): TestSubscriber.Probe[EventEnvelope] =
+  def probeOfEventsByTag(tag: String): TestSubscriber.Probe[EventEnvelope] =
     readJournal.eventsByTag(tag, Offset.noOffset).runWith(TestSink.probe(system))
 
   def reset(): Unit = {

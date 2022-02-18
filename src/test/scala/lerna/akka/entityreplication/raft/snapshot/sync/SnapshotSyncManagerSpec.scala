@@ -130,7 +130,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       )
 
       val dstEventsByTagProbe =
-        raftEventJournalTestKit.verifyEventsByTag(EntitySnapshotsUpdatedTag(dstMemberIndex, shardId).toString)
+        raftEventJournalTestKit.probeOfEventsByTag(EntitySnapshotsUpdatedTag(dstMemberIndex, shardId).toString)
       dstEventsByTagProbe.request(1).expectNoMessage()
 
       /* check */

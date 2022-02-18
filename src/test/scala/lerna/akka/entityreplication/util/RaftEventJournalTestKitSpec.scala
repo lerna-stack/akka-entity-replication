@@ -141,7 +141,7 @@ class RaftEventJournalTestKitSpec
     val persistedEvent = TaggedEvent()
     raftEventJournalTestKit.persistEvents(persistedEvent)
 
-    val probe = raftEventJournalTestKit.verifyEventsByTag(TaggedEvent.tag)
+    val probe = raftEventJournalTestKit.probeOfEventsByTag(TaggedEvent.tag)
     probe.request(1)
     probe.expectNext().event should be(persistedEvent)
   }
