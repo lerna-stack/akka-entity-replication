@@ -6,7 +6,7 @@ import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion }
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId, TypeName }
-import lerna.akka.entityreplication.raft.RaftProtocol.Replicate
+import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, ReplicationFailed }
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.testkit.CustomTestProbe._
@@ -628,6 +628,36 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
           leader ! InstallSnapshotSucceeded(shardId, term, cmd.srcLatestSnapshotLastLogLogIndex, follower2Index)
           msg.index
       } should contain theSameElementsAs (Set(follower1Index, follower2Index))
+    }
+
+    "reply ReplicationFailed to replicationActor if replication is in progress" in {
+      val replicationActor = TestProbe()
+      val entityId         = NormalizedEntityId("test")
+      val entityInstanceId = EntityInstanceId(1)
+
+      val leader     = createRaftActor()
+      val term       = Term(1)
+      val leaderData = createLeaderData(term)
+      setState(leader, Candidate, leaderData)
+      setState(leader, Leader, leaderData)
+
+      leader ! Replicate(
+        event = "a",
+        replyTo = replicationActor.ref,
+        entityId,
+        entityInstanceId,
+        originSender = system.deadLetters,
+      )
+      replicationActor.expectNoMessage()
+
+      leader ! Replicate(
+        event = "b",
+        replicationActor.ref,
+        entityId,
+        entityInstanceId,
+        originSender = system.deadLetters,
+      )
+      replicationActor.expectMsg(ReplicationFailed)
     }
   }
 
