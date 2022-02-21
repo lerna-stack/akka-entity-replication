@@ -186,17 +186,32 @@ private[raft] trait Leader { this: RaftActor =>
     }
 
   private[this] def replicate(replicate: Replicate): Unit = {
-    cancelHeartbeatTimeoutTimer()
-    applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
-      applyDomainEvent(
-        StartedReplication(
-          ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
-          currentData.replicatedLog.lastLogIndex,
-        ),
-      ) { _ =>
-        publishAppendEntries()
-      }
+    replicate.entityId match {
+      case Some(normalizedEntityId) // from entity(ReplicationActor)
+          if currentData.replicatedLog
+            .dropEntries(to = currentData.commitIndex) // uncommitted entries
+            .exists(_.event.entityId.contains(normalizedEntityId)) =>
+        if (log.isWarningEnabled)
+          log.warning(
+            "normalizedEntityId: {}, New replicate fails because there is an Event in process",
+            normalizedEntityId,
+          )
+        replicate.replyTo ! ReplicationFailed
+
+      case _ =>
+        cancelHeartbeatTimeoutTimer()
+        applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
+          applyDomainEvent(
+            StartedReplication(
+              ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
+              currentData.replicatedLog.lastLogIndex,
+            ),
+          ) { _ =>
+            publishAppendEntries()
+          }
+        }
     }
+
   }
 
   private[this] def receiveReplicationResponse(event: ReplicationResponse): Unit =

@@ -144,6 +144,9 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
             innerApplyEvent(logEntry.event.event, logEntry.index)
             changeState(ready)
             internalStash.unstashAll()
+          case ReplicationFailed =>
+            changeState(ready)
+            internalStash.unstashAll()
           case ReplicationSucceeded(_, logEntryIndex, responseInstanceId) if responseInstanceId.contains(instanceId) =>
             changeState(ready)
             internalStash.unstashAll()
