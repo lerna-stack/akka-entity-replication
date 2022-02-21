@@ -111,6 +111,22 @@ class ReplicationActorSpec extends TestKit(ActorSystem("ReplicationActorSpec", c
       raftActorProbe.expectMsgType[Replicate]
     }
 
+    "transitions to `ready` state and processes the next command without executing any side effect if ReplicationActor receives ReplicationFailed in `waitForReplicationResponse` state" in {
+      val client           = TestProbe()
+      val raftActorProbe   = TestProbe()
+      val replicationActor = createReplicationActor(raftActorProbe)
+
+      client.send(replicationActor, Count())
+      raftActorProbe.expectMsgType[Replicate]
+
+      client.send(replicationActor, Count())
+      raftActorProbe.expectNoMessage() // the command is stashed
+
+      replicationActor ! ReplicationFailed // from raftActor
+      client.expectNoMessage()
+      raftActorProbe.expectMsgType[Replicate]
+    }
+
     "replace instanceId when it restarted" in {
       val watchProbe       = TestProbe()
       val raftActorProbe   = TestProbe()
