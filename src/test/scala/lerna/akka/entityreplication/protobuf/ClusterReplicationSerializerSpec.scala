@@ -106,6 +106,12 @@ final class ClusterReplicationSerializerSpec
       ),
     )
     checkSerialization(
+      SnapshotSyncStarted(
+        Term(5223),
+        LogEntryIndex(26632),
+      ),
+    )
+    checkSerialization(
       SnapshotSyncCompleted(
         Term(12831),
         LogEntryIndex(1238),

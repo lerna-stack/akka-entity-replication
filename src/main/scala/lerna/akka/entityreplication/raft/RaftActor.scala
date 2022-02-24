@@ -74,6 +74,9 @@ private[entityreplication] object RaftActor {
       entityIds: Set[NormalizedEntityId],
   ) extends PersistEvent
       with ClusterReplicationSerializable
+  final case class SnapshotSyncStarted(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex)
+      extends PersistEvent
+      with ClusterReplicationSerializable
   final case class SnapshotSyncCompleted(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex)
       extends PersistEvent
       with ClusterReplicationSerializable

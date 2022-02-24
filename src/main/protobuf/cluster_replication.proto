@@ -42,6 +42,11 @@ message CompactionCompleted {
   repeated NormalizedEntityId entity_ids = 5;
 }
 
+message SnapshotSyncStarted {
+  required Term snapshot_last_log_term = 1;
+  required LogEntryIndex snapshot_last_log_index = 2;
+}
+
 message SnapshotSyncCompleted {
   required Term snapshot_last_log_term = 1;
   required LogEntryIndex snapshot_last_log_index = 2;
