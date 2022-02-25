@@ -1,6 +1,8 @@
 package lerna.akka.entityreplication.raft
 
 import akka.Done
+import akka.actor.testkit.typed.scaladsl.LoggingTestKit
+import akka.actor.typed.scaladsl.adapter._
 import akka.actor.{ ActorRef, ActorSystem }
 import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
@@ -24,6 +26,7 @@ import scala.concurrent.duration.DurationInt
 class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase with Inside {
 
   import RaftActor._
+  private implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
 
   private[this] val entityId = NormalizedEntityId.from("test-entity")
   private[this] val shardId  = NormalizedShardId.from("test-shard")
@@ -630,7 +633,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       } should contain theSameElementsAs (Set(follower1Index, follower2Index))
     }
 
-    "reply ReplicationFailed to replicationActor if replication is in progress" in {
+    "reply ReplicationFailed to replicationActor and log warn message if replication is in progress" in {
       val replicationActor1 = TestProbe()
       val replicationActor2 = TestProbe()
       val entityId1         = NormalizedEntityId("test-1")
@@ -661,14 +664,19 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       )
       replicationActor2.expectNoMessage()
 
-      leader ! Replicate(
-        event = "c",
-        replicationActor1.ref,
-        entityId1,
-        entityInstanceId,
-        originSender = system.deadLetters,
-      )
-      replicationActor1.expectMsg(ReplicationFailed)
+      LoggingTestKit
+        .warn(
+          "Failed to replicate the event (java.lang.String) since an uncommitted event exists for the entity (entityId: test-1). Replicating new events is allowed after the event is committed",
+        ).expect {
+          leader ! Replicate(
+            event = "c", // java.lang.String
+            replicationActor1.ref,
+            entityId1,
+            entityInstanceId,
+            originSender = system.deadLetters,
+          )
+          replicationActor1.expectMsg(ReplicationFailed)
+        }
     }
   }
 
