@@ -10,7 +10,7 @@ import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, _ }
 import lerna.akka.entityreplication.raft.eventsourced.CommitLogStore
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
-import lerna.akka.entityreplication.raft.protocol.RaftCommands.{ InstallSnapshot, InstallSnapshotSucceeded }
+import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshotMetadata
@@ -247,9 +247,11 @@ private[raft] class RaftActor(
         currentData
           .updateLastSnapshotStatus(snapshotLastTerm, snapshotLastIndex)
           .compactReplicatedLog(settings.compactionPreserveLogSize)
+      case SnapshotSyncStarted(snapshotLastLogTerm, snapshotLastLogIndex) =>
+        currentData.startSnapshotSync(snapshotLastLogTerm, snapshotLastLogIndex)
       case SnapshotSyncCompleted(snapshotLastLogTerm, snapshotLastLogIndex) =>
         stopAllEntities()
-        currentData.syncSnapshot(snapshotLastLogTerm, snapshotLastLogIndex)
+        currentData.completeSnapshotSync(snapshotLastLogTerm, snapshotLastLogIndex)
       case PassivatedEntity(entityId) =>
         currentData.passivateEntity(entityId)
       case TerminatedEntity(entityId) =>
@@ -429,21 +431,121 @@ private[raft] class RaftActor(
     }
   }
 
+  protected def rejectAppendEntriesSinceSnapshotsAreDirty(appendEntries: AppendEntries): Unit = {
+    require(
+      currentData.lastSnapshotStatus.isDirty,
+      "This method requires to be called when snapshot status is dirty",
+    )
+    // We have to wait for InstallSnapshot to update the all snapshots perfectly.
+    if (currentData.hasMatchLogEntry(appendEntries.prevLogIndex, appendEntries.prevLogTerm)) {
+      // Ignore it for keeping leader's nextIndex
+      if (log.isDebugEnabled)
+        log.debug(
+          "=== [{}] ignore {} because {} is still dirty ===",
+          currentState,
+          appendEntries,
+          currentData.lastSnapshotStatus,
+        )
+      cancelElectionTimeoutTimer()
+      if (appendEntries.term != currentData.currentTerm) {
+        applyDomainEvent(DetectedNewTerm(appendEntries.term)) { _ =>
+          applyDomainEvent(DetectedLeaderMember(appendEntries.leader)) { _ =>
+            become(Follower)
+          }
+        }
+      } else {
+        applyDomainEvent(DetectedLeaderMember(appendEntries.leader)) { _ =>
+          become(Follower)
+        }
+      }
+    } else {
+      // Reply AppendEntriesFailed command for decrementing leader's nextIndex
+      if (log.isDebugEnabled)
+        log.debug(
+          "=== [{}] deny {} because the log (lastLogTerm: {}, lastLogIndex: {}) can not merge the entries ===",
+          currentState,
+          appendEntries,
+          currentData.replicatedLog.lastLogTerm,
+          currentData.replicatedLog.lastLogIndex,
+        )
+      cancelElectionTimeoutTimer()
+      if (appendEntries.term != currentData.currentTerm) {
+        applyDomainEvent(DetectedNewTerm(appendEntries.term)) { _ =>
+          applyDomainEvent(DetectedLeaderMember(appendEntries.leader)) { _ =>
+            sender() ! AppendEntriesFailed(currentData.currentTerm, selfMemberIndex)
+            become(Follower)
+          }
+        }
+      } else {
+        applyDomainEvent(DetectedLeaderMember(appendEntries.leader)) { _ =>
+          sender() ! AppendEntriesFailed(currentData.currentTerm, selfMemberIndex)
+          become(Follower)
+        }
+      }
+    }
+  }
+
   protected def receiveInstallSnapshot(request: InstallSnapshot): Unit =
+    /*
+     * Take the following actions:
+     * - lastSnapshotStatus.isDirty = true  && installSnapshot < lastSnapshotStatus => ignore
+     * - lastSnapshotStatus.isDirty = true  && installSnapshot = lastSnapshotStatus => start snapshot-synchronization (for enabling retry)
+     * - lastSnapshotStatus.isDirty = true  && installSnapshot > lastSnapshotStatus => start snapshot-synchronization (for enabling retry)
+     * - lastSnapshotStatus.isDirty = false && installSnapshot < lastSnapshotStatus => ignore
+     * - lastSnapshotStatus.isDirty = false && installSnapshot = lastSnapshotStatus => start snapshot-synchronization
+     * - lastSnapshotStatus.isDirty = false && installSnapshot > lastSnapshotStatus => start snapshot-synchronization
+     * Legend:
+     *    - A < B: A is older than B
+     *    - A = B: A is same as B
+     *    - A > B: A is newer than B
+     * NOTE:
+     *   "start snapshot-synchronization" means delegating the process to SnapshotSyncManager.
+     *   SnapshotSyncManager can ignore the command based on its own state.
+     */
     request match {
       case installSnapshot if installSnapshot.term.isOlderThan(currentData.currentTerm) =>
       // ignore the message because this member knows another newer leader
+      case installSnapshot
+          if installSnapshot.srcLatestSnapshotLastLogTerm < currentData.lastSnapshotStatus.targetSnapshotLastTerm
+          || installSnapshot.srcLatestSnapshotLastLogLogIndex < currentData.lastSnapshotStatus.targetSnapshotLastLogIndex =>
+        // ignore the message because this member has already known newer snapshots and require overwriting with newer snapshots
+        if (log.isDebugEnabled)
+          log.debug(
+            Seq(
+              "=== [{}] ignore {} because this member may have already saved newer snapshots",
+              "and requires overwriting them with newer snapshots",
+              "(targetSnapshotLastTerm: {}, targetSnapshotLastLogIndex: {}) ===",
+            ).mkString(" "),
+            currentState,
+            installSnapshot,
+            currentData.lastSnapshotStatus.targetSnapshotLastTerm,
+            currentData.lastSnapshotStatus.targetSnapshotLastLogIndex,
+          )
       case installSnapshot =>
         if (installSnapshot.term == currentData.currentTerm) {
           applyDomainEvent(DetectedLeaderMember(installSnapshot.srcMemberIndex)) { _ =>
-            startSyncSnapshot(installSnapshot)
-            become(Follower)
+            applyDomainEvent(
+              SnapshotSyncStarted(
+                installSnapshot.srcLatestSnapshotLastLogTerm,
+                installSnapshot.srcLatestSnapshotLastLogLogIndex,
+              ),
+            ) { _ =>
+              startSyncSnapshot(installSnapshot)
+              become(Follower)
+            }
           }
         } else {
           applyDomainEvent(DetectedNewTerm(installSnapshot.term)) { _ =>
             applyDomainEvent(DetectedLeaderMember(installSnapshot.srcMemberIndex)) { _ =>
-              startSyncSnapshot(installSnapshot)
-              become(Follower)
+              applyDomainEvent(
+                SnapshotSyncStarted(
+                  installSnapshot.srcLatestSnapshotLastLogTerm,
+                  installSnapshot.srcLatestSnapshotLastLogLogIndex,
+                ),
+              ) { _ =>
+                startSyncSnapshot(installSnapshot)
+                become(Follower)
+              }
             }
           }
         }

@@ -132,7 +132,12 @@ final class ClusterReplicationSerializerSpec
           Term(2781),
           LogEntryIndex(12305),
         ),
-        SnapshotStatus(Term(820), LogEntryIndex(9751)),
+        SnapshotStatus(
+          snapshotLastTerm = Term(820),
+          snapshotLastLogIndex = LogEntryIndex(9751),
+          targetSnapshotLastTerm = Term(820),
+          targetSnapshotLastLogIndex = LogEntryIndex(9752),
+        ),
       ),
     )
     checkSerialization(Command(MyCommand(112947, "big")))

@@ -126,6 +126,9 @@ private[raft] trait Candidate { this: RaftActor =>
       case appendEntries: AppendEntries if appendEntries.term.isOlderThan(currentData.currentTerm) =>
         sender() ! AppendEntriesFailed(currentData.currentTerm, selfMemberIndex)
 
+      case appendEntries: AppendEntries if currentData.lastSnapshotStatus.isDirty =>
+        rejectAppendEntriesSinceSnapshotsAreDirty(appendEntries)
+
       case appendEntries: AppendEntries =>
         if (currentData.hasMatchLogEntry(appendEntries.prevLogIndex, appendEntries.prevLogTerm)) {
           if (log.isDebugEnabled) log.debug("=== [Candidate] append {} ===", appendEntries)

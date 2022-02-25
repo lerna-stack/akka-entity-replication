@@ -249,6 +249,8 @@ message ReplicatedLog {
 message SnapshotStatus {
   required Term snapshot_last_term = 1;
   required LogEntryIndex snapshot_last_log_index = 2;
+  required Term target_snapshot_last_term = 3;
+  required LogEntryIndex target_snapshot_last_log_index = 4;
 }
 
 message Term {

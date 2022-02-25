@@ -915,6 +915,8 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     msg.SnapshotStatus.of(
       snapshotLastTerm = termToProto(message.snapshotLastTerm),
       snapshotLastLogIndex = logEntryIndexToProto(message.snapshotLastLogIndex),
+      targetSnapshotLastTerm = termToProto(message.targetSnapshotLastTerm),
+      targetSnapshotLastLogIndex = logEntryIndexToProto(message.targetSnapshotLastLogIndex),
     )
   }
 
@@ -922,6 +924,8 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     raft.model.SnapshotStatus(
       snapshotLastTerm = termFromProto(proto.snapshotLastTerm),
       snapshotLastLogIndex = logEntryIndexFromProto(proto.snapshotLastLogIndex),
+      targetSnapshotLastTerm = termFromProto(proto.targetSnapshotLastTerm),
+      targetSnapshotLastLogIndex = logEntryIndexFromProto(proto.targetSnapshotLastLogIndex),
     )
   }
 
