@@ -36,8 +36,8 @@ private[entityreplication] final case class ReplicatedLog private[model] (
     entries.slice(toSeqIndex(from), until = toSeqIndex(to.next()))
   }
 
-  def dropEntries(to: LogEntryIndex): Iterator[LogEntry] =
-    entries.iterator.drop(n = toSeqIndex(to) + 1)
+  def entriesAfter(index: LogEntryIndex): Iterator[LogEntry] =
+    entries.iterator.drop(n = toSeqIndex(index) + 1)
 
   def nonEmpty: Boolean = entries.nonEmpty
 

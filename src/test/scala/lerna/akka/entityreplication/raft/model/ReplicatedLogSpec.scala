@@ -428,7 +428,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
   }
 
-  "ReplicatedLog.dropEntries" should {
+  "ReplicatedLog.entriesAfter" should {
 
     "returns entries with deleted up to the specified LogEntryIndex" in {
       val logEntries = Seq(
@@ -439,11 +439,11 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
       val log = new ReplicatedLog(logEntries)
 
-      log.dropEntries(to = LogEntryIndex.initial()).map(_.event.event).toList shouldBe List("a", "b", "c")
-      log.dropEntries(to = LogEntryIndex(1)).map(_.event.event).toList shouldBe List("b", "c")
-      log.dropEntries(to = LogEntryIndex(2)).map(_.event.event).toList shouldBe List("c")
-      log.dropEntries(to = LogEntryIndex(3)).map(_.event.event).toList shouldBe List()
-      log.dropEntries(to = LogEntryIndex(4)).map(_.event.event).toList shouldBe List()
+      log.entriesAfter(index = LogEntryIndex.initial()).map(_.event.event).toList shouldBe List("a", "b", "c")
+      log.entriesAfter(index = LogEntryIndex(1)).map(_.event.event).toList shouldBe List("b", "c")
+      log.entriesAfter(index = LogEntryIndex(2)).map(_.event.event).toList shouldBe List("c")
+      log.entriesAfter(index = LogEntryIndex(3)).map(_.event.event).toList shouldBe List()
+      log.entriesAfter(index = LogEntryIndex(4)).map(_.event.event).toList shouldBe List()
     }
 
     "returns entries with deleted up to the specified LogEntryIndex when the log is compressed" in {
@@ -459,13 +459,13 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       require(log.entries.map(_.index.underlying) == List(3, 4, 5))
       require(log.entries.map(_.event.event) == List("c", "d", "e"))
 
-      log.dropEntries(to = LogEntryIndex.initial()).map(_.event.event).toList shouldBe List("c", "d", "e")
-      log.dropEntries(to = LogEntryIndex(1)).map(_.event.event).toList shouldBe List("c", "d", "e")
-      log.dropEntries(to = LogEntryIndex(2)).map(_.event.event).toList shouldBe List("c", "d", "e")
-      log.dropEntries(to = LogEntryIndex(3)).map(_.event.event).toList shouldBe List("d", "e")
-      log.dropEntries(to = LogEntryIndex(4)).map(_.event.event).toList shouldBe List("e")
-      log.dropEntries(to = LogEntryIndex(5)).map(_.event.event).toList shouldBe List()
-      log.dropEntries(to = LogEntryIndex(6)).map(_.event.event).toList shouldBe List()
+      log.entriesAfter(index = LogEntryIndex.initial()).map(_.event.event).toList shouldBe List("c", "d", "e")
+      log.entriesAfter(index = LogEntryIndex(1)).map(_.event.event).toList shouldBe List("c", "d", "e")
+      log.entriesAfter(index = LogEntryIndex(2)).map(_.event.event).toList shouldBe List("c", "d", "e")
+      log.entriesAfter(index = LogEntryIndex(3)).map(_.event.event).toList shouldBe List("d", "e")
+      log.entriesAfter(index = LogEntryIndex(4)).map(_.event.event).toList shouldBe List("e")
+      log.entriesAfter(index = LogEntryIndex(5)).map(_.event.event).toList shouldBe List()
+      log.entriesAfter(index = LogEntryIndex(6)).map(_.event.event).toList shouldBe List()
     }
 
   }

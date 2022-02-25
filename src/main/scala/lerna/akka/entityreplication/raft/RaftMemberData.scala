@@ -325,7 +325,7 @@ private[entityreplication] trait RaftMemberData
 
   def hasUncommittedLogEntryOf(entityId: NormalizedEntityId): Boolean = {
     replicatedLog
-      .dropEntries(to = commitIndex) // uncommitted entries
+      .entriesAfter(index = commitIndex) // uncommitted entries
       .exists(_.event.entityId.contains(entityId))
   }
 
