@@ -37,6 +37,7 @@ private[entityreplication] class Inactive[Command, Event, State](
         case _: RaftProtocol.RecoveryState        => Behaviors.unhandled
         case _: RaftProtocol.ReplicationSucceeded => Behaviors.unhandled
         case RaftProtocol.RecoveryTimeout         => Behaviors.unhandled
+        case RaftProtocol.ReplicationFailed       => Behaviors.unhandled
       }.receiveSignal(setup.onSignal(setup.emptyState))
 
   def receiveActivate(command: RaftProtocol.Activate): Behavior[EntityCommand] = {

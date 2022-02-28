@@ -1,12 +1,14 @@
 package lerna.akka.entityreplication.raft
 
 import akka.Done
+import akka.actor.testkit.typed.scaladsl.LoggingTestKit
+import akka.actor.typed.scaladsl.adapter._
 import akka.actor.{ ActorRef, ActorSystem }
 import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion }
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId, TypeName }
-import lerna.akka.entityreplication.raft.RaftProtocol.Replicate
+import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, ReplicationFailed }
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.testkit.CustomTestProbe._
@@ -24,6 +26,7 @@ import scala.concurrent.duration.DurationInt
 class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase with Inside {
 
   import RaftActor._
+  private implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
 
   private[this] val entityId = NormalizedEntityId.from("test-entity")
   private[this] val shardId  = NormalizedShardId.from("test-shard")
@@ -628,6 +631,52 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
           leader ! InstallSnapshotSucceeded(shardId, term, cmd.srcLatestSnapshotLastLogLogIndex, follower2Index)
           msg.index
       } should contain theSameElementsAs (Set(follower1Index, follower2Index))
+    }
+
+    "reply ReplicationFailed to replicationActor and log warn message if replication is in progress" in {
+      val replicationActor1 = TestProbe()
+      val replicationActor2 = TestProbe()
+      val entityId1         = NormalizedEntityId("test-1")
+      val entityId2         = NormalizedEntityId("test-2")
+      val entityInstanceId  = EntityInstanceId(1)
+
+      val leader     = createRaftActor()
+      val term       = Term(1)
+      val leaderData = createLeaderData(term)
+      setState(leader, Candidate, leaderData)
+      setState(leader, Leader, leaderData)
+
+      leader ! Replicate(
+        event = "a",
+        replyTo = replicationActor1.ref,
+        entityId1,
+        entityInstanceId,
+        originSender = system.deadLetters,
+      )
+      replicationActor1.expectNoMessage()
+
+      leader ! Replicate(
+        event = "b",
+        replicationActor2.ref,
+        entityId2,
+        entityInstanceId,
+        originSender = system.deadLetters,
+      )
+      replicationActor2.expectNoMessage()
+
+      LoggingTestKit
+        .warn(
+          "Failed to replicate the event (java.lang.String) since an uncommitted event exists for the entity (entityId: test-1). Replicating new events is allowed after the event is committed",
+        ).expect {
+          leader ! Replicate(
+            event = "c", // java.lang.String
+            replicationActor1.ref,
+            entityId1,
+            entityInstanceId,
+            originSender = system.deadLetters,
+          )
+          replicationActor1.expectMsg(ReplicationFailed)
+        }
     }
   }
 
