@@ -186,17 +186,29 @@ private[raft] trait Leader { this: RaftActor =>
     }
 
   private[this] def replicate(replicate: Replicate): Unit = {
-    cancelHeartbeatTimeoutTimer()
-    applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
-      applyDomainEvent(
-        StartedReplication(
-          ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
-          currentData.replicatedLog.lastLogIndex,
-        ),
-      ) { _ =>
-        publishAppendEntries()
-      }
+    replicate.entityId match {
+      case Some(normalizedEntityId) // from entity(ReplicationActor)
+          if currentData.hasUncommittedLogEntryOf(normalizedEntityId) =>
+        if (log.isWarningEnabled)
+          log.warning(
+            s"Failed to replicate the event (${replicate.event.getClass.getName}) since an uncommitted event exists for the entity (entityId: ${normalizedEntityId.raw}). Replicating new events is allowed after the event is committed",
+          )
+        replicate.replyTo ! ReplicationFailed
+
+      case _ =>
+        cancelHeartbeatTimeoutTimer()
+        applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
+          applyDomainEvent(
+            StartedReplication(
+              ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
+              currentData.replicatedLog.lastLogIndex,
+            ),
+          ) { _ =>
+            publishAppendEntries()
+          }
+        }
     }
+
   }
 
   private[this] def receiveReplicationResponse(event: ReplicationResponse): Unit =
