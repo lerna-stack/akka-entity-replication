@@ -192,6 +192,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       val state = getState(candidate)
       state.stateName should be(Follower)
       state.stateData.currentTerm should be(newerTerm)
+      state.stateData.leaderMember should be(None)
     }
 
     "AppendEntries が古い Term を持っているときは拒否" in {
