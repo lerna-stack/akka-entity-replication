@@ -406,6 +406,38 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       testkit.stop(bankAccount)
     }
 
+    "transitions to `Ready` state and processes the next command without executing any side effect if ReplicationActor receives ReplicationFailed in `WaitForReplication` state" in {
+      val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
+
+      {
+        // recover the entity
+        import SnapshotProtocol._
+        val metadata = EntitySnapshotMetadata(normalizedEntityId, nextLogEntryIndex())
+        val state    = EntityState(BankAccountBehavior.Account(100))
+        inside(snapshotStoreProbe.receiveMessage()) {
+          case SnapshotProtocol.FetchSnapshot(_, replyTo) =>
+            replyTo ! SnapshotProtocol.SnapshotFound(EntitySnapshot(metadata, state))
+        }
+        inside(shardProbe.receiveMessage()) {
+          case FetchEntityEvents(_, _, _, replyTo) =>
+            replyTo ! FetchEntityEventsResponse(Seq())
+        }
+      }
+
+      val clientProbe = bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
+      shardProbe.expectMessageType[RaftProtocol.Replicate]
+      clientProbe.expectNoMessage()
+
+      bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
+      shardProbe.expectNoMessage() // the command is stashed
+
+      bankAccount.asEntity ! RaftProtocol.ReplicationFailed // from raftActor
+      clientProbe.expectNoMessage()
+      shardProbe.expectMessageType[RaftProtocol.Replicate]
+
+      testkit.stop(bankAccount)
+    }
+
     "can process commands after receiving Replica even if replication is in progress" in {
       val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 

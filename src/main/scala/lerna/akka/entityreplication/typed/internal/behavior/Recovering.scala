@@ -92,6 +92,7 @@ private[entityreplication] class Recovering[Command, Event, State](
               Behaviors.same
             case _: RaftProtocol.Activate             => Behaviors.unhandled
             case _: RaftProtocol.ReplicationSucceeded => Behaviors.unhandled
+            case RaftProtocol.ReplicationFailed       => Behaviors.unhandled
           }.receiveSignal(setup.onSignal(setup.emptyState))
       }
     }

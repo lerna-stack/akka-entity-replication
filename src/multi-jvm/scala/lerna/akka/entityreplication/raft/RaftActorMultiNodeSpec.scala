@@ -315,6 +315,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
 
       var leaderMember: RaftTestFSMRef   = null
       var followerMember: RaftTestFSMRef = null
+
       runOn(node1) {
         leaderMember = createRaftActor(
           shardId,
@@ -328,9 +329,9 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
         val leaderData = getState(leaderMember).stateData
         val log = leaderData.replicatedLog.merge(
           Seq(
-            LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "correct1"), Term(2)),
-            LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "correct2"), Term(2)),
-            LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "correct3"), Term(2)),
+            LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "correct1"), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "correct2"), Term(1)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "correct3"), Term(1)),
           ),
           LogEntryIndex.initial(),
         )
@@ -362,13 +363,14 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       val dummyEvent = "dummyEvent"
 
       val expectedLog = Seq(
-        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "correct1"), Term(2)),
-        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "correct2"), Term(2)),
-        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "correct3"), Term(2)),
+        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "correct1"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "correct2"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "correct3"), Term(1)),
         LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), dummyEvent), Term(1)),
       )
 
       runOn(node1) {
+        awaitCond(getState(leaderMember).stateData.commitIndex == LogEntryIndex(3)) // event = "correct3"
         val instanceId = EntityInstanceId(1)
         leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
