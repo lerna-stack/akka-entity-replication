@@ -219,6 +219,41 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       state.stateData.leaderMember should be(None)
     }
 
+    "not become the leader by duplicated votes from the same follower" in {
+      val selfMemberIndex      = createUniqueMemberIndex()
+      val follower1MemberIndex = createUniqueMemberIndex()
+      val follower2MemberIndex = createUniqueMemberIndex()
+      val candidate = createRaftActor(
+        selfMemberIndex = selfMemberIndex,
+        otherMemberIndexes = Set(follower1MemberIndex, follower2MemberIndex),
+      )
+      val currentTerm = Term(1)
+      setState(candidate, Candidate, createCandidateData(currentTerm))
+      inside(getState(candidate)) { state =>
+        state.stateData.acceptedMembers should be(Set.empty)
+      }
+
+      // For simplicity, this test skips that the candidate votes for itself.
+
+      // The first vote from follower1
+      candidate ! RequestVoteAccepted(currentTerm, follower1MemberIndex)
+      inside(getState(candidate)) { state =>
+        state.stateName should be(Candidate)
+        state.stateData.currentTerm should be(currentTerm)
+        state.stateData.acceptedMembers should be(Set(follower1MemberIndex))
+      }
+
+      // The second duplicated vote from follower1.
+      // The candidate shouldn't become the leader
+      // since it doesn't receive votes from the majority of the members.
+      candidate ! RequestVoteAccepted(currentTerm, follower1MemberIndex)
+      inside(getState(candidate)) { state =>
+        state.stateName should be(Candidate)
+        state.stateData.currentTerm should be(currentTerm)
+        state.stateData.acceptedMembers should be(Set(follower1MemberIndex))
+      }
+    }
+
     "AppendEntries が古い Term を持っているときは拒否" in {
       val candidateMemberIndex = createUniqueMemberIndex()
       val candidate = createRaftActor(
