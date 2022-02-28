@@ -9,7 +9,7 @@ import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
-import lerna.akka.entityreplication.raft.RaftActor.{ CompactionCompleted, ElectionTimeout, Follower, SnapshotTick }
+import lerna.akka.entityreplication.raft.RaftActor.{ CompactionCompleted, ElectionTimeout, Follower }
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -52,85 +52,8 @@ class RaftActorSnapshotSynchronizationSpec
       .parseString("""
                      | lerna.akka.entityreplication.raft {
                      |   election-timeout = 99999s
-                     |   # start compaction if the length of the log exceeds 2
-                     |   compaction.log-size-threshold = 2
-                     |   compaction.preserve-log-size = 1
                      | }
                      |""".stripMargin).withFallback(ConfigFactory.load())
-
-    "prevent to start compaction during snapshot synchronization" ignore {
-      /* prepare */
-      val snapshotStore         = TestProbe()
-      val replicationActorProbe = TestProbe()
-      val followerMemberIndex   = createUniqueMemberIndex()
-      val follower = createRaftActor(
-        typeName = typeName,
-        shardId = shardId,
-        selfMemberIndex = followerMemberIndex,
-        shardSnapshotStore = snapshotStore.ref,
-        replicationActor = replicationActorProbe.ref,
-        settings = RaftSettings(raftConfig),
-      )
-      val term                   = Term(1)
-      val leaderSnapshotTerm     = term
-      val leaderSnapshotLogIndex = LogEntryIndex(3)
-      val entityId               = NormalizedEntityId("test-entity")
-      val leaderSnapshots = Set(
-        EntitySnapshot(EntitySnapshotMetadata(entityId, leaderSnapshotLogIndex), EntityState("state-1")),
-      )
-      val entityIds = leaderSnapshots.map(_.metadata.entityId)
-      leaderRaftSnapshotStoreTestKit.saveSnapshots(leaderSnapshots)
-      raftEventJournalTestKit.persistEvents(
-        CompactionCompleted(leaderMemberIndex, shardId, leaderSnapshotTerm, leaderSnapshotLogIndex, entityIds),
-      )
-      /* check */
-      follower ! AppendEntries(
-        shardId,
-        term,
-        leaderMemberIndex,
-        prevLogIndex = LogEntryIndex.initial(),
-        prevLogTerm = Term.initial(),
-        entries = Seq(
-          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), term),
-          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-1"), term),
-        ),
-        leaderCommit = LogEntryIndex(2),
-      )
-      follower ! InstallSnapshot(
-        shardId,
-        term = term,
-        srcMemberIndex = leaderMemberIndex,
-        srcLatestSnapshotLastLogTerm = leaderSnapshotTerm,
-        srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex,
-      )
-      LoggingTestKit.info("Skipping compaction because snapshot synchronization is in progress").expect {
-        // trigger compaction
-        follower ! SnapshotTick
-      }
-      LoggingTestKit.info("Snapshot synchronization completed").expect {
-        snapshotStore.receiveWhile(messages = 1) {
-          case msg: SaveSnapshot =>
-            msg.replyTo ! SaveSnapshotSuccess(msg.snapshot.metadata)
-        } should have length 1
-        // compaction become available
-      }
-      follower ! AppendEntries(
-        shardId,
-        term,
-        leaderMemberIndex,
-        prevLogIndex = leaderSnapshotLogIndex,
-        prevLogTerm = leaderSnapshotTerm,
-        entries = Seq(
-          LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event-4"), term),
-          LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event-5"), term),
-        ),
-        leaderCommit = LogEntryIndex(5),
-      )
-      LoggingTestKit.info("compaction started").expect {
-        // trigger compaction
-        follower ! SnapshotTick
-      }
-    }
 
     "make the follower to reject AppendEntries until completing synchronization" in {
       /* prepare */
