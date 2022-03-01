@@ -4,6 +4,7 @@ import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ ActorRef, Props }
 import akka.remote.testkit.MultiNodeSpec
 import lerna.akka.entityreplication.ConsistencyTestBase.{ ConsistencyTestBaseConfig, ConsistencyTestReplicationActor }
+import lerna.akka.entityreplication.util.AtLeastOnceComplete
 import org.scalatest.Inside
 
 import scala.annotation.nowarn
@@ -46,17 +47,13 @@ class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) wit
     )
 
     // check the ClusterReplication healthiness
-    val requestId1 = generateUniqueId()
-    awaitAssert {
-      clusterReplication ! GetStatus(id = "check-healthiness", requestId1)
-      expectMsgType[Status](max = 1.seconds)
-    }
-    // drop Status messages that were sent for checking healthy
-    val requestId2 = generateUniqueId()
-    clusterReplication ! GetStatus(id = "check-healthiness", requestId2)
-    fishForSpecificMessage() {
-      case msg @ Status(_, `requestId2`) => msg
-    }
+    val requestId = generateUniqueId()
+    AtLeastOnceComplete
+      .askTo(
+        clusterReplication,
+        GetStatus(id = "check-healthiness", requestId),
+        retryInterval = 1.seconds,
+      ).await
   }
 
   "正常系（直列に処理した場合）" should {
