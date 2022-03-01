@@ -7,9 +7,11 @@ on:
     branches: [ master, feature/** ]
 
 env:
+  # classic timefactor doesn't affect classic default-timeout
   SBT_OPTS: >-
     -Dlerna.enable.discipline
     -Dakka.test.timefactor=3.0
+    -Dakka.actor.testkit.typed.timefactor=3.0
     -Dakka.test.default-timeout=15s
 
 jobs:
