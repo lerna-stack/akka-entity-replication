@@ -21,7 +21,6 @@ import org.scalatest.BeforeAndAfterEach
 import org.scalatest.Inspectors._
 
 import java.util.concurrent.atomic.AtomicInteger
-import scala.concurrent.duration._
 
 class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with BeforeAndAfterEach {
 
@@ -39,13 +38,6 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
   private val raftEventJournalTestKit = RaftEventJournalTestKit(system, settings)
 
   private[this] val snapshotSyncManagerUniqueId = new AtomicInteger(0)
-
-  /**
-    * Await for the SnapshotManager to reply the correct result.
-    *
-    * It may take a long time for the SnapshotManager to be able to process correctly.
-    */
-  private def awaitResultAssert[A](a: => A) = awaitAssert(a, interval = 1000.millis)
 
   private[this] def createSnapshotSyncManager(
       dstSnapshotStore: ActorRef = dstRaftSnapshotStoreTestKit.snapshotStoreActorRef,
@@ -102,7 +94,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       )
 
       /* check */
-      awaitResultAssert { // Persistent events may not be retrieved immediately
+      awaitAssert { // Persistent events may not be retrieved immediately
         createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
           srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
           srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
@@ -144,7 +136,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       srcSnapshotLogIndex1 should be <= dstSnapshotLogIndex
 
       /* check */
-      awaitResultAssert { // Persistent events may not be retrieved immediately
+      awaitAssert { // Persistent events may not be retrieved immediately
         createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
           srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
           srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex2,
@@ -183,7 +175,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       )
 
       /* check */
-      awaitResultAssert { // Persistent events may not be retrieved immediately
+      awaitAssert { // Persistent events may not be retrieved immediately
         createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
           srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
           srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
@@ -256,7 +248,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         // no events
       )
       /* check */
-      awaitResultAssert { // Persistent events may not be retrieved immediately
+      awaitAssert { // Persistent events may not be retrieved immediately
         createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
           srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
           srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
