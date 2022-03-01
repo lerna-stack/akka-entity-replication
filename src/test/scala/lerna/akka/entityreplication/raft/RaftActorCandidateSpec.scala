@@ -8,8 +8,9 @@ import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedComman
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
+import org.scalatest.Inside
 
-class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
+class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBase with Inside {
 
   import RaftActor._
 
@@ -164,17 +165,40 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
     }
 
     "メンバーの過半数に Accept されると Leader になる" in {
+      val selfMemberIndex      = createUniqueMemberIndex()
       val follower1MemberIndex = createUniqueMemberIndex()
       val follower2MemberIndex = createUniqueMemberIndex()
       val candidate = createRaftActor(
+        selfMemberIndex = selfMemberIndex,
         otherMemberIndexes = Set(follower1MemberIndex, follower2MemberIndex),
       )
-      val term = Term.initial()
-      setState(candidate, Candidate, createCandidateData(term))
+      val currentTerm = Term(1)
+      setState(candidate, Candidate, createCandidateData(currentTerm))
+      inside(getState(candidate)) { state =>
+        state.stateData.acceptedMembers should be(Set.empty)
+      }
 
-      candidate ! RequestVoteAccepted(term, follower1MemberIndex)
-      candidate ! RequestVoteAccepted(term, follower2MemberIndex)
-      getState(candidate).stateName should be(Leader)
+      // The candidate will vote for itself.
+      candidate ! RequestVoteAccepted(currentTerm, selfMemberIndex)
+      inside(getState(candidate)) { state =>
+        state.stateName should be(Candidate)
+        state.stateData.currentTerm should be(currentTerm)
+        state.stateData.acceptedMembers should be(Set(selfMemberIndex))
+      }
+
+      // Denied from follower1, this situation could happen by a split vote.
+      candidate ! RequestVoteDenied(currentTerm)
+      inside(getState(candidate)) { state =>
+        state.stateName should be(Candidate)
+        state.stateData.currentTerm should be(currentTerm)
+        state.stateData.acceptedMembers should be(Set(selfMemberIndex))
+      }
+
+      candidate ! RequestVoteAccepted(currentTerm, follower2MemberIndex)
+      inside(getState(candidate)) { state =>
+        state.stateName should be(Leader)
+        state.stateData.currentTerm should be(currentTerm)
+      }
     }
 
     "become a Follower and agree to a Term if it receives RequestVoteDenied with newer Term" in {
@@ -192,6 +216,42 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       val state = getState(candidate)
       state.stateName should be(Follower)
       state.stateData.currentTerm should be(newerTerm)
+      state.stateData.leaderMember should be(None)
+    }
+
+    "not become the leader by duplicated votes from the same follower" in {
+      val selfMemberIndex      = createUniqueMemberIndex()
+      val follower1MemberIndex = createUniqueMemberIndex()
+      val follower2MemberIndex = createUniqueMemberIndex()
+      val candidate = createRaftActor(
+        selfMemberIndex = selfMemberIndex,
+        otherMemberIndexes = Set(follower1MemberIndex, follower2MemberIndex),
+      )
+      val currentTerm = Term(1)
+      setState(candidate, Candidate, createCandidateData(currentTerm))
+      inside(getState(candidate)) { state =>
+        state.stateData.acceptedMembers should be(Set.empty)
+      }
+
+      // For simplicity, this test skips that the candidate votes for itself.
+
+      // The first vote from follower1
+      candidate ! RequestVoteAccepted(currentTerm, follower1MemberIndex)
+      inside(getState(candidate)) { state =>
+        state.stateName should be(Candidate)
+        state.stateData.currentTerm should be(currentTerm)
+        state.stateData.acceptedMembers should be(Set(follower1MemberIndex))
+      }
+
+      // The second duplicated vote from follower1.
+      // The candidate shouldn't become the leader
+      // since it doesn't receive votes from the majority of the members.
+      candidate ! RequestVoteAccepted(currentTerm, follower1MemberIndex)
+      inside(getState(candidate)) { state =>
+        state.stateName should be(Candidate)
+        state.stateData.currentTerm should be(currentTerm)
+        state.stateData.acceptedMembers should be(Set(follower1MemberIndex))
+      }
     }
 
     "AppendEntries が古い Term を持っているときは拒否" in {
