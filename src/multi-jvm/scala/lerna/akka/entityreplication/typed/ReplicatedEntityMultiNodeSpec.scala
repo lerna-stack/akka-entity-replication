@@ -103,7 +103,7 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
         var actor: ActorRef[PingPongEntity.Command] = null
         awaitAssert {
           typedSystem.receptionist ! Receptionist.Subscribe(PingPongEntity.serviceKey, probe.ref)
-          val listing = probe.receiveMessage()
+          val listing = probe.receiveMessage(max = remainingOrDefault / 5)
           actor = listing.serviceInstances(PingPongEntity.serviceKey).head
           typedSystem.receptionist ! Receptionist.Deregister(PingPongEntity.serviceKey, actor)
         }
@@ -111,7 +111,7 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
         val stateReceiver = actorTestKit.createTestProbe[PingPongEntity.State]()
         awaitAssert {
           actor ! PingPongEntity.UnsafeGetState(stateReceiver.ref)
-          stateReceiver.receiveMessage().count should be(2)
+          stateReceiver.receiveMessage(max = remainingOrDefault / 5).count should be(2)
         }
       }
     }
@@ -147,7 +147,7 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
       runOn(node1, node2, node3) {
         awaitAssert {
           typedSystem.receptionist ! Receptionist.Subscribe(EphemeralEntity.serviceKey, probe.ref)
-          val listing = probe.receiveMessage()
+          val listing = probe.receiveMessage(max = remainingOrDefault / 5)
           actor = listing.serviceInstances(EphemeralEntity.serviceKey).head
           typedSystem.receptionist ! Receptionist.Deregister(EphemeralEntity.serviceKey, actor)
         }
@@ -182,7 +182,7 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
         val subscriber = actorTestKit.createTestProbe[Receptionist.Listing]()
         awaitAssert {
           typedSystem.receptionist ! Receptionist.Subscribe(EphemeralEntity.serviceKey, subscriber.ref)
-          val listing = subscriber.receiveMessage()
+          val listing = subscriber.receiveMessage(max = remainingOrDefault / 5)
           actor = listing.serviceInstances(EphemeralEntity.serviceKey).head
           typedSystem.receptionist ! Receptionist.Deregister(EphemeralEntity.serviceKey, actor)
         }
