@@ -46,6 +46,8 @@ class ConsistencyTestNormal extends MultiNodeSpec(ConsistencyTestBaseConfig) wit
       extractShardId = ConsistencyTestReplicationActor.extractShardId,
     )
 
+    enterBarrier("ClusterReplication started")
+
     // check the ClusterReplication healthiness
     val requestId = generateUniqueId()
     AtLeastOnceComplete
