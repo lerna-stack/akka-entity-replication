@@ -39,6 +39,7 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
       .receiveMessage[EntityCommand] {
         case command: RaftProtocol.Replica              => receiveReplica(command, state)
         case command: RaftProtocol.ReplicationSucceeded => receiveReplicationSucceeded(command, state)
+        case RaftProtocol.ReplicationFailed             => Ready.behavior(setup, transformReadyState(state)) // Discard side effects
         case command: RaftProtocol.TakeSnapshot         => receiveTakeSnapshot(command, state.entityState)
         case command: RaftProtocol.ProcessCommand =>
           setup.stashBuffer.stash(command)
