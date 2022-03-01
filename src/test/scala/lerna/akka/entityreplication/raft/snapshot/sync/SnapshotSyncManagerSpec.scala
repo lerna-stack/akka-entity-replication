@@ -95,14 +95,15 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
       /* check */
       awaitAssert { // Persistent events may not be retrieved immediately
+        val probe = TestProbe()
         createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
           srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
           srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
           dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
           dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
-          replyTo = testActor,
+          replyTo = probe.ref,
         )
-        expectMsg(SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex))
+        probe.expectMsg(SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex))
         dstRaftSnapshotStoreTestKit.fetchSnapshots(entityIds) should be(srcSnapshots)
       }
     }
@@ -137,14 +138,17 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
       /* check */
       awaitAssert { // Persistent events may not be retrieved immediately
+        val probe = TestProbe()
         createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
           srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
           srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex2,
           dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
           dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
-          replyTo = testActor,
+          replyTo = probe.ref,
         )
-        expectMsg(SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex2, srcMemberIndex))
+        probe.expectMsg(
+          SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex2, srcMemberIndex),
+        )
         forAtLeast(min = 1, dstRaftSnapshotStoreTestKit.fetchSnapshots(entityIds)) { snapshot =>
           snapshot.state.underlying should be("state-1-1")
         }
@@ -176,30 +180,32 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
       /* check */
       awaitAssert { // Persistent events may not be retrieved immediately
+        val probe = TestProbe()
         createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
           srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
           srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
           dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
           dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
-          replyTo = testActor,
+          replyTo = probe.ref,
         )
-        expectMsgType[SnapshotSyncManager.Response] should be(
+        probe.expectMsgType[SnapshotSyncManager.Response] should be(
           SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex),
         )
       }
-      val snapshotSyncManager = watch(createSnapshotSyncManager())
+      val probe               = TestProbe()
+      val snapshotSyncManager = probe.watch(createSnapshotSyncManager())
       snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
         // dst snapshot status will be synchronized to src status
         srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
         srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
         dstLatestSnapshotLastLogTerm = srcSnapshotTerm,
         dstLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
-        replyTo = testActor,
+        replyTo = probe.ref,
       )
-      expectMsgType[SnapshotSyncManager.Response] should be(
+      probe.expectMsgType[SnapshotSyncManager.Response] should be(
         SnapshotSyncManager.SyncSnapshotAlreadySucceeded(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex),
       )
-      expectTerminated(snapshotSyncManager)
+      probe.expectTerminated(snapshotSyncManager)
     }
 
     "stop after snapshot synchronization is succeeded" in {
@@ -226,16 +232,17 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       )
 
       /* check */
-      val snapshotSyncManager = watch(createSnapshotSyncManager())
+      val probe               = TestProbe()
+      val snapshotSyncManager = probe.watch(createSnapshotSyncManager())
       snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
         srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
         srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
         dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
         dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
-        replyTo = testActor,
+        replyTo = probe.ref,
       )
-      expectMsgType[SnapshotSyncManager.SyncSnapshotSucceeded]
-      expectTerminated(snapshotSyncManager)
+      probe.expectMsgType[SnapshotSyncManager.SyncSnapshotSucceeded]
+      probe.expectTerminated(snapshotSyncManager)
     }
 
     "abort synchronizing if it couldn't fetch CompactionCompleted events" in {
@@ -249,14 +256,15 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       )
       /* check */
       awaitAssert { // Persistent events may not be retrieved immediately
+        val probe = TestProbe()
         createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
           srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
           srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
           dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
           dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
-          replyTo = testActor,
+          replyTo = probe.ref,
         )
-        expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
+        probe.expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
       }
     }
 
@@ -287,14 +295,15 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       )
 
       /* check */
+      val probe = TestProbe()
       createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
         srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
         srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
         dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
         dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
-        replyTo = testActor,
+        replyTo = probe.ref,
       )
-      expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
+      probe.expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
       // SnapshotStore is in an inconsistent state which is updated partially
     }
 
@@ -322,14 +331,15 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       )
 
       /* check */
+      val probe = TestProbe()
       createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
         srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
         srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
         dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
         dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
-        replyTo = testActor,
+        replyTo = probe.ref,
       )
-      expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
+      probe.expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
       // SnapshotStore is in an inconsistent state which is updated partially
     }
 
@@ -359,18 +369,19 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       val brokenSnapshotStore = TestProbe()
 
       /* check */
+      val probe = TestProbe()
       createSnapshotSyncManager(dstSnapshotStore = brokenSnapshotStore.ref) ! SnapshotSyncManager.SyncSnapshot(
         srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
         srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
         dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
         dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
-        replyTo = testActor,
+        replyTo = probe.ref,
       )
       brokenSnapshotStore.receiveWhile(messages = srcSnapshots.size) {
         case command: SnapshotProtocol.SaveSnapshot =>
           brokenSnapshotStore.send(command.replyTo, SnapshotProtocol.SaveSnapshotFailure(command.snapshot.metadata))
       }
-      expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
+      probe.expectMsg(SnapshotSyncManager.SyncSnapshotFailed())
       // SnapshotStore is in an inconsistent state which is updated partially
     }
 
@@ -391,16 +402,17 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       )
 
       /* check */
-      val snapshotSyncManager = watch(createSnapshotSyncManager())
+      val probe               = TestProbe()
+      val snapshotSyncManager = probe.watch(createSnapshotSyncManager())
       snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
         srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
         srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
         dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
         dstLatestSnapshotLastLogIndex = dstSnapshotLogIndex,
-        replyTo = testActor,
+        replyTo = probe.ref,
       )
-      expectMsgType[SnapshotSyncManager.SyncSnapshotFailed]
-      expectTerminated(snapshotSyncManager)
+      probe.expectMsgType[SnapshotSyncManager.SyncSnapshotFailed]
+      probe.expectTerminated(snapshotSyncManager)
     }
   }
 }
