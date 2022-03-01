@@ -47,6 +47,13 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
           lastLogTerm = Term(0),
         )
       regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+      awaitAssert {
+        assert(getState(candidate).stateName == Candidate)
+        val stateData = getState(candidate).stateData
+        assert(stateData.currentTerm == Term(3))
+        assert(stateData.votedFor.isEmpty)
+        assert(stateData.acceptedMembers.isEmpty)
+      }
     }
 
     "send RequestVote(lastLogIndex=entries.last.index, lastLogTerm=entries.last.term) on ElectionTimeout if it has RaftMemberData(ancestorLastTerm=0, ancestorLastIndex=0, entries.size>0, ...)" in {
@@ -85,6 +92,13 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
           lastLogTerm = Term(2),
         )
       regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+      awaitAssert {
+        assert(getState(candidate).stateName == Candidate)
+        val stateData = getState(candidate).stateData
+        assert(stateData.currentTerm == Term(3))
+        assert(stateData.votedFor.isEmpty)
+        assert(stateData.acceptedMembers.isEmpty)
+      }
     }
 
     "send RequestVote(lastLogIndex=ancestorLastIndex, lastLogTerm=ancestorLastTerm) on ElectionTimeout if it has RaftMemberData(ancestorLastTerm>0, ancestorLastIndex>0, entries.size=0, ...)" in {
@@ -120,6 +134,13 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
           lastLogTerm = ancestorLastTerm,
         )
       regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+      awaitAssert {
+        assert(getState(candidate).stateName == Candidate)
+        val stateData = getState(candidate).stateData
+        assert(stateData.currentTerm == Term(3))
+        assert(stateData.votedFor.isEmpty)
+        assert(stateData.acceptedMembers.isEmpty)
+      }
     }
 
     "send RequestVote(lastLogIndex=entries.last.index, lastLogTerm=entries.last.term) on ElectionTimeout if it has RaftMemberData(ancestorLastTerm>0, ancestorLastIndex>0, entries.size>0, ...)" in {
@@ -162,6 +183,13 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
           lastLogTerm = Term(2),
         )
       regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+      awaitAssert {
+        assert(getState(candidate).stateName == Candidate)
+        val stateData = getState(candidate).stateData
+        assert(stateData.currentTerm == Term(3))
+        assert(stateData.votedFor.isEmpty)
+        assert(stateData.acceptedMembers.isEmpty)
+      }
     }
 
     "メンバーの過半数に Accept されると Leader になる" in {
