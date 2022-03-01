@@ -47,6 +47,8 @@ import lerna.akka.entityreplication.typed.ReplicationEnvelope
 import java.io.NotSerializableException
 import java.util.UUID
 
+import org.scalatest.Inside._
+
 object ClusterReplicationSerializerSpec {
   case class MyEntity(id: Long, name: String, age: Int) extends KryoSerializable
   case class MyCommand(id: Long, message: String)       extends KryoSerializable
@@ -288,6 +290,31 @@ final class ClusterReplicationSerializerSpec
         val invalidManifest = "THIS_IS_INVALID_MANIFEST"
         a[NotSerializableException] shouldBe thrownBy {
           serializer.fromBinary(Array.empty, invalidManifest)
+        }
+      }
+    }
+
+    "SnapshotStatus doesn't have `targetSnapshotLastTerm` and `targetSnapshotLastLogIndex`" should {
+      "set `snapshotLastTerm` and `snapshotLastLogIndex` as default values for backward-compatibility" in {
+        val outdatedSnapshotStatus = msg.SnapshotStatus(
+          snapshotLastTerm = msg.Term(10),
+          snapshotLastLogIndex = msg.LogEntryIndex(1000),
+          targetSnapshotLastTerm = None,
+          targetSnapshotLastLogIndex = None,
+        )
+        val expectSnapshotStatus = SnapshotStatus(
+          snapshotLastTerm = Term(10),
+          snapshotLastLogIndex = LogEntryIndex(1000),
+          targetSnapshotLastTerm = Term(10),
+          targetSnapshotLastLogIndex = LogEntryIndex(1000),
+        )
+        val blob =
+          msg.PersistentState.defaultInstance
+            .withLastSnapshotStatus(outdatedSnapshotStatus).toByteArray
+
+        inside(serializer.fromBinary(blob, serializer.PersistentStateManifest)) {
+          case state: PersistentState =>
+            state.lastSnapshotStatus should be(expectSnapshotStatus)
         }
       }
     }
