@@ -10,10 +10,10 @@ env:
   # classic timefactor doesn't affect classic default-timeout
   SBT_OPTS: >-
     -Dlerna.enable.discipline
-    -Dakka.test.timefactor=3.0
-    -Dakka.actor.testkit.typed.timefactor=3.0
-    -Dakka.test.default-timeout=15s
-    -Dakka.testconductor.barrier-timeout=90
+    -Dakka.test.timefactor=5.0
+    -Dakka.actor.testkit.typed.timefactor=5.0
+    -Dakka.test.default-timeout=25s
+    -Dakka.testconductor.barrier-timeout=150s
 
 jobs:
   test:
