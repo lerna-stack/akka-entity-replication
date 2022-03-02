@@ -41,6 +41,7 @@ class RaftActorSnapshotSynchronizationSpec
     } should have length 2
     // reset SnapshotStore
     leaderRaftSnapshotStoreTestKit.reset()
+    raftEventJournalTestKit.reset()
   }
 
   "RaftActor snapshot synchronization" should {

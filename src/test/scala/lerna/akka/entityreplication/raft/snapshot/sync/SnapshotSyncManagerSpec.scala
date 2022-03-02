@@ -63,9 +63,10 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
     receiveWhile(messages = 2) {
       case _: Status.Success => Done
     }
-    // reset SnapshotStore
+    // reset TestKits
     srcRaftSnapshotStoreTestKit.reset()
     dstRaftSnapshotStoreTestKit.reset()
+    raftEventJournalTestKit.reset()
   }
 
   "SnapshotSyncManager" should {
