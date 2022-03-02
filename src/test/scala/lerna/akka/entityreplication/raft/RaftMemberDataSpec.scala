@@ -84,6 +84,21 @@ class RaftMemberDataSpec extends FlatSpec with Matchers {
     )
   }
 
+  it should "return true on willGetMatchSnapshots when 'prevLogTerm' and 'prevLogIndex' match with 'targetSnapshotLastTerm' and 'targetSnapshotLastLogIndex'" in {
+    val data = RaftMemberData(
+      lastSnapshotStatus = SnapshotStatus(
+        snapshotLastTerm = Term.initial(),
+        snapshotLastLogIndex = LogEntryIndex.initial(),
+        targetSnapshotLastTerm = Term(20),
+        targetSnapshotLastLogIndex = LogEntryIndex(100),
+      ),
+    )
+    data.willGetMatchSnapshots(prevLogTerm = Term(1), prevLogIndex = LogEntryIndex(3)) should be(false)
+    data.willGetMatchSnapshots(prevLogTerm = Term(20), prevLogIndex = LogEntryIndex(3)) should be(false)
+    data.willGetMatchSnapshots(prevLogTerm = Term(1), prevLogIndex = LogEntryIndex(100)) should be(false)
+    data.willGetMatchSnapshots(prevLogTerm = Term(20), prevLogIndex = LogEntryIndex(100)) should be(true)
+  }
+
   private def generateEntityId() = {
     NormalizedEntityId.from(UUID.randomUUID().toString)
   }

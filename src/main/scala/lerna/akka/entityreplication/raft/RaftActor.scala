@@ -435,7 +435,7 @@ private[raft] class RaftActor(
       s"$appendEntries must have a term that is newer than or equal to currentTerm (${currentData.currentTerm})",
     )
     // We have to wait for InstallSnapshot to update the all snapshots perfectly.
-    if (currentData.hasMatchLogEntry(appendEntries.prevLogIndex, appendEntries.prevLogTerm)) {
+    if (currentData.willGetMatchSnapshots(appendEntries.prevLogIndex, appendEntries.prevLogTerm)) {
       // Ignore it for keeping leader's nextIndex
       if (log.isDebugEnabled)
         log.debug(

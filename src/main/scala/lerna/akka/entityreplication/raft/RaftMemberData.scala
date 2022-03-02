@@ -338,6 +338,11 @@ private[entityreplication] trait RaftMemberData
     prevLogIndex == LogEntryIndex.initial() || replicatedLog.termAt(prevLogIndex).contains(prevLogTerm)
   }
 
+  def willGetMatchSnapshots(prevLogIndex: LogEntryIndex, prevLogTerm: Term): Boolean = {
+    prevLogTerm == lastSnapshotStatus.targetSnapshotLastTerm &&
+    prevLogIndex == lastSnapshotStatus.targetSnapshotLastLogIndex
+  }
+
   def hasLogEntriesThatCanBeCompacted: Boolean = {
     replicatedLog.sliceEntriesFromHead(lastApplied).nonEmpty
   }
@@ -393,12 +398,6 @@ private[entityreplication] trait RaftMemberData
 
   def startSnapshotSync(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex): RaftMemberData = {
     updatePersistentState(
-      /**
-        * RaftActor can receive AppendEntries from a new leader while synchronizing snapshots.
-        * It is prefer to be able to accept AppendEntries immediately after the snapshot synchronization is complete.
-        * Resetting ReplicatedLog here allows RaftActor determinate with [[hasMatchLogEntry()]] whether or not to reply AppendEntriesFailed.
-        */
-      replicatedLog = replicatedLog.reset(snapshotLastLogTerm, snapshotLastLogIndex),
       lastSnapshotStatus = lastSnapshotStatus.startSnapshotSync(snapshotLastLogTerm, snapshotLastLogIndex),
     )
   }
@@ -411,6 +410,7 @@ private[entityreplication] trait RaftMemberData
         * Because the event sequence produced by v2.0.0 doesn't call [[startSnapshotSync()]].
         */
       lastSnapshotStatus = lastSnapshotStatus.updateSnapshotsCompletely(snapshotLastLogTerm, snapshotLastLogIndex),
+      replicatedLog = replicatedLog.reset(snapshotLastLogTerm, snapshotLastLogIndex),
     )
   }
 

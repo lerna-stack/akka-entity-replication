@@ -95,14 +95,14 @@ class RaftActorSnapshotSynchronizationSpec
         state.stateData.lastSnapshotStatus.targetSnapshotLastTerm should be(leaderSnapshotTerm)
         state.stateData.lastSnapshotStatus.targetSnapshotLastLogIndex should be(leaderSnapshotLogIndex)
         state.stateData.lastSnapshotStatus.isDirty should be(true)
-        state.stateData.replicatedLog.entries should be(empty)
-        state.stateData.replicatedLog.ancestorLastTerm should be(leaderSnapshotTerm)
-        state.stateData.replicatedLog.ancestorLastIndex should be(leaderSnapshotLogIndex)
+        // should not update ReplicatedLog to prevent the RaftActor from becoming a leader during snapshot synchronization
+        state.stateData.replicatedLog.lastLogTerm should be(Term.initial())
+        state.stateData.replicatedLog.lastLogIndex should be(LogEntryIndex.initial())
       }
       currentLeaderTerm = newLeaderTerm()
       currentLeaderMemberIndex = newLeaderMemberIndex()
       // This AppendEntries will be denied since snapshot synchronization is in progress
-      // and the (prevLogIndex, prevLogTerm) do not match (ancestorLastTerm, ancestorLastIndex)
+      // and the (prevLogIndex, prevLogTerm) do not match (targetSnapshotLastTerm, targetSnapshotLastLogIndex)
       follower ! AppendEntries(
         shardId,
         currentLeaderTerm,
@@ -129,7 +129,7 @@ class RaftActorSnapshotSynchronizationSpec
       currentLeaderTerm = newLeaderTerm()
       currentLeaderMemberIndex = newLeaderMemberIndex()
       // This AppendEntries will be ignored since snapshot synchronization is in progress
-      // and the (prevLogIndex, prevLogTerm) match (ancestorLastTerm, ancestorLastIndex)
+      // and the (prevLogIndex, prevLogTerm) match (targetSnapshotLastTerm, targetSnapshotLastLogIndex)
       follower ! AppendEntries(
         shardId,
         currentLeaderTerm,
@@ -227,8 +227,8 @@ class RaftActorSnapshotSynchronizationSpec
       followerThatWillBeCandidate ! ElectionTimeout
       currentLeaderTerm = newLeaderTerm()
       currentLeaderMemberIndex = newLeaderMemberIndex()
-      // This AppendEntries will be ignored since snapshot synchronization is in progress
-      // and the (prevLogIndex, prevLogTerm) match (ancestorLastTerm, ancestorLastIndex)
+      // This AppendEntries will be denied since snapshot synchronization is in progress
+      // and the (prevLogIndex, prevLogTerm) do not match (targetSnapshotLastTerm, targetSnapshotLastLogIndex)
       followerThatWillBeCandidate ! AppendEntries(
         shardId,
         currentLeaderTerm,
@@ -256,7 +256,7 @@ class RaftActorSnapshotSynchronizationSpec
       currentLeaderTerm = newLeaderTerm()
       currentLeaderMemberIndex = newLeaderMemberIndex()
       // This AppendEntries will be ignored since snapshot synchronization is in progress
-      // and the (prevLogIndex, prevLogTerm) match (ancestorLastTerm, ancestorLastIndex)
+      // and the (prevLogIndex, prevLogTerm) match (targetSnapshotLastTerm, targetSnapshotLastLogIndex)
       followerThatWillBeCandidate ! AppendEntries(
         shardId,
         currentLeaderTerm,
