@@ -144,7 +144,7 @@ class LogReplicationDuringSnapshotSyncSpec
     reply.transformWith(Future.successful).await.map(_.value)
   }
 
-  def getValue(id: String)(implicit timeout: Timeout = askTimeout): Int = {
+  def getValue(id: String)(implicit timeout: Timeout = askTimeout): Option[Int] = {
     val entityRef = clusterReplication.entityRefFor(Register.TypeKey, id)
     val reply     = AtLeastOnceComplete.askTo(entityRef, Register.Get(_), retryInterval = 400.millis)
     reply.await.value
@@ -295,7 +295,8 @@ class LogReplicationDuringSnapshotSyncSpec
     "verify results" in {
       runOn(node3) {
         val results =
-          (1 to 3012).map { n =>
+          (1 to 3012).flatMap { n =>
+            // ignore None values
             getValue(n.toString)
           }
         sendGotResultsToController(results)
@@ -304,7 +305,7 @@ class LogReplicationDuringSnapshotSyncSpec
         val currentState         = receiveGotResults().toSet
         val pastSucceededResults = this.collectedResults.filter(_.isSuccess).map(_.get).toSet
         // past-succeeded results and current state should be the same
-        pastSucceededResults diff currentState should be(empty)
+        (pastSucceededResults union currentState) diff (pastSucceededResults intersect currentState) should be(empty)
       }
       enterBarrier("Verification completed")
     }
@@ -323,7 +324,7 @@ object LogReplicationDuringSnapshotSyncSpec {
 
     sealed trait Command                                          extends STMultiNodeSerializable
     final case class Get(replyTo: ActorRef[GetReply])             extends Command
-    final case class GetReply(value: Int)                         extends STMultiNodeSerializable
+    final case class GetReply(value: Option[Int])                 extends STMultiNodeSerializable
     final case class Set(value: Int, replyTo: ActorRef[SetReply]) extends Command
     final case class SetReply(value: Int)                         extends STMultiNodeSerializable
 
@@ -336,7 +337,7 @@ object LogReplicationDuringSnapshotSyncSpec {
       */
     private val dummyLargeData: Seq[Long] = Seq.fill(16 * 1024)(Long.MaxValue)
 
-    final case class State(value: Int, dummyLargeData: Seq[Long]) extends STMultiNodeSerializable
+    final case class State(value: Option[Int], dummyLargeData: Seq[Long]) extends STMultiNodeSerializable
 
     def apply(system: ActorSystem[_]): ReplicatedEntity[Command, ReplicationEnvelope[Command]] = {
       val settings = ClusterReplicationSettings(system)
@@ -345,7 +346,7 @@ object LogReplicationDuringSnapshotSyncSpec {
           context.setLoggerName(Register.getClass)
           ReplicatedEntityBehavior[Command, Event, State](
             entityContext,
-            emptyState = State(value = 0, dummyLargeData),
+            emptyState = State(value = None, dummyLargeData),
             commandHandler,
             eventHandler,
           )
@@ -356,15 +357,20 @@ object LogReplicationDuringSnapshotSyncSpec {
     def commandHandler(state: State, command: Command): Effect[Event, State] =
       command match {
         case Set(value, replyTo) =>
-          if (state.value == value) {
-            Effect.none
-              .thenPassivate()
-              .thenReply(replyTo)(state => SetReply(state.value))
-          } else {
-            Effect
-              .replicate(SetEvent(value))
-              .thenPassivate()
-              .thenReply(replyTo)(state => SetReply(state.value))
+          state.value match {
+            case Some(`value`) =>
+              Effect
+                .none[Event, State]
+                .thenPassivate()
+                .thenReply(replyTo)(_ => SetReply(value))
+            case _ =>
+              Effect
+                .replicate(SetEvent(value))
+                .thenPassivate()
+                .thenReply(replyTo) {
+                  case State(Some(value), _) => SetReply(value)
+                  case _                     => throw new IllegalStateException()
+                }
           }
         case Get(replyTo) =>
           Effect.none.thenReply(replyTo)(state => GetReply(state.value))
@@ -372,7 +378,7 @@ object LogReplicationDuringSnapshotSyncSpec {
 
     def eventHandler(state: State, event: Event): State =
       event match {
-        case SetEvent(value) => state.copy(value = value)
+        case SetEvent(value) => state.copy(value = Option(value))
       }
   }
 
