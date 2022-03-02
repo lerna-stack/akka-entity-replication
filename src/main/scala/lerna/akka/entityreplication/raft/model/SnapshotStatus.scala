@@ -52,5 +52,5 @@ private[entityreplication] final case class SnapshotStatus(
     * `true` means snapshot-synchronization has started but it has not completed yet.
     */
   def isDirty: Boolean =
-    snapshotLastTerm != targetSnapshotLastTerm && snapshotLastLogIndex != targetSnapshotLastLogIndex
+    snapshotLastTerm != targetSnapshotLastTerm || snapshotLastLogIndex != targetSnapshotLastLogIndex
 }
