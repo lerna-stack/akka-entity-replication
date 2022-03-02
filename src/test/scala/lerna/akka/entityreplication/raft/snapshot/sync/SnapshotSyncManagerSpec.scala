@@ -42,17 +42,19 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
   private[this] def createSnapshotSyncManager(
       dstSnapshotStore: ActorRef = dstRaftSnapshotStoreTestKit.snapshotStoreActorRef,
   ): ActorRef =
-    system.actorOf(
-      SnapshotSyncManager.props(
-        typeName,
-        srcMemberIndex,
-        dstMemberIndex,
-        dstSnapshotStore,
-        shardId,
-        settings.raftSettings,
-      ),
-      s"snapshotSyncManager:${snapshotSyncManagerUniqueId.getAndIncrement()}",
-    )
+    planAutoKill {
+      system.actorOf(
+        SnapshotSyncManager.props(
+          typeName,
+          srcMemberIndex,
+          dstMemberIndex,
+          dstSnapshotStore,
+          shardId,
+          settings.raftSettings,
+        ),
+        s"snapshotSyncManager:${snapshotSyncManagerUniqueId.getAndIncrement()}",
+      )
+    }
 
   override def beforeEach(): Unit = {
     super.beforeEach()
