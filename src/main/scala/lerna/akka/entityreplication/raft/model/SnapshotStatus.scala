@@ -26,11 +26,17 @@ private[entityreplication] final case class SnapshotStatus(
 ) {
 
   require(
-    snapshotLastTerm <= targetSnapshotLastTerm && snapshotLastLogIndex <= targetSnapshotLastLogIndex,
+    snapshotLastTerm <= targetSnapshotLastTerm,
     Seq(
-      s"(snapshotLastTerm[$snapshotLastTerm], snapshotLastLogIndex[$snapshotLastLogIndex])",
-      "must not exceed",
-      s"(targetSnapshotLastTerm[$targetSnapshotLastTerm], targetSnapshotLastLogIndex[$targetSnapshotLastLogIndex]",
+      s"snapshotLastTerm[$snapshotLastTerm] must not exceed targetSnapshotLastTerm[$targetSnapshotLastTerm]",
+      s"(snapshotLastLogIndex[$snapshotLastLogIndex], targetSnapshotLastLogIndex[$targetSnapshotLastLogIndex])",
+    ).mkString(" "),
+  )
+  require(
+    snapshotLastLogIndex <= targetSnapshotLastLogIndex,
+    Seq(
+      s"snapshotLastLogIndex[$snapshotLastLogIndex] must not exceed targetSnapshotLastLogIndex[$targetSnapshotLastLogIndex]",
+      s"(snapshotLastTerm[$snapshotLastTerm], targetSnapshotLastTerm[$targetSnapshotLastTerm])",
     ).mkString(" "),
   )
 

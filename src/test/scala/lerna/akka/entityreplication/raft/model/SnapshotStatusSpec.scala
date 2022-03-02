@@ -50,7 +50,7 @@ class SnapshotStatusSpec extends FlatSpec with Matchers {
       ).isDirty should be(true)
     }
     ex.getMessage should be(
-      "requirement failed: (snapshotLastTerm[Term(20)], snapshotLastLogIndex[100]) must not exceed (targetSnapshotLastTerm[Term(19)], targetSnapshotLastLogIndex[101]",
+      "requirement failed: snapshotLastTerm[Term(20)] must not exceed targetSnapshotLastTerm[Term(19)] (snapshotLastLogIndex[100], targetSnapshotLastLogIndex[101])",
     )
   }
 
@@ -64,7 +64,7 @@ class SnapshotStatusSpec extends FlatSpec with Matchers {
       ).isDirty should be(true)
     }
     ex.getMessage should be(
-      "requirement failed: (snapshotLastTerm[Term(20)], snapshotLastLogIndex[100]) must not exceed (targetSnapshotLastTerm[Term(20)], targetSnapshotLastLogIndex[99]",
+      "requirement failed: snapshotLastLogIndex[100] must not exceed targetSnapshotLastLogIndex[99] (snapshotLastTerm[Term(20)], targetSnapshotLastTerm[Term(20)])",
     )
   }
 }
