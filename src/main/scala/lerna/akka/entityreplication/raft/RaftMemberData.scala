@@ -405,7 +405,12 @@ private[entityreplication] trait RaftMemberData
 
   def completeSnapshotSync(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex): RaftMemberData = {
     updatePersistentState(
-      lastSnapshotStatus = lastSnapshotStatus.completeSnapshotSync(snapshotLastLogTerm, snapshotLastLogIndex),
+      /**
+        * [[startSnapshotSync()]] updates [[SnapshotStatus.snapshotLastTerm]] and [[SnapshotStatus.snapshotLastLogIndex]]
+        * but we updates these value again here for backward-compatibility.
+        * Because the event sequence produced by v2.0.0 doesn't call [[startSnapshotSync()]].
+        */
+      lastSnapshotStatus = lastSnapshotStatus.updateSnapshotsCompletely(snapshotLastLogTerm, snapshotLastLogIndex),
     )
   }
 

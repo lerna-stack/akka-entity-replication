@@ -48,12 +48,6 @@ private[entityreplication] final case class SnapshotStatus(
       targetSnapshotLastLogIndex = snapshotLastLogIndex,
     )
 
-  def completeSnapshotSync(snapshotLastTerm: Term, snapshotLastLogIndex: LogEntryIndex): SnapshotStatus =
-    copy(
-      snapshotLastTerm = snapshotLastTerm,
-      snapshotLastLogIndex = snapshotLastLogIndex,
-    )
-
   /**
     * `true` means snapshot-synchronization has started but it has not completed yet.
     */
