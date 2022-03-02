@@ -519,6 +519,17 @@ private[raft] class RaftActor(
             currentData.lastSnapshotStatus.targetSnapshotLastTerm,
             currentData.lastSnapshotStatus.targetSnapshotLastLogIndex,
           )
+        if (installSnapshot.term > currentData.currentTerm) {
+          applyDomainEvent(DetectedNewTerm(installSnapshot.term)) { _ =>
+            applyDomainEvent(DetectedLeaderMember(installSnapshot.srcMemberIndex)) { _ =>
+              become(Follower)
+            }
+          }
+        } else {
+          applyDomainEvent(DetectedLeaderMember(installSnapshot.srcMemberIndex)) { _ =>
+            become(Follower)
+          }
+        }
       case installSnapshot =>
         if (installSnapshot.term == currentData.currentTerm) {
           applyDomainEvent(DetectedLeaderMember(installSnapshot.srcMemberIndex)) { _ =>

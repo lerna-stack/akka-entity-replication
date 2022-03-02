@@ -360,11 +360,16 @@ class RaftActorSnapshotSynchronizationSpec
       follower ! InstallSnapshot(
         shardId,
         term = currentLeaderTerm,
-        srcMemberIndex = leaderMemberIndex,
+        srcMemberIndex = currentLeaderMemberIndex,
         srcLatestSnapshotLastLogTerm = leaderSnapshotTerm1,
         srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex1.prev(),
       )
       expectNoMessage()
+      inside(getState(follower)) { state =>
+        state.stateName should be(Follower)
+        state.stateData.currentTerm should be(currentLeaderTerm)
+        state.stateData.leaderMember should be(Option(currentLeaderMemberIndex))
+      }
 
       currentLeaderTerm = newLeaderTerm()
       currentLeaderMemberIndex = leaderMemberIndex
