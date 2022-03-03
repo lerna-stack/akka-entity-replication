@@ -58,7 +58,7 @@ class RaftActorSnapshotSynchronizationSpec
                      | }
                      |""".stripMargin).withFallback(ConfigFactory.load())
 
-    "prevent to start compaction during snapshot synchronization" ignore {
+    "prevent to start compaction during snapshot synchronization" in {
       /* prepare */
       val snapshotStore         = TestProbe()
       val replicationActorProbe = TestProbe()
