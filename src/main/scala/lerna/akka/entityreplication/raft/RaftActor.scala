@@ -403,16 +403,22 @@ private[raft] class RaftActor(
       currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold
       && currentData.hasLogEntriesThatCanBeCompacted
     ) {
-      val (term, logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
-      applyDomainEvent(SnapshottingStarted(term, logEntryIndex, entityIds)) { _ =>
+      if (snapshotSynchronizationIsInProgress) {
+        // Snapshot updates during synchronizing snapshot will break consistency
         if (log.isInfoEnabled)
-          log.info(
-            "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
-            currentState,
-            logEntryIndex,
-            entityIds.size,
-          )
-        requestTakeSnapshots(logEntryIndex, entityIds)
+          log.info("Skipping compaction because snapshot synchronization is in progress")
+      } else {
+        val (term, logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
+        applyDomainEvent(SnapshottingStarted(term, logEntryIndex, entityIds)) { _ =>
+          if (log.isInfoEnabled)
+            log.info(
+              "[{}] compaction started (logEntryIndex: {}, number of entities: {})",
+              currentState,
+              logEntryIndex,
+              entityIds.size,
+            )
+          requestTakeSnapshots(logEntryIndex, entityIds)
+        }
       }
     }
     resetSnapshotTickTimer()
@@ -626,6 +632,11 @@ private[raft] class RaftActor(
         replyTo = self,
       )
     }
+  }
+
+  protected def snapshotSynchronizationIsInProgress: Boolean = {
+    // SnapshotSyncManager stops after synchronization completed
+    context.child(snapshotSyncManagerName).nonEmpty
   }
 
   private[this] def stopAllEntities(): Unit = {
