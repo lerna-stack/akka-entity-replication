@@ -5,7 +5,7 @@ import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter._
 import akka.actor.{ typed, ActorSystem, Status }
 import akka.persistence.inmemory.extension.{ InMemoryJournalStorage, InMemorySnapshotStorage, StorageExtension }
-import akka.testkit.{ ImplicitSender, TestKit, TestProbe }
+import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
@@ -21,8 +21,7 @@ import org.scalatest.Inside._
 class RaftActorSnapshotSynchronizationSpec
     extends TestKit(ActorSystem())
     with RaftActorSpecBase
-    with BeforeAndAfterEach
-    with ImplicitSender {
+    with BeforeAndAfterEach {
 
   private implicit val typedSystem: typed.ActorSystem[Nothing] = system.toTyped
 
@@ -36,10 +35,11 @@ class RaftActorSnapshotSynchronizationSpec
   override def beforeEach(): Unit = {
     super.beforeEach()
     // clear storage
+    val probe   = TestProbe()
     val storage = StorageExtension(system)
-    storage.journalStorage ! InMemoryJournalStorage.ClearJournal
-    storage.snapshotStorage ! InMemorySnapshotStorage.ClearSnapshots
-    receiveWhile(messages = 2) {
+    probe.send(storage.journalStorage, InMemoryJournalStorage.ClearJournal)
+    probe.send(storage.snapshotStorage, InMemorySnapshotStorage.ClearSnapshots)
+    probe.receiveWhile(messages = 2) {
       case _: Status.Success => Done
     } should have length 2
     // reset SnapshotStore
@@ -60,6 +60,7 @@ class RaftActorSnapshotSynchronizationSpec
 
     "prevent to start compaction during snapshot synchronization" in {
       /* prepare */
+      val leader                = TestProbe()
       val snapshotStore         = TestProbe()
       val replicationActorProbe = TestProbe()
       val followerMemberIndex   = createUniqueMemberIndex()
@@ -84,24 +85,31 @@ class RaftActorSnapshotSynchronizationSpec
         CompactionCompleted(leaderMemberIndex, shardId, leaderSnapshotTerm, leaderSnapshotLogIndex, entityIds),
       )
       /* check */
-      follower ! AppendEntries(
-        shardId,
-        term,
-        leaderMemberIndex,
-        prevLogIndex = LogEntryIndex.initial(),
-        prevLogTerm = Term.initial(),
-        entries = Seq(
-          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), term),
-          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-1"), term),
+      leader.send(
+        follower,
+        AppendEntries(
+          shardId,
+          term,
+          leaderMemberIndex,
+          prevLogIndex = LogEntryIndex.initial(),
+          prevLogTerm = Term.initial(),
+          entries = Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), term),
+            LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-1"), term),
+          ),
+          leaderCommit = LogEntryIndex(2),
         ),
-        leaderCommit = LogEntryIndex(2),
       )
-      follower ! InstallSnapshot(
-        shardId,
-        term = term,
-        srcMemberIndex = leaderMemberIndex,
-        srcLatestSnapshotLastLogTerm = leaderSnapshotTerm,
-        srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex,
+      leader.expectMsgType[AppendEntriesSucceeded]
+      leader.send(
+        follower,
+        InstallSnapshot(
+          shardId,
+          term = term,
+          srcMemberIndex = leaderMemberIndex,
+          srcLatestSnapshotLastLogTerm = leaderSnapshotTerm,
+          srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex,
+        ),
       )
       LoggingTestKit.info("Skipping compaction because snapshot synchronization is in progress").expect {
         // trigger compaction
@@ -114,18 +122,22 @@ class RaftActorSnapshotSynchronizationSpec
         } should have length 1
         // compaction become available
       }
-      follower ! AppendEntries(
-        shardId,
-        term,
-        leaderMemberIndex,
-        prevLogIndex = leaderSnapshotLogIndex,
-        prevLogTerm = leaderSnapshotTerm,
-        entries = Seq(
-          LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event-4"), term),
-          LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event-5"), term),
+      leader.send(
+        follower,
+        AppendEntries(
+          shardId,
+          term,
+          leaderMemberIndex,
+          prevLogIndex = leaderSnapshotLogIndex,
+          prevLogTerm = leaderSnapshotTerm,
+          entries = Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event-4"), term),
+            LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event-5"), term),
+          ),
+          leaderCommit = LogEntryIndex(5),
         ),
-        leaderCommit = LogEntryIndex(5),
       )
+      leader.expectMsgType[AppendEntriesSucceeded]
       LoggingTestKit.info("compaction started").expect {
         // trigger compaction
         follower ! SnapshotTick
@@ -134,6 +146,7 @@ class RaftActorSnapshotSynchronizationSpec
 
     "make the follower to reject AppendEntries until completing synchronization" in {
       /* prepare */
+      val leader              = TestProbe()
       val snapshotStore       = TestProbe()
       val followerMemberIndex = createUniqueMemberIndex()
       val follower = createRaftActor(
@@ -161,12 +174,15 @@ class RaftActorSnapshotSynchronizationSpec
       def newLeaderTerm(): Term               = currentLeaderTerm.next()
       def newLeaderMemberIndex(): MemberIndex = createUniqueMemberIndex()
       /* check */
-      follower ! InstallSnapshot(
-        shardId,
-        term = currentLeaderTerm,
-        srcMemberIndex = leaderMemberIndex,
-        srcLatestSnapshotLastLogTerm = leaderSnapshotTerm,
-        srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex,
+      leader.send(
+        follower,
+        InstallSnapshot(
+          shardId,
+          term = currentLeaderTerm,
+          srcMemberIndex = leaderMemberIndex,
+          srcLatestSnapshotLastLogTerm = leaderSnapshotTerm,
+          srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex,
+        ),
       )
       inside(getState(follower)) { state =>
         state.stateData.lastSnapshotStatus.targetSnapshotLastTerm should be(leaderSnapshotTerm)
@@ -180,19 +196,22 @@ class RaftActorSnapshotSynchronizationSpec
       currentLeaderMemberIndex = newLeaderMemberIndex()
       // This AppendEntries will be denied since snapshot synchronization is in progress
       // and the (prevLogIndex, prevLogTerm) do not match (targetSnapshotLastTerm, targetSnapshotLastLogIndex)
-      follower ! AppendEntries(
-        shardId,
-        currentLeaderTerm,
-        currentLeaderMemberIndex,
-        prevLogIndex = leaderSnapshotLogIndex.plus(1),
-        prevLogTerm = leaderSnapshotTerm,
-        entries = Seq(
-          LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
-          LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+      leader.send(
+        follower,
+        AppendEntries(
+          shardId,
+          currentLeaderTerm,
+          currentLeaderMemberIndex,
+          prevLogIndex = leaderSnapshotLogIndex.plus(1),
+          prevLogTerm = leaderSnapshotTerm,
+          entries = Seq(
+            LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
+            LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+          ),
+          leaderCommit = leaderSnapshotLogIndex.plus(10),
         ),
-        leaderCommit = leaderSnapshotLogIndex.plus(10),
       )
-      inside(expectMsgType[AppendEntriesFailed]) {
+      inside(leader.expectMsgType[AppendEntriesFailed]) {
         case AppendEntriesFailed(term, sender) =>
           term should be(currentLeaderTerm)
           sender should be(followerMemberIndex)
@@ -207,20 +226,23 @@ class RaftActorSnapshotSynchronizationSpec
       currentLeaderMemberIndex = newLeaderMemberIndex()
       // This AppendEntries will be ignored since snapshot synchronization is in progress
       // and the (prevLogIndex, prevLogTerm) match (targetSnapshotLastTerm, targetSnapshotLastLogIndex)
-      follower ! AppendEntries(
-        shardId,
-        currentLeaderTerm,
-        currentLeaderMemberIndex,
-        prevLogIndex = leaderSnapshotLogIndex,
-        prevLogTerm = leaderSnapshotTerm,
-        entries = Seq(
-          LogEntry(leaderSnapshotLogIndex.plus(1), EntityEvent(None, NoOp), leaderSnapshotTerm),
-          LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
-          LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+      leader.send(
+        follower,
+        AppendEntries(
+          shardId,
+          currentLeaderTerm,
+          currentLeaderMemberIndex,
+          prevLogIndex = leaderSnapshotLogIndex,
+          prevLogTerm = leaderSnapshotTerm,
+          entries = Seq(
+            LogEntry(leaderSnapshotLogIndex.plus(1), EntityEvent(None, NoOp), leaderSnapshotTerm),
+            LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
+            LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+          ),
+          leaderCommit = leaderSnapshotLogIndex.plus(10),
         ),
-        leaderCommit = leaderSnapshotLogIndex.plus(10),
       )
-      expectNoMessage()
+      leader.expectNoMessage()
       inside(getState(follower)) { state =>
         state.stateName should be(Follower)
         state.stateData.currentTerm should be(currentLeaderTerm)
@@ -242,24 +264,28 @@ class RaftActorSnapshotSynchronizationSpec
       }
       // This AppendEntries will be accepted since the snapshot synchronization completed
       // and the (prevLogIndex, prevLogTerm) match (ancestorLastTerm, ancestorLastIndex)
-      follower ! AppendEntries(
-        shardId,
-        currentLeaderTerm,
-        currentLeaderMemberIndex,
-        prevLogIndex = leaderSnapshotLogIndex,
-        prevLogTerm = leaderSnapshotTerm,
-        entries = Seq(
-          LogEntry(leaderSnapshotLogIndex.plus(1), EntityEvent(None, NoOp), leaderSnapshotTerm),
-          LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
-          LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+      leader.send(
+        follower,
+        AppendEntries(
+          shardId,
+          currentLeaderTerm,
+          currentLeaderMemberIndex,
+          prevLogIndex = leaderSnapshotLogIndex,
+          prevLogTerm = leaderSnapshotTerm,
+          entries = Seq(
+            LogEntry(leaderSnapshotLogIndex.plus(1), EntityEvent(None, NoOp), leaderSnapshotTerm),
+            LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
+            LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+          ),
+          leaderCommit = leaderSnapshotLogIndex.plus(10),
         ),
-        leaderCommit = leaderSnapshotLogIndex.plus(10),
       )
-      expectMsgType[AppendEntriesSucceeded]
+      leader.expectMsgType[AppendEntriesSucceeded]
     }
 
     "make the candidate to reject AppendEntries until completing synchronization" in {
       /* prepare */
+      val leader              = TestProbe()
       val snapshotStore       = TestProbe()
       val followerMemberIndex = createUniqueMemberIndex()
       val followerThatWillBeCandidate = createRaftActor(
@@ -291,12 +317,15 @@ class RaftActorSnapshotSynchronizationSpec
       def newLeaderTerm(): Term               = getState(followerThatWillBeCandidate).stateData.currentTerm.next()
       def newLeaderMemberIndex(): MemberIndex = createUniqueMemberIndex()
       /* check */
-      followerThatWillBeCandidate ! InstallSnapshot(
-        shardId,
-        term = currentLeaderTerm,
-        srcMemberIndex = leaderMemberIndex,
-        srcLatestSnapshotLastLogTerm = leaderSnapshotTerm,
-        srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex,
+      leader.send(
+        followerThatWillBeCandidate,
+        InstallSnapshot(
+          shardId,
+          term = currentLeaderTerm,
+          srcMemberIndex = leaderMemberIndex,
+          srcLatestSnapshotLastLogTerm = leaderSnapshotTerm,
+          srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex,
+        ),
       )
       inside(getState(followerThatWillBeCandidate)) { state =>
         state.stateData.lastSnapshotStatus.isDirty should be(true)
@@ -306,19 +335,22 @@ class RaftActorSnapshotSynchronizationSpec
       currentLeaderMemberIndex = newLeaderMemberIndex()
       // This AppendEntries will be denied since snapshot synchronization is in progress
       // and the (prevLogIndex, prevLogTerm) do not match (targetSnapshotLastTerm, targetSnapshotLastLogIndex)
-      followerThatWillBeCandidate ! AppendEntries(
-        shardId,
-        currentLeaderTerm,
-        currentLeaderMemberIndex,
-        prevLogIndex = leaderSnapshotLogIndex.plus(1),
-        prevLogTerm = leaderSnapshotTerm,
-        entries = Seq(
-          LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
-          LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+      leader.send(
+        followerThatWillBeCandidate,
+        AppendEntries(
+          shardId,
+          currentLeaderTerm,
+          currentLeaderMemberIndex,
+          prevLogIndex = leaderSnapshotLogIndex.plus(1),
+          prevLogTerm = leaderSnapshotTerm,
+          entries = Seq(
+            LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
+            LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+          ),
+          leaderCommit = leaderSnapshotLogIndex.plus(10),
         ),
-        leaderCommit = leaderSnapshotLogIndex.plus(10),
       )
-      inside(expectMsgType[AppendEntriesFailed]) {
+      inside(leader.expectMsgType[AppendEntriesFailed]) {
         case AppendEntriesFailed(term, sender) =>
           term should be(currentLeaderTerm)
           sender should be(followerMemberIndex)
@@ -334,20 +366,23 @@ class RaftActorSnapshotSynchronizationSpec
       currentLeaderMemberIndex = newLeaderMemberIndex()
       // This AppendEntries will be ignored since snapshot synchronization is in progress
       // and the (prevLogIndex, prevLogTerm) match (targetSnapshotLastTerm, targetSnapshotLastLogIndex)
-      followerThatWillBeCandidate ! AppendEntries(
-        shardId,
-        currentLeaderTerm,
-        currentLeaderMemberIndex,
-        prevLogIndex = leaderSnapshotLogIndex,
-        prevLogTerm = leaderSnapshotTerm,
-        entries = Seq(
-          LogEntry(leaderSnapshotLogIndex.plus(1), EntityEvent(None, NoOp), leaderSnapshotTerm),
-          LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
-          LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+      leader.send(
+        followerThatWillBeCandidate,
+        AppendEntries(
+          shardId,
+          currentLeaderTerm,
+          currentLeaderMemberIndex,
+          prevLogIndex = leaderSnapshotLogIndex,
+          prevLogTerm = leaderSnapshotTerm,
+          entries = Seq(
+            LogEntry(leaderSnapshotLogIndex.plus(1), EntityEvent(None, NoOp), leaderSnapshotTerm),
+            LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
+            LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+          ),
+          leaderCommit = leaderSnapshotLogIndex.plus(10),
         ),
-        leaderCommit = leaderSnapshotLogIndex.plus(10),
       )
-      expectNoMessage()
+      leader.expectNoMessage()
       inside(getState(followerThatWillBeCandidate)) { state =>
         state.stateName should be(Follower)
         state.stateData.currentTerm should be(currentLeaderTerm)
@@ -365,24 +400,28 @@ class RaftActorSnapshotSynchronizationSpec
       currentLeaderMemberIndex = newLeaderMemberIndex()
       // This AppendEntries will be accepted since the snapshot synchronization completed
       // and the (prevLogIndex, prevLogTerm) match (ancestorLastTerm, ancestorLastIndex)
-      followerThatWillBeCandidate ! AppendEntries(
-        shardId,
-        currentLeaderTerm,
-        currentLeaderMemberIndex,
-        prevLogIndex = leaderSnapshotLogIndex,
-        prevLogTerm = leaderSnapshotTerm,
-        entries = Seq(
-          LogEntry(leaderSnapshotLogIndex.plus(1), EntityEvent(None, NoOp), leaderSnapshotTerm),
-          LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
-          LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+      leader.send(
+        followerThatWillBeCandidate,
+        AppendEntries(
+          shardId,
+          currentLeaderTerm,
+          currentLeaderMemberIndex,
+          prevLogIndex = leaderSnapshotLogIndex,
+          prevLogTerm = leaderSnapshotTerm,
+          entries = Seq(
+            LogEntry(leaderSnapshotLogIndex.plus(1), EntityEvent(None, NoOp), leaderSnapshotTerm),
+            LogEntry(leaderSnapshotLogIndex.plus(2), EntityEvent(None, NoOp), leaderSnapshotTerm),
+            LogEntry(leaderSnapshotLogIndex.plus(3), EntityEvent(Option(entityId), "event-1"), leaderSnapshotTerm),
+          ),
+          leaderCommit = leaderSnapshotLogIndex.plus(10),
         ),
-        leaderCommit = leaderSnapshotLogIndex.plus(10),
       )
-      expectMsgType[AppendEntriesSucceeded]
+      leader.expectMsgType[AppendEntriesSucceeded]
     }
 
     "prevent to process InstallSnapshot commands that indicates old snapshots" in {
       /* prepare */
+      val leader              = TestProbe()
       val snapshotStore       = TestProbe()
       val region              = TestProbe()
       val followerMemberIndex = createUniqueMemberIndex()
@@ -417,31 +456,37 @@ class RaftActorSnapshotSynchronizationSpec
       /* check */
       LoggingTestKit.warn("Snapshot synchronization aborted").expect {
         // This InstallSnapshot fails since second CompactionCompleted will be found
-        follower ! InstallSnapshot(
-          shardId,
-          term = currentLeaderTerm,
-          srcMemberIndex = currentLeaderMemberIndex,
-          srcLatestSnapshotLastLogTerm = leaderSnapshotTerm1,
-          srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex1,
+        leader.send(
+          follower,
+          InstallSnapshot(
+            shardId,
+            term = currentLeaderTerm,
+            srcMemberIndex = currentLeaderMemberIndex,
+            srcLatestSnapshotLastLogTerm = leaderSnapshotTerm1,
+            srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex1,
+          ),
         )
       }
       inside(getState(follower)) { state =>
         state.stateData.lastSnapshotStatus.targetSnapshotLastTerm should be(leaderSnapshotTerm1)
         state.stateData.lastSnapshotStatus.targetSnapshotLastLogIndex should be(leaderSnapshotLogIndex1)
       }
-      expectNoMessage() // because the process failed
+      leader.expectNoMessage() // because the process failed
 
       currentLeaderTerm = newLeaderTerm()
       currentLeaderMemberIndex = newLeaderMemberIndex()
       // This InstallSnapshot will be ignored since it indicates older snapshots than the previous command
-      follower ! InstallSnapshot(
-        shardId,
-        term = currentLeaderTerm,
-        srcMemberIndex = currentLeaderMemberIndex,
-        srcLatestSnapshotLastLogTerm = leaderSnapshotTerm1,
-        srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex1.prev(),
+      leader.send(
+        follower,
+        InstallSnapshot(
+          shardId,
+          term = currentLeaderTerm,
+          srcMemberIndex = currentLeaderMemberIndex,
+          srcLatestSnapshotLastLogTerm = leaderSnapshotTerm1,
+          srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex1.prev(),
+        ),
       )
-      expectNoMessage()
+      leader.expectNoMessage()
       inside(getState(follower)) { state =>
         state.stateName should be(Follower)
         state.stateData.currentTerm should be(currentLeaderTerm)
@@ -451,12 +496,15 @@ class RaftActorSnapshotSynchronizationSpec
       currentLeaderTerm = newLeaderTerm()
       currentLeaderMemberIndex = leaderMemberIndex
       // This InstallSnapshot will be processed since it indicates newer snapshots than the first command
-      follower ! InstallSnapshot(
-        shardId,
-        term = currentLeaderTerm,
-        srcMemberIndex = currentLeaderMemberIndex,
-        srcLatestSnapshotLastLogTerm = leaderSnapshotTerm2,
-        srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex2,
+      leader.send(
+        follower,
+        InstallSnapshot(
+          shardId,
+          term = currentLeaderTerm,
+          srcMemberIndex = currentLeaderMemberIndex,
+          srcLatestSnapshotLastLogTerm = leaderSnapshotTerm2,
+          srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex2,
+        ),
       )
       LoggingTestKit.info("Snapshot synchronization completed").expect {
         snapshotStore.receiveWhile(messages = 2) {
