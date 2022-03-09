@@ -153,7 +153,7 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
       runOn(node1, node2, node3) {
         awaitAssert {
           replicationActor(myself) ! DummyReplicationActor.GetState(entityId)
-          expectMsg(DummyReplicationActor.State(1))
+          expectMsg(max = 1.second, DummyReplicationActor.State(1))
         }
       }
       enterBarrier("all ReplicationActor applied an event")
@@ -178,14 +178,14 @@ class RaftActorCompactionSpec extends MultiNodeSpec(RaftActorCompactionSpecConfi
         // ReplicationActor which has not been isolated applied all events
         awaitAssert {
           replicationActor(myself) ! DummyReplicationActor.GetState(entityId)
-          expectMsg(DummyReplicationActor.State(4))
+          expectMsg(max = 1.second, DummyReplicationActor.State(4))
         }
       }
       runOn(node3) {
         // ReplicationActor which has been isolated did not apply any events
         awaitAssert {
           replicationActor(myself) ! DummyReplicationActor.GetState(entityId)
-          expectMsg(DummyReplicationActor.State(1))
+          expectMsg(max = 1.second, DummyReplicationActor.State(1))
         }
       }
       enterBarrier("ReplicationActor which has not been isolated applied all events")

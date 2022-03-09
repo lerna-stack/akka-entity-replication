@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.util
 
 import akka.Done
-import akka.actor.ActorSystem
+import akka.actor.{ ActorRef, ActorSystem }
 import akka.testkit.{ ImplicitSender, TestKit }
 import lerna.akka.entityreplication.ClusterReplicationSettings
 
@@ -18,7 +18,10 @@ final class RaftEventJournalTestKit(system: ActorSystem, settings: ClusterReplic
     extends TestKit(system)
     with ImplicitSender {
 
-  private val eventStore = system.actorOf(EventStore.props(settings), "RaftEventPersistenceTestKitEventStore")
+  private var eventStore = spawnEventStore()
+
+  private def spawnEventStore(): ActorRef =
+    childActorOf(EventStore.props(settings), "RaftEventPersistenceTestKitEventStore")
 
   /**
     * Persists events in specified order.
@@ -27,5 +30,12 @@ final class RaftEventJournalTestKit(system: ActorSystem, settings: ClusterReplic
   def persistEvents(events: Any*): Unit = {
     eventStore ! EventStore.PersistEvents(events)
     expectMsg(Done)
+  }
+
+  def reset(): Unit = {
+    watch(eventStore)
+    system.stop(eventStore)
+    expectTerminated(eventStore)
+    eventStore = spawnEventStore()
   }
 }

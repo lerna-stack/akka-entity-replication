@@ -96,7 +96,7 @@ class ReplicatedEntitySnapshotMultiNodeSpec
         awaitAssert {
           // update state
           entityRef ! DummyEntity.Increment(transactionSeq1, amount = 1, replyTo.ref)
-          replyTo.receiveMessage(1.seconds).count should be(1)
+          replyTo.receiveMessage(500.millis).count should be(1)
         }
       }
       enterBarrier("sent a command")
@@ -106,7 +106,7 @@ class ReplicatedEntitySnapshotMultiNodeSpec
         awaitAssert {
           actorRef = findEntityActorRef()
           actorRef ! DummyEntity.GetState(replyTo.ref)
-          replyTo.receiveMessage(1.seconds).count should be(1)
+          replyTo.receiveMessage(500.millis).count should be(1)
         }
       }
       enterBarrier("all entities applied an event")
@@ -120,7 +120,7 @@ class ReplicatedEntitySnapshotMultiNodeSpec
           var latestCount = 1
           awaitAssert {
             entityRef ! DummyEntity.Increment(transactionSeq, amount = 1, replyTo.ref)
-            val reply = replyTo.receiveMessage(1.seconds)
+            val reply = replyTo.receiveMessage(500.millis)
             reply.count should be > latestCount
             latestCount = reply.count
           }
@@ -132,14 +132,14 @@ class ReplicatedEntitySnapshotMultiNodeSpec
         // entity which has not been isolated applied all events
         awaitAssert {
           actorRef ! DummyEntity.GetState(replyTo.ref)
-          replyTo.receiveMessage(1.seconds).count should be(5)
+          replyTo.receiveMessage(500.millis).count should be(5)
         }
       }
       runOn(node3) {
         // entity which has been isolated did not apply any events
         awaitAssert {
           actorRef ! DummyEntity.GetState(replyTo.ref)
-          replyTo.receiveMessage(1.seconds).count should be(1)
+          replyTo.receiveMessage(500.millis).count should be(1)
         }
       }
       enterBarrier("entity which has not been isolated applied all events")
@@ -151,11 +151,11 @@ class ReplicatedEntitySnapshotMultiNodeSpec
         awaitAssert {
           // attempt to create entities on all nodes
           entityRef ! DummyEntity.Increment(transactionSeq2, amount = 0, replyTo.ref)
-          replyTo.receiveMessage(1.seconds)
+          replyTo.receiveMessage(500.millis)
           // All ReplicationActor states will eventually be the same as any other after the isolation is resolved
           actorRef = findEntityActorRef()
           actorRef ! DummyEntity.GetState(replyTo.ref)
-          replyTo.receiveMessage(1.seconds).count should be(5)
+          replyTo.receiveMessage(500.millis).count should be(5)
         }
       }
     }

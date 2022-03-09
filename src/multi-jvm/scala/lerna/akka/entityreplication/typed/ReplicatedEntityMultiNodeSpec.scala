@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.typed
 
 import akka.actor.testkit.typed.scaladsl.ActorTestKit
-import akka.actor.typed.ActorRef
+import akka.actor.typed.{ ActorRef, ActorSystem }
 import akka.actor.typed.receptionist.{ Receptionist, ServiceKey }
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.scaladsl.adapter._
@@ -9,8 +9,10 @@ import akka.remote.testconductor.RoleName
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import com.typesafe.config.{ ConfigFactory, ConfigValueFactory }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
+import lerna.akka.entityreplication.util.AtLeastOnceComplete
 import lerna.akka.entityreplication.{ STMultiNodeSerializable, STMultiNodeSpec }
 
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicInteger
 import scala.jdk.CollectionConverters._
 
@@ -53,7 +55,7 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
   import ReplicatedEntityMultiNodeSpec._
   import ReplicatedEntityMultiNodeSpecConfig._
 
-  private[this] val typedSystem = system.toTyped
+  private implicit val typedSystem: ActorSystem[_] = system.toTyped
 
   private[this] val clusterReplication = ClusterReplication(typedSystem)
 
@@ -90,20 +92,22 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
       val probe = actorTestKit.createTestProbe[Receptionist.Listing]()
 
       runOn(node1) {
-        val entity  = clusterReplication.entityRefFor(PingPongEntity.typeKey, createSeqEntityId())
-        val replyTo = actorTestKit.createTestProbe[PingPongEntity.Pong]()
+        val entity = clusterReplication.entityRefFor(PingPongEntity.typeKey, createSeqEntityId())
 
-        entity ! PingPongEntity.Ping(replyTo.ref)
-        replyTo.receiveMessage().count should be(1)
-        entity ! PingPongEntity.Ping(replyTo.ref)
-        replyTo.receiveMessage().count should be(2)
+        def ping(requestId: String): PingPongEntity.Pong = {
+          AtLeastOnceComplete
+            .askTo(entity, PingPongEntity.Ping(_, requestId), retryInterval = remainingOrDefault / 5).await
+        }
+
+        ping(createUniqueRequestId()).count should be(1)
+        ping(createUniqueRequestId()).count should be(2)
       }
       runOn(node1, node2, node3) {
         // find entity
         var actor: ActorRef[PingPongEntity.Command] = null
         awaitAssert {
           typedSystem.receptionist ! Receptionist.Subscribe(PingPongEntity.serviceKey, probe.ref)
-          val listing = probe.receiveMessage()
+          val listing = probe.receiveMessage(max = remainingOrDefault / 5)
           actor = listing.serviceInstances(PingPongEntity.serviceKey).head
           typedSystem.receptionist ! Receptionist.Deregister(PingPongEntity.serviceKey, actor)
         }
@@ -111,7 +115,7 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
         val stateReceiver = actorTestKit.createTestProbe[PingPongEntity.State]()
         awaitAssert {
           actor ! PingPongEntity.UnsafeGetState(stateReceiver.ref)
-          stateReceiver.receiveMessage().count should be(2)
+          stateReceiver.receiveMessage(max = remainingOrDefault / 5).count should be(2)
         }
       }
     }
@@ -120,18 +124,17 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
       clusterReplication.init(PingPongEntity())
 
       runOn(node1) {
-        val entity  = clusterReplication.entityRefFor(PingPongEntity.typeKey, createSeqEntityId())
-        val replyTo = actorTestKit.createTestProbe[PingPongEntity.Pong]()
+        val entity = clusterReplication.entityRefFor(PingPongEntity.typeKey, createSeqEntityId())
 
-        entity ! PingPongEntity.Ping(replyTo.ref)
-        replyTo.receiveMessage().count should be(1)
-        entity ! PingPongEntity.Ping(replyTo.ref)
-        replyTo.receiveMessage().count should be(2)
-        entity ! PingPongEntity.Break()
-        awaitAssert {
-          entity ! PingPongEntity.Ping(replyTo.ref)
-          replyTo.receiveMessage(max = remainingOrDefault / 5).count should be(3)
+        def ping(requestId: String): PingPongEntity.Pong = {
+          AtLeastOnceComplete
+            .askTo(entity, PingPongEntity.Ping(_, requestId), retryInterval = remainingOrDefault / 5).await
         }
+
+        ping(createUniqueRequestId()).count should be(1)
+        ping(createUniqueRequestId()).count should be(2)
+        entity ! PingPongEntity.Break()
+        ping(createUniqueRequestId()).count should be(3)
       }
     }
 
@@ -147,7 +150,7 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
       runOn(node1, node2, node3) {
         awaitAssert {
           typedSystem.receptionist ! Receptionist.Subscribe(EphemeralEntity.serviceKey, probe.ref)
-          val listing = probe.receiveMessage()
+          val listing = probe.receiveMessage(max = remainingOrDefault / 5)
           actor = listing.serviceInstances(EphemeralEntity.serviceKey).head
           typedSystem.receptionist ! Receptionist.Deregister(EphemeralEntity.serviceKey, actor)
         }
@@ -182,7 +185,7 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
         val subscriber = actorTestKit.createTestProbe[Receptionist.Listing]()
         awaitAssert {
           typedSystem.receptionist ! Receptionist.Subscribe(EphemeralEntity.serviceKey, subscriber.ref)
-          val listing = subscriber.receiveMessage()
+          val listing = subscriber.receiveMessage(max = remainingOrDefault / 5)
           actor = listing.serviceInstances(EphemeralEntity.serviceKey).head
           typedSystem.receptionist ! Receptionist.Deregister(EphemeralEntity.serviceKey, actor)
         }
@@ -204,6 +207,8 @@ class ReplicatedEntityMultiNodeSpec extends MultiNodeSpec(ReplicatedEntityMultiN
 
   private[this] val idGenerator                 = new AtomicInteger(0)
   private[this] def createSeqEntityId(): String = s"replication-${idGenerator.incrementAndGet()}"
+
+  private def createUniqueRequestId(): String = UUID.randomUUID().toString
 }
 
 object ReplicatedEntityMultiNodeSpec {
@@ -212,23 +217,27 @@ object ReplicatedEntityMultiNodeSpec {
     val typeKey: ReplicatedEntityTypeKey[Command] = ReplicatedEntityTypeKey("PingPong")
     val serviceKey: ServiceKey[Command]           = ServiceKey[Command]("PingPongService")
 
-    sealed trait Command                                      extends STMultiNodeSerializable
-    final case class Ping(replyTo: ActorRef[Pong])            extends Command
-    final case class Pong(count: Int)                         extends STMultiNodeSerializable
-    final case class Break()                                  extends Command
-    final case class UnsafeGetState(replyTo: ActorRef[State]) extends Command
+    sealed trait Command                                              extends STMultiNodeSerializable
+    final case class Ping(replyTo: ActorRef[Pong], requestId: String) extends Command
+    final case class Pong(count: Int)                                 extends STMultiNodeSerializable
+    final case class Break()                                          extends Command
+    final case class UnsafeGetState(replyTo: ActorRef[State])         extends Command
 
-    sealed trait Event         extends STMultiNodeSerializable
-    final case class CountUp() extends Event
+    sealed trait Event                          extends STMultiNodeSerializable
+    final case class CountUp(requestId: String) extends Event
 
-    final case class State(count: Int) extends STMultiNodeSerializable {
+    final case class State(count: Int, processedRequests: Set[String]) extends STMultiNodeSerializable {
 
       def onMessage(message: Command): Effect[Event, State] =
         message match {
-          case Ping(replyTo) =>
-            Effect
-              .replicate(CountUp())
-              .thenReply(replyTo)(s => Pong(s.count))
+          case Ping(replyTo, requestId) =>
+            if (processedRequests.contains(requestId)) {
+              Effect.reply(replyTo)(Pong(count))
+            } else {
+              Effect
+                .replicate(CountUp(requestId))
+                .thenReply(replyTo)(s => Pong(s.count))
+            }
           case Break() =>
             Effect
               .none[Event, State]
@@ -243,7 +252,7 @@ object ReplicatedEntityMultiNodeSpec {
 
       def applyEvent(event: Event): State =
         event match {
-          case _ => copy(count = count + 1)
+          case CountUp(requestId) => copy(count = count + 1, processedRequests = processedRequests + requestId)
         }
     }
 
@@ -253,7 +262,7 @@ object ReplicatedEntityMultiNodeSpec {
           context.system.receptionist ! Receptionist.Register(serviceKey, context.self)
           ReplicatedEntityBehavior[Command, Event, State](
             entityContext = entityContext,
-            emptyState = State(count = 0),
+            emptyState = State(count = 0, processedRequests = Set.empty),
             commandHandler = _ onMessage _,
             eventHandler = _ applyEvent _,
           )
