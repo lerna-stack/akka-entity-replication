@@ -5,13 +5,13 @@ import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
 import akka.actor.{ typed, ActorRef, ActorSystem }
 import akka.persistence.testkit.scaladsl.{ PersistenceTestKit, SnapshotTestKit }
-import akka.persistence.testkit.{ PersistenceTestKitPlugin, PersistenceTestKitSnapshotPlugin }
+import akka.persistence.testkit._
 import akka.testkit.TestKit
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ClusterReplicationSettings
-import lerna.akka.entityreplication.model.{ NormalizedShardId, TypeName }
+import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.ActorSpec
-import lerna.akka.entityreplication.raft.model.{ LogEntryIndex, NoOp }
+import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, NoOp, Term }
 import org.scalatest.{ BeforeAndAfterAll, OptionValues }
 
 import java.util.UUID
@@ -40,6 +40,19 @@ object CommitLogStoreActorSpec {
 
   type PersistenceId = String
 
+  private final class FailPersistedAfterNPersisted(n: Int) extends EventStorage.JournalPolicies.PolicyType {
+    private var count: Int = 0
+    override def tryProcess(persistenceId: String, processingUnit: JournalOperation): ProcessingResult = {
+      processingUnit match {
+        case WriteEvents(_) =>
+          count += 1
+          if (count <= n) ProcessingSuccess
+          else StorageFailure()
+        case _ => ProcessingSuccess
+      }
+    }
+  }
+
 }
 
 final class CommitLogStoreActorSpec
@@ -48,6 +61,7 @@ final class CommitLogStoreActorSpec
     with BeforeAndAfterAll
     with OptionValues {
 
+  import CommitLogStoreActor.{ AppendCommittedEntries, AppendCommittedEntriesResponse }
   import CommitLogStoreActorSpec._
 
   private implicit val typedSystem: typed.ActorSystem[Nothing] = system.toTyped
@@ -58,6 +72,7 @@ final class CommitLogStoreActorSpec
   override def beforeEach(): Unit = {
     super.beforeEach()
     persistenceTestKit.clearAll()
+    persistenceTestKit.resetPolicy()
     snapshotTestKit.clearAll()
   }
 
@@ -66,13 +81,39 @@ final class CommitLogStoreActorSpec
     finally super.afterAll()
   }
 
-  private def spawnCommitLogStoreActor(name: Option[String] = None): (ActorRef, NormalizedShardId, PersistenceId) = {
+  private def spawnCommitLogStoreActor(
+      name: Option[String] = None,
+      beforeSpawn: PersistenceId => Unit = _ => {},
+  ): (ActorRef, NormalizedShardId, PersistenceId) = {
     val props         = CommitLogStoreActor.props(typeName, ClusterReplicationSettings.create(system))
     val actorName     = name.getOrElse(UUID.randomUUID().toString)
-    val actor         = planAutoKill(system.actorOf(props, actorName))
-    val shardId       = NormalizedShardId.from(actor.path)
+    val shardId       = NormalizedShardId.from(actorName)
     val persistenceId = CommitLogStoreActor.persistenceId(typeName, shardId.raw)
+    beforeSpawn(persistenceId)
+    val actor = planAutoKill(system.actorOf(props, actorName))
     (actor, shardId, persistenceId)
+  }
+
+  "CommitLogStoreActor.AppendCommittedEntries" should {
+
+    "throw an IllegalArgumentException if entries don't have monotonically increased indices" in {
+      val shardId  = NormalizedShardId.from("1")
+      val entityId = NormalizedEntityId.from("entity1")
+      val exception = intercept[IllegalArgumentException] {
+        AppendCommittedEntries(
+          shardId,
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event2"), Term(1)),
+          ),
+        )
+      }
+      assert(
+        exception.getMessage ===
+          "requirement failed: entries should have monotonically increased indices. expected: 2 (1+1), but got: 3",
+      )
+    }
+
   }
 
   "CommitLogStoreActor" should {
@@ -310,6 +351,217 @@ final class CommitLogStoreActorSpec
       persistenceTestKit.failNextPersisted()
       commitLogStoreActor ! Save(shardId, snapshotIndex, NoOp)
       expectNoMessage()
+      persistenceTestKit.expectNothingPersisted(persistenceId)
+      snapshotTestKit.expectNothingPersisted(persistenceId)
+    }
+
+    "handle AppendCommittedEntries(entries=empty), persist no events, and then reply" in {
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      commitLogStoreActor ! AppendCommittedEntries(shardId, Seq.empty)
+      expectMsg(AppendCommittedEntriesResponse(LogEntryIndex(0)))
+      persistenceTestKit.expectNothingPersisted(persistenceId)
+    }
+
+    "handle AppendCommittedEntries(entries=[1,2,3]), persist all events if its current index is 0, and then reply" in {
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      val entries = {
+        val entityId = NormalizedEntityId.from("entity1")
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+        )
+      }
+      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
+      expectMsg(AppendCommittedEntriesResponse(LogEntryIndex(3)))
+      persistenceTestKit.expectNextPersisted(persistenceId, InternalEvent)
+      persistenceTestKit.expectNextPersisted(persistenceId, "event1")
+      persistenceTestKit.expectNextPersisted(persistenceId, InternalEvent)
+    }
+
+    "handle AppendCommittedEntries(entries=[2,3,4]), persist no events if its current index is 0, and then reply to the command" in {
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      val entries = {
+        val entityId = NormalizedEntityId.from("entity1")
+        Seq(
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event2"), Term(2)),
+        )
+      }
+      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
+      expectMsg(AppendCommittedEntriesResponse(LogEntryIndex(0)))
+      persistenceTestKit.expectNothingPersisted(persistenceId)
+    }
+
+    "handle AppendCommittedEntries(entries=[1,2]), persist no events if its current index is 2, and then reply to the command" in {
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor(beforeSpawn = persistenceId => {
+        val initialEvents: Seq[Any] = Seq(InternalEvent, "event1")
+        persistenceTestKit.persistForRecovery(persistenceId, initialEvents)
+      })
+      val entries = {
+        val entityId = NormalizedEntityId.from("entity1")
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event1"), Term(1)),
+        )
+      }
+      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
+      expectMsg(AppendCommittedEntriesResponse(LogEntryIndex(2)))
+      persistenceTestKit.expectNothingPersisted(persistenceId)
+    }
+
+    "handle AppendCommittedEntries(entries=[1,2]), persist no events if its current index is 3, and then reply to the command" in {
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor(beforeSpawn = persistenceId => {
+        val initialEvents: Seq[Any] = Seq(InternalEvent, "event1", "event2")
+        persistenceTestKit.persistForRecovery(persistenceId, initialEvents)
+      })
+      val entries = {
+        val entityId = NormalizedEntityId.from("entity1")
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event1"), Term(1)),
+        )
+      }
+      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
+      expectMsg(AppendCommittedEntriesResponse(LogEntryIndex(3)))
+      persistenceTestKit.expectNothingPersisted(persistenceId)
+    }
+
+    "handle AppendCommittedEntries(entries=[2,3,4,5,6]), persist only not-persisted events, and then reply to the command" in {
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor(beforeSpawn = persistenceId => {
+        val initialEvents: Seq[Any] = Seq(InternalEvent, "event1", "event2")
+        persistenceTestKit.persistForRecovery(persistenceId, initialEvents)
+      })
+      val entries = {
+        val entityId = NormalizedEntityId.from("entity1")
+        Seq(
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event2"), Term(1)),
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event3"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "event4"), Term(2)),
+        )
+      }
+      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
+      expectMsg(AppendCommittedEntriesResponse(LogEntryIndex(6)))
+      persistenceTestKit.expectNextPersisted(persistenceId, InternalEvent)
+      persistenceTestKit.expectNextPersisted(persistenceId, "event3")
+      persistenceTestKit.expectNextPersisted(persistenceId, "event4")
+    }
+
+    "stop if an event save fails (with AppendCommittedEntries)" in {
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+
+      // The default implementation generates an error log.
+      // It's great to verify that the error log was generated.
+      LoggingTestKit
+        .error("Failed to persist event type")
+        .expect {
+          persistenceTestKit.withPolicy(new FailPersistedAfterNPersisted(1))
+          val entries = {
+            val entityId = NormalizedEntityId.from("entity1")
+            Seq(
+              LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+              LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event1"), Term(2)),
+              LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+            )
+          }
+          commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
+        }
+      expectNoMessage()
+      assert(persistenceTestKit.persistedInStorage(persistenceId) == Seq(InternalEvent))
+
+      watch(commitLogStoreActor)
+      expectTerminated(commitLogStoreActor)
+    }
+
+    "save a snapshot every `snapshot-every` events (with AppendCommittedEntries)" in {
+      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+
+      def makeEntries(baseIndex: LogEntryIndex, numberOfEntries: Int): Seq[LogEntry] = {
+        val indices = Vector.tabulate(numberOfEntries)(i => baseIndex.plus(i))
+        indices.map { index =>
+          val entityId    = NormalizedEntityId("entity1")
+          val domainEvent = s"Event with $index"
+          LogEntry(index, EntityEvent(Option(entityId), domainEvent), term = Term(1))
+        }
+      }
+
+      val firstEntries               = makeEntries(LogEntryIndex(1), snapshotEvery)
+      val expectedFirstSnapshotIndex = LogEntryIndex(snapshotEvery)
+      commitLogStoreActor ! AppendCommittedEntries(shardId, firstEntries)
+      expectMsg(AppendCommittedEntriesResponse(firstEntries.last.index))
+      firstEntries.foreach { entry =>
+        persistenceTestKit.expectNextPersisted(persistenceId, entry.event.event)
+      }
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(expectedFirstSnapshotIndex))
+
+      val secondEntries               = makeEntries(LogEntryIndex(snapshotEvery + 1), snapshotEvery + 1)
+      val expectedSecondSnapshotIndex = LogEntryIndex(snapshotEvery * 2)
+      assume(
+        secondEntries.last.index > expectedSecondSnapshotIndex,
+        "To verify that a snapshot will be taken immediately not depending on the number of entries of AppendCommittedEntries",
+      )
+      commitLogStoreActor ! AppendCommittedEntries(shardId, secondEntries)
+      expectMsg(AppendCommittedEntriesResponse(secondEntries.last.index))
+      secondEntries.foreach { entry =>
+        persistenceTestKit.expectNextPersisted(persistenceId, entry.event.event)
+      }
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(expectedSecondSnapshotIndex))
+    }
+
+    "continue its behavior if a snapshot save fails (with AppendCommittedEntries)" in {
+      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+
+      val entries = Vector.tabulate(snapshotEvery + 1) { i =>
+        val entityId    = NormalizedEntityId("entity1")
+        val index       = LogEntryIndex(1 + i) // 1-based indexing
+        val domainEvent = s"Event $index"
+        LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
+      }
+      // The actor fails a snapshot save, but continues to accept next commands.
+      // The implementation should generate a warn log.
+      // It's great to verify that the warn log was generated.
+      LoggingTestKit.warn("Failed to saveSnapshot").expect {
+        snapshotTestKit.failNextPersisted()
+        commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
+      }
+      expectMsg(AppendCommittedEntriesResponse(entries.last.index))
+      entries.foreach { entry =>
+        persistenceTestKit.expectNextPersisted(persistenceId, entry.event.event)
+      }
+
+      // The actor should handle a next command.
+      val nextCommand = {
+        val nextIndex   = entries.last.index.next()
+        val nextEntries = Seq(LogEntry(nextIndex, EntityEvent(None, NoOp), Term(2)))
+        AppendCommittedEntries(shardId, nextEntries)
+      }
+      commitLogStoreActor ! nextCommand
+      expectMsg(AppendCommittedEntriesResponse(nextCommand.entries.last.index))
+      persistenceTestKit.expectNextPersisted(persistenceId, InternalEvent)
+    }
+
+    "not save a snapshot if an event save fails (with AppendCommittedEntries)" in {
+      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+
+      val entries = Vector.tabulate(snapshotEvery) { i =>
+        val entityId    = NormalizedEntityId("entity1")
+        val index       = LogEntryIndex(1 + i) // 1-based indexing
+        val domainEvent = s"Event $index"
+        LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
+      }
+
+      persistenceTestKit.withPolicy(new FailPersistedAfterNPersisted(snapshotEvery - 1))
+      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
+      expectNoMessage()
+      entries.dropRight(1).foreach { entry =>
+        persistenceTestKit.expectNextPersisted(persistenceId, entry.event.event)
+      }
       persistenceTestKit.expectNothingPersisted(persistenceId)
       snapshotTestKit.expectNothingPersisted(persistenceId)
     }

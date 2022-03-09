@@ -29,9 +29,11 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   private val CommandManifest               = "AI"
   private val ForwardedCommandManifest      = "AJ"
   // raft.eventsourced
-  private val CommitLogStoreInternalEventManifest = "BA"
-  private val CommitLogStoreSaveManifest          = "BB"
-  private val CommitLogStoreActorStateManifest    = "BC"
+  private val CommitLogStoreInternalEventManifest                  = "BA"
+  private val CommitLogStoreSaveManifest                           = "BB"
+  private val CommitLogStoreActorStateManifest                     = "BC"
+  private val CommitLogStoreAppendCommittedEntriesManifest         = "BD"
+  private val CommitLogStoreAppendCommittedEntriesResponseManifest = "BE"
   // raft.protocol
   private val RequestVoteManifest              = "CA"
   private val RequestVoteAcceptedManifest      = "CB"
@@ -70,9 +72,11 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     CommandManifest               -> commandFromBinary,
     ForwardedCommandManifest      -> forwardedCommandFromBinary,
     // raft.eventsourced
-    CommitLogStoreInternalEventManifest -> commitLogStoreInternalEventFromBinary,
-    CommitLogStoreSaveManifest          -> commitLogStoreSaveFromBinary,
-    CommitLogStoreActorStateManifest    -> commitLogStoreActorStateFromBinary,
+    CommitLogStoreInternalEventManifest                  -> commitLogStoreInternalEventFromBinary,
+    CommitLogStoreSaveManifest                           -> commitLogStoreSaveFromBinary,
+    CommitLogStoreActorStateManifest                     -> commitLogStoreActorStateFromBinary,
+    CommitLogStoreAppendCommittedEntriesManifest         -> commitLogStoreAppendCommittedEntriesFromBinary,
+    CommitLogStoreAppendCommittedEntriesResponseManifest -> commitLogStoreAppendCommittedEntriesResponseFromBinary,
     // raft.protocol
     RequestVoteManifest              -> requestVoteFromBinary,
     RequestVoteAcceptedManifest      -> requestVoteAcceptedFromBinary,
@@ -142,6 +146,10 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     case raft.eventsourced.InternalEvent                => CommitLogStoreInternalEventManifest
     case _: raft.eventsourced.Save                      => CommitLogStoreSaveManifest
     case _: raft.eventsourced.CommitLogStoreActor.State => CommitLogStoreActorStateManifest
+    case _: raft.eventsourced.CommitLogStoreActor.AppendCommittedEntries =>
+      CommitLogStoreAppendCommittedEntriesManifest
+    case _: raft.eventsourced.CommitLogStoreActor.AppendCommittedEntriesResponse =>
+      CommitLogStoreAppendCommittedEntriesResponseManifest
     // raft.protocol
     case _: raft.protocol.RaftCommands.RequestVote              => RequestVoteManifest
     case _: raft.protocol.RaftCommands.RequestVoteAccepted      => RequestVoteAcceptedManifest
@@ -183,6 +191,10 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     case m: raft.eventsourced.InternalEvent.type        => commitLogStoreInternalEventToBinary(m)
     case m: raft.eventsourced.Save                      => commitLogStoreSaveToBinary(m)
     case m: raft.eventsourced.CommitLogStoreActor.State => commitLogStoreActorStateToBinary(m)
+    case m: raft.eventsourced.CommitLogStoreActor.AppendCommittedEntries =>
+      commitLogStoreAppendCommittedEntriesToBinary(m)
+    case m: raft.eventsourced.CommitLogStoreActor.AppendCommittedEntriesResponse =>
+      commitLogStoreAppendCommittedEntriesResponseToBinary(m)
     // raft. protocol
     case m: raft.protocol.RaftCommands.RequestVote              => requestVoteToBinary(m)
     case m: raft.protocol.RaftCommands.RequestVoteAccepted      => requestVoteAcceptedToBinary(m)
@@ -424,6 +436,44 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   private def commitLogStoreActorStateFromBinary(bytes: Array[Byte]): raft.eventsourced.CommitLogStoreActor.State = {
     val proto = msg.CommitLogStoreActorState.parseFrom(bytes)
     raft.eventsourced.CommitLogStoreActor.State(
+      currentIndex = logEntryIndexFromProto(proto.currentIndex),
+    )
+  }
+
+  private def commitLogStoreAppendCommittedEntriesToBinary(
+      message: raft.eventsourced.CommitLogStoreActor.AppendCommittedEntries,
+  ): Array[Byte] = {
+    msg.CommitLogStoreAppendCommittedEntries
+      .of(
+        shardId = normalizedShardIdToProto(message.shardId),
+        entries = message.entries.map(logEntryToProto),
+      ).toByteArray
+  }
+
+  private def commitLogStoreAppendCommittedEntriesFromBinary(
+      bytes: Array[Byte],
+  ): raft.eventsourced.CommitLogStoreActor.AppendCommittedEntries = {
+    val proto = msg.CommitLogStoreAppendCommittedEntries.parseFrom(bytes)
+    raft.eventsourced.CommitLogStoreActor.AppendCommittedEntries(
+      shardId = normalizedShardIdFromProto(proto.shardId),
+      entries = proto.entries.map(logEntryFromProto),
+    )
+  }
+
+  private def commitLogStoreAppendCommittedEntriesResponseToBinary(
+      message: raft.eventsourced.CommitLogStoreActor.AppendCommittedEntriesResponse,
+  ): Array[Byte] = {
+    msg.CommitLogStoreAppendCommittedEntriesResponse
+      .of(
+        currentIndex = logEntryIndexToProto(message.currentIndex),
+      ).toByteArray
+  }
+
+  private def commitLogStoreAppendCommittedEntriesResponseFromBinary(
+      bytes: Array[Byte],
+  ): raft.eventsourced.CommitLogStoreActor.AppendCommittedEntriesResponse = {
+    val proto = msg.CommitLogStoreAppendCommittedEntriesResponse.parseFrom(bytes)
+    raft.eventsourced.CommitLogStoreActor.AppendCommittedEntriesResponse(
       currentIndex = logEntryIndexFromProto(proto.currentIndex),
     )
   }
