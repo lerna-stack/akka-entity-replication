@@ -199,14 +199,14 @@ class RaftEventSourcedSpec extends MultiNodeSpec(RaftEventSourcedSpecConfig) wit
         awaitAssert(
           {
             clusterReplication ! DummyReplicationActor.Increment(entityId, requestId1, amount = 3)
-            expectMsgType[DummyReplicationActor.State].knownRequestId should contain(requestId1)
+            expectMsgType[DummyReplicationActor.State](max = 1.second).knownRequestId should contain(requestId1)
           },
           initializationTimeout,
         )
 
         awaitAssert {
           clusterReplication ! DummyReplicationActor.Increment(entityId, requestId2, amount = 10)
-          expectMsgType[DummyReplicationActor.State].knownRequestId should contain(requestId2)
+          expectMsgType[DummyReplicationActor.State](max = 1.second).knownRequestId should contain(requestId2)
         }
 
         val readJournal =

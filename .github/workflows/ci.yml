@@ -7,7 +7,13 @@ on:
     branches: [ master, feature/** ]
 
 env:
-  SBT_OPTS: -Dlerna.enable.discipline
+  # classic timefactor doesn't affect classic default-timeout
+  SBT_OPTS: >-
+    -Dlerna.enable.discipline
+    -Dakka.test.timefactor=3.0
+    -Dakka.actor.testkit.typed.timefactor=3.0
+    -Dakka.test.default-timeout=15s
+    -Dakka.testconductor.barrier-timeout=90s
 
 jobs:
   test:
@@ -51,7 +57,7 @@ jobs:
 
     - name: Run integration tests
       continue-on-error: true # results are reported by action-junit-report
-      run: sh ./scripts/run-multijvm-test.sh 6
+      run: sh ./scripts/run-multijvm-test.sh 1
 
     - name: Publish test report
       uses: mikepenz/action-junit-report@v2
