@@ -9,6 +9,7 @@ import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, SuspendEn
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 import lerna.akka.entityreplication.ReplicationRegion
+import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 
 private[raft] trait Leader { this: RaftActor =>
   import RaftActor._
@@ -39,6 +40,13 @@ private[raft] trait Leader { this: RaftActor =>
     case response: SnapshotProtocol.SaveSnapshotResponse      => receiveSaveSnapshotResponse(response)
     case _: akka.persistence.SaveSnapshotSuccess              => // ignore
     case _: akka.persistence.SaveSnapshotFailure              => // ignore: no problem because events exist even if snapshot saving failed
+
+    // Event sourcing protocol
+    case EventSourcingTick =>
+      handleEventSourcingTick()
+    case response: CommitLogStoreActor.AppendCommittedEntriesResponse =>
+      receiveAppendCommittedEntriesResponse(response)
+
   }
 
   private[this] def receiveRequestVote(res: RequestVote): Unit =
@@ -285,4 +293,60 @@ private[raft] trait Leader { this: RaftActor =>
       messages.foreach(region ! ReplicationRegion.DeliverTo(memberIndex, _))
     }
   }
+
+  private def handleEventSourcingTick(): Unit = {
+    import RaftMemberData.CommittedEntriesForEventSourcingResolveError._
+    val newCommittedEntriesOrError = currentData.resolveCommittedEntriesForEventSourcing
+    newCommittedEntriesOrError match {
+      case Left(UnknownCurrentEventSourcingIndex) =>
+        if (log.isInfoEnabled) {
+          log.info(
+            "=== [Leader] doesn't know eventSourcingIndex yet. " +
+            "sending AppendCommittedEntries(shardId=[{}], entries=empty) to CommitLogStore [{}] to fetch such an index.",
+            shardId,
+            commitLogStore,
+          )
+        }
+        commitLogStore ! CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty)
+      case Left(NextCommittedEntryNotFound(nextEventSourcingIndex, foundFirstIndex)) =>
+        if (log.isErrorEnabled) {
+          log.error(
+            "=== [Leader] could not resolve new committed log entries, but there should be. " +
+            "nextEventSourcingIndex=[{}], commitIndex=[{}], foundFirstIndex=[{}]. " +
+            "This error might happen if compaction deletes such entries before introducing the event-sourcing progress track feature. " +
+            "For confirmation, the leader is sending AppendCommittedEntries(shardId=[{}], entries=empty) to fetch the latest eventSourcingIndex.",
+            nextEventSourcingIndex,
+            currentData.commitIndex,
+            foundFirstIndex,
+            shardId,
+          )
+        }
+        commitLogStore ! CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty)
+      case Right(newCommittedEntries) =>
+        if (newCommittedEntries.isEmpty) {
+          if (log.isDebugEnabled) {
+            log.debug(
+              "=== [Leader] has no new committed log entries. eventSourcingIndex is [{}]. commitIndex is [{}]",
+              currentData.eventSourcingIndex,
+              currentData.commitIndex,
+            )
+          }
+        } else {
+          // TODO limit the number of entries per one AppendCommittedEntries
+          // TODO Batch AppendCommittedEntries
+          if (log.isInfoEnabled) {
+            log.info(
+              "=== [Leader] sending AppendCommittedEntries(shardId=[{}], [{}] entries with indices [{}..{}])",
+              shardId,
+              newCommittedEntries.size,
+              newCommittedEntries.head.index,
+              newCommittedEntries.last.index,
+            )
+          }
+          commitLogStore ! CommitLogStoreActor.AppendCommittedEntries(shardId, newCommittedEntries)
+        }
+    }
+    resetEventSourcingTickTimer()
+  }
+
 }

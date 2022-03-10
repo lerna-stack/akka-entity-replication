@@ -612,6 +612,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
                 otherMemberIndexes,
                 settings,
                 maybeCommitLogStore = None,
+                _commitLogStore = system.deadLetters,
               ) with RaftTestProbeSupport,
             )
           }

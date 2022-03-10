@@ -1,6 +1,6 @@
 package lerna.akka.entityreplication.raft.eventsourced
 
-import akka.actor.{ ActorSystem, Scheduler }
+import akka.actor.{ ActorRef, ActorSystem, Scheduler }
 import akka.pattern.ask
 import akka.util.Timeout
 import lerna.akka.entityreplication.ClusterReplicationSettings
@@ -37,4 +37,7 @@ private[entityreplication] class ShardedCommitLogStore(
       delay = retryDelay,
     )
   }
+
+  override def actorRef: ActorRef = shardRegion
+
 }

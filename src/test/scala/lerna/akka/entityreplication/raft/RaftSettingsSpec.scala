@@ -40,6 +40,7 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.journalPluginId shouldBe ""
       settings.snapshotStorePluginId shouldBe ""
       settings.queryPluginId shouldBe ""
+      settings.eventSourcedCommittedLogEntriesCheckInterval shouldBe 100.millis
       settings.eventSourcedJournalPluginId shouldBe ""
       settings.eventSourcedSnapshotStorePluginId shouldBe ""
       settings.eventSourcedSnapshotEvery shouldBe 1_000
@@ -132,6 +133,18 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       a[IllegalArgumentException] shouldBe thrownBy {
         RaftSettings(config)
       }
+    }
+
+    "throw an IllegalArgumentException if the given eventsourced.committed-log-entries-check-interval is 0 milli" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.eventsourced.committed-log-entries-check-interval = 0ms
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: eventsourced.committed-log-entries-check-interval (0ms) should be greater than 0 milli."
     }
 
     "throw an IllegalArgumentException if the given snapshot-every is out of range" in {

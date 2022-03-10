@@ -32,6 +32,7 @@ private[entityreplication] final case class RaftSettingsImpl(
     journalPluginId: String,
     snapshotStorePluginId: String,
     queryPluginId: String,
+    eventSourcedCommittedLogEntriesCheckInterval: FiniteDuration,
     eventSourcedJournalPluginId: String,
     eventSourcedSnapshotStorePluginId: String,
     eventSourcedSnapshotEvery: Int,
@@ -169,6 +170,13 @@ private[entityreplication] object RaftSettingsImpl {
 
     val queryPluginId: String = config.getString("persistence.query.plugin")
 
+    val eventSourcedCommittedLogEntriesCheckInterval: FiniteDuration =
+      config.getDuration("eventsourced.committed-log-entries-check-interval").toScala
+    require(
+      eventSourcedCommittedLogEntriesCheckInterval > 0.milli,
+      s"eventsourced.committed-log-entries-check-interval (${eventSourcedCommittedLogEntriesCheckInterval.toMillis}ms) should be greater than 0 milli.",
+    )
+
     val eventSourcedJournalPluginId: String = config.getString("eventsourced.persistence.journal.plugin")
 
     val eventSourcedSnapshotStorePluginId: String = config.getString("eventsourced.persistence.snapshot-store.plugin")
@@ -203,6 +211,7 @@ private[entityreplication] object RaftSettingsImpl {
       journalPluginId = journalPluginId,
       snapshotStorePluginId = snapshotStorePluginId,
       queryPluginId = queryPluginId,
+      eventSourcedCommittedLogEntriesCheckInterval = eventSourcedCommittedLogEntriesCheckInterval,
       eventSourcedJournalPluginId = eventSourcedJournalPluginId,
       eventSourcedSnapshotStorePluginId = eventSourcedSnapshotStorePluginId,
       eventSourcedSnapshotEvery = eventSourcedSnapshotEvery,

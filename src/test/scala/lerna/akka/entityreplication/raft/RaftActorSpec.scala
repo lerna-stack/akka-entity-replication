@@ -8,6 +8,7 @@ import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftActor.Follower
 import lerna.akka.entityreplication.raft.RaftProtocol._
+import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands.InstallSnapshot
 import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
@@ -109,10 +110,11 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
       command.metadata shouldBe EntitySnapshotMetadata(entityId, applicableIndex)
     }
 
-    "全スナップショットの永続化が完了すると Entity に適用済みの部分までログが切り詰められる" in {
+    "全スナップショットの永続化が完了すると、eventSourcingIndex (CommitLogStore に保存できたLogEntry の Index) までログが切り詰められる" in {
 
       val snapshotStore       = TestProbe()
       val replicationActor    = TestProbe()
+      val commitLogStore      = TestProbe()
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val follower = createRaftActor(
@@ -120,6 +122,7 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         selfMemberIndex = followerMemberIndex,
         shardSnapshotStore = snapshotStore.ref,
         replicationActor = replicationActor.ref,
+        commitLogStore = commitLogStore.ref,
         settings = RaftSettings(raftConfig),
       )
 
@@ -133,14 +136,19 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId2), "c"), term),
         LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId2), "d"), term),
       )
-      val applicableIndex = LogEntryIndex(3)
       follower ! createAppendEntries(
         shardId,
         term,
         leaderMemberIndex,
         entries = logEntries,
-        leaderCommit = applicableIndex,
+        leaderCommit = LogEntryIndex(4),
       )
+
+      // To advance compaction target entries, CommitLogStore should handle AppendCommittedEntries.
+      val eventSourcingIndex = LogEntryIndex(3)
+      commitLogStore.expectMsg(CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty))
+      commitLogStore.reply(CommitLogStoreActor.AppendCommittedEntriesResponse(eventSourcingIndex))
+
       // entityId1 と entityId2 の両方に TakeSnapshot が配信されるので、それぞれ reply
       replicationActor.fishForSpecificMessage() {
         case msg: TakeSnapshot =>
@@ -166,6 +174,7 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
 
       val snapshotStore       = TestProbe()
       val replicationActor    = TestProbe()
+      val commitLogStore      = TestProbe()
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val follower = createRaftActor(
@@ -174,6 +183,7 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         shardSnapshotStore = snapshotStore.ref,
         replicationActor = replicationActor.ref,
         settings = RaftSettings(raftConfig),
+        commitLogStore = commitLogStore.ref,
       )
 
       val leaderMemberIndex = createUniqueMemberIndex()
@@ -194,6 +204,11 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         entries = logEntries,
         leaderCommit = applicableIndex,
       )
+
+      // To advance compaction target entries, CommitLogStore should handle AppendCommittedEntries.
+      commitLogStore.expectMsg(CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty))
+      commitLogStore.reply(CommitLogStoreActor.AppendCommittedEntriesResponse(applicableIndex))
+
       // entityId1 と entityId2 の両方に TakeSnapshot が配信されるので、それぞれ reply
       replicationActor.fishForSpecificMessage() {
         case msg: TakeSnapshot =>
@@ -217,6 +232,7 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
 
       val snapshotStore       = TestProbe()
       val replicationActor    = TestProbe()
+      val commitLogStore      = TestProbe()
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val follower = createRaftActor(
@@ -225,6 +241,7 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         shardSnapshotStore = snapshotStore.ref,
         replicationActor = replicationActor.ref,
         settings = RaftSettings(raftConfig),
+        commitLogStore = commitLogStore.ref,
       )
 
       val leaderMemberIndex = createUniqueMemberIndex()
@@ -245,6 +262,11 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         entries = logEntries,
         leaderCommit = applicableIndex,
       )
+
+      // To advance compaction target entries, CommitLogStore should handle AppendCommittedEntries.
+      commitLogStore.expectMsg(CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty))
+      commitLogStore.reply(CommitLogStoreActor.AppendCommittedEntriesResponse(applicableIndex))
+
       // entityId1 と entityId2 の両方に TakeSnapshot が配信されるので、それぞれ reply
       replicationActor.fishForSpecificMessage() {
         case msg: TakeSnapshot =>
@@ -270,6 +292,7 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
 
       val snapshotStore       = TestProbe()
       val replicationActor    = TestProbe()
+      val commitLogStore      = TestProbe()
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val follower = createRaftActor(
@@ -278,6 +301,7 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         shardSnapshotStore = snapshotStore.ref,
         replicationActor = replicationActor.ref,
         settings = RaftSettings(raftConfig),
+        commitLogStore = commitLogStore.ref,
       )
 
       val leaderMemberIndex = createUniqueMemberIndex()
@@ -298,6 +322,11 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         entries = logEntries,
         leaderCommit = applicableIndex,
       )
+
+      // To advance compaction target entries, CommitLogStore should handle AppendCommittedEntries.
+      commitLogStore.expectMsg(CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty))
+      commitLogStore.reply(CommitLogStoreActor.AppendCommittedEntriesResponse(applicableIndex))
+
       // 1 回目は永続化に失敗
       replicationActor.fishForSpecificMessage() {
         case msg: TakeSnapshot =>
@@ -315,6 +344,7 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         case msg: SaveSnapshot =>
           snapshotStore.reply(SaveSnapshotFailure(msg.snapshot.metadata))
       }
+
       // 2 回目は成功
       replicationActor.fishForSpecificMessage() {
         case msg: TakeSnapshot =>

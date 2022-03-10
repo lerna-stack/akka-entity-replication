@@ -1,5 +1,6 @@
 package lerna.akka.entityreplication.raft.eventsourced
 
+import akka.actor.ActorRef
 import lerna.akka.entityreplication.model.NormalizedShardId
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 
@@ -9,4 +10,7 @@ private[entityreplication] trait CommitLogStore {
       index: LogEntryIndex,
       committedEvent: Any,
   ): Unit
+
+  def actorRef: ActorRef
+
 }

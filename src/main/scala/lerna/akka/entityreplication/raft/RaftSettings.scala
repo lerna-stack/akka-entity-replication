@@ -62,6 +62,8 @@ trait RaftSettings {
 
   def queryPluginId: String
 
+  def eventSourcedCommittedLogEntriesCheckInterval: FiniteDuration
+
   def eventSourcedJournalPluginId: String
 
   def eventSourcedSnapshotStorePluginId: String

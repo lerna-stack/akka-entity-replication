@@ -332,6 +332,7 @@ private[entityreplication] class ReplicationRegion(
       otherMemberIndexes,
       settings = settings.raftSettings,
       maybeCommitLogStore = maybeCommitLogStore,
+      commitLogStore = maybeCommitLogStore.fold(context.system.deadLetters)(_.actorRef),
     )
   }
 

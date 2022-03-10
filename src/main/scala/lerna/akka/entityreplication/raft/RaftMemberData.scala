@@ -40,11 +40,43 @@ private[entityreplication] trait VolatileStateData[T <: VolatileStateData[T]] {
   def lastApplied: LogEntryIndex
   def snapshottingProgress: SnapshottingProgress
 
+  /** Indicates that [[eventsourced.CommitLogStoreActor]] has already persisted events with indices
+    * lower than or equal to that index
+    *
+    * Note that `None` is '''NOT''' the same as `Some(LogEntryIndex(0))`.
+    * `None` indicates that a Raft actor doesn't know such an index.
+    * `Some(LogEntryIndex(0))` indicates that a Raft actor know that such an index is zero.
+    *
+    * [[eventSourcingIndex]] may be larger than [[commitIndex]] since the leader election and the event sourcing works
+    * independently. This case happens if there is no leader (due to a split vote) until a follower update its [[eventSourcingIndex]]
+    * at SnapshotTick.
+    */
+  def eventSourcingIndex: Option[LogEntryIndex]
+
   protected def updateVolatileState(
       commitIndex: LogEntryIndex = commitIndex,
       lastApplied: LogEntryIndex = lastApplied,
       snapshottingProgress: SnapshottingProgress = snapshottingProgress,
+      eventSourcingIndex: Option[LogEntryIndex] = eventSourcingIndex,
   ): T
+
+  /** Returns new [[RaftMemberData]] those [[eventSourcingIndex]] updated to the given index
+    *
+    * [[eventSourcingIndex]] should only increase.
+    * If the given index is lower than the current [[eventSourcingIndex]], throws an [[IllegalArgumentException]].
+    * This method always success if the current [[eventSourcingIndex]] is [[None]].
+    */
+  def updateEventSourcingIndex(newEventSourcingIndex: LogEntryIndex): T = {
+    eventSourcingIndex.foreach { currentEventSourcingIndex =>
+      require(
+        currentEventSourcingIndex < newEventSourcingIndex,
+        "eventSourcingIndex should only increase. " +
+        s"The given index [${newEventSourcingIndex.underlying}] is less than or equal to the current index [${currentEventSourcingIndex.underlying}].",
+      )
+    }
+    updateVolatileState(eventSourcingIndex = Option(newEventSourcingIndex))
+  }
+
 }
 
 private[entityreplication] trait FollowerData { self: RaftMemberData =>
@@ -272,6 +304,7 @@ private[entityreplication] object RaftMemberData {
       snapshottingProgress: SnapshottingProgress = SnapshottingProgress.empty,
       lastSnapshotStatus: SnapshotStatus = SnapshotStatus.empty,
       entityStates: ShardData.EntityStates = Map(),
+      eventSourcingIndex: Option[LogEntryIndex] = None,
   ) =
     RaftMemberDataImpl(
       currentTerm = currentTerm,
@@ -287,7 +320,28 @@ private[entityreplication] object RaftMemberData {
       snapshottingProgress = snapshottingProgress,
       lastSnapshotStatus = lastSnapshotStatus,
       entityStates = entityStates,
+      eventSourcingIndex = eventSourcingIndex,
     )
+
+  /** Indicates an error reason [[RaftMemberData.resolveCommittedEntriesForEventSourcing]] returns */
+  sealed trait CommittedEntriesForEventSourcingResolveError
+  object CommittedEntriesForEventSourcingResolveError {
+
+    /** Indicates [[RaftMemberData]] doesn't have the index of entries [[eventsourced.CommitLogStoreActor]] has saved
+      * ([[RaftMemberData.eventSourcingIndex]] is [[None]]
+      */
+    case object UnknownCurrentEventSourcingIndex extends CommittedEntriesForEventSourcingResolveError
+
+    /** Indicates [[RaftMemberData.replicatedLog]] doesn't contain the next entry even if there should be.
+      *
+      * The next entry should have the next eventSourcingIndex ([[RaftMemberData.eventSourcingIndex]] + one).
+      */
+    final case class NextCommittedEntryNotFound(
+        nextEventSourcingIndex: LogEntryIndex,
+        foundFirstIndex: Option[LogEntryIndex],
+    ) extends CommittedEntriesForEventSourcingResolveError
+  }
+
 }
 
 private[entityreplication] trait RaftMemberData
@@ -383,9 +437,21 @@ private[entityreplication] trait RaftMemberData
     updatePersistentState(lastSnapshotStatus = SnapshotStatus(snapshotLastTerm, snapshotLastIndex))
   }
 
+  /** Return new [[RaftMemberData]] those [[replicatedLog]] compacted (some prefix entries are deleted)
+    *
+    * While preserving that the compacted log has at least the given `preserveLogSize` entries, the compaction deletes
+    * entries with indices less than or equal to the minimum of index of [[lastSnapshotStatus]] and [[eventSourcingIndex]].
+    * If [[eventSourcingIndex]] is unknown (it is [[None]]), the compaction deletes no entries.
+    * The compacted log entries might be less than `preserveLogSize` if the current number of entries is already smaller than that size.
+    */
   def compactReplicatedLog(preserveLogSize: Int): RaftMemberData = {
+    val toIndex = LogEntryIndex.min(
+      lastSnapshotStatus.snapshotLastLogIndex,
+      // Use 0 as the default since this must not delete entries if eventSourcingIndex is unknown.
+      eventSourcingIndex.getOrElse(LogEntryIndex(0)),
+    )
     updatePersistentState(
-      replicatedLog = replicatedLog.deleteOldEntries(lastSnapshotStatus.snapshotLastLogIndex, preserveLogSize),
+      replicatedLog = replicatedLog.deleteOldEntries(toIndex, preserveLogSize),
     )
   }
 
@@ -394,6 +460,40 @@ private[entityreplication] trait RaftMemberData
       lastSnapshotStatus = SnapshotStatus(snapshotLastLogTerm, snapshotLastLogIndex),
       replicatedLog = replicatedLog.reset(snapshotLastLogTerm, snapshotLastLogIndex),
     )
+  }
+
+  /** Returns a sequence of [[LogEntry]] to persist in [[eventsourced.CommitLogStoreActor]]
+    *
+    * Returns [[RaftMemberData.CommittedEntriesForEventSourcingResolveError.UnknownCurrentEventSourcingIndex]] if this
+    * data doesn't have the index of entries `CommitLogStoreActor` has saved ([[eventSourcingIndex]] is [[None]]).
+    *
+    * If [[eventSourcingIndex]] is less than [[commitIndex]], returning entries should not be empty, and should contain
+    * the entry with eventSourcingIndex plus one. Returns [[RaftMemberData.CommittedEntriesForEventSourcingResolveError.NextCommittedEntryNotFound]]
+    * if these conditions don't meet.
+    *
+    * Note that [[eventSourcingIndex]] may be larger than [[commitIndex]]. See [[eventSourcingIndex]].
+    */
+  def resolveCommittedEntriesForEventSourcing
+      : Either[RaftMemberData.CommittedEntriesForEventSourcingResolveError, IndexedSeq[LogEntry]] = {
+    import RaftMemberData.CommittedEntriesForEventSourcingResolveError._
+    eventSourcingIndex match {
+      case None =>
+        Left(UnknownCurrentEventSourcingIndex)
+      case Some(currentEventSourcingIndex) =>
+        if (currentEventSourcingIndex < commitIndex) {
+          val nextEventSourcingIndex = currentEventSourcingIndex.next()
+          val availableEntries =
+            replicatedLog.sliceEntries(from = nextEventSourcingIndex, to = commitIndex)
+          val firstIndexOption = availableEntries.headOption.map(_.index)
+          if (firstIndexOption != Option(nextEventSourcingIndex)) {
+            Left(NextCommittedEntryNotFound(nextEventSourcingIndex, firstIndexOption))
+          } else {
+            Right(availableEntries.toIndexedSeq)
+          }
+        } else {
+          Right(IndexedSeq.empty)
+        }
+    }
   }
 
 }
@@ -412,6 +512,7 @@ private[entityreplication] final case class RaftMemberDataImpl(
     snapshottingProgress: SnapshottingProgress,
     lastSnapshotStatus: SnapshotStatus,
     entityStates: ShardData.EntityStates,
+    eventSourcingIndex: Option[LogEntryIndex],
 ) extends RaftMemberData {
 
   override protected def updatePersistentState(
@@ -431,12 +532,14 @@ private[entityreplication] final case class RaftMemberDataImpl(
       commitIndex: LogEntryIndex,
       lastApplied: LogEntryIndex,
       snapshottingProgress: SnapshottingProgress,
+      eventSourcingIndex: Option[LogEntryIndex],
   ): RaftMemberData =
     copy(
       commitIndex = commitIndex,
       votedFor = votedFor,
       lastApplied = lastApplied,
       snapshottingProgress = snapshottingProgress,
+      eventSourcingIndex = eventSourcingIndex,
     )
 
   override protected def updateFollowerVolatileState(leaderMember: Option[MemberIndex]): RaftMemberData =
