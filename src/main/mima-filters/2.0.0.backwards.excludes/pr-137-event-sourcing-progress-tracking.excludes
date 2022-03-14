@@ -1,0 +1,3 @@
+# It is safe to exclude the following since these classes are package private.
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.raft.eventsourced.CommitLogStore")
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.raft.eventsourced.ShardedCommitLogStore")
