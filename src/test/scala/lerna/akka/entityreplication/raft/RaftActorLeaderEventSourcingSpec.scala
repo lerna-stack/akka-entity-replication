@@ -6,6 +6,7 @@ import akka.{ actor => classic }
 import akka.actor.ActorRef
 import akka.actor.typed.ActorSystem
 import akka.testkit.{ TestKit, TestProbe }
+import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId }
 import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, NoOp, ReplicatedLog, Term }
@@ -19,6 +20,14 @@ final class RaftActorLeaderEventSourcingSpec extends TestKit(classic.ActorSystem
 
   private implicit val typedSystem: ActorSystem[Nothing] = system.toTyped
 
+  private val raftConfig: Config =
+    ConfigFactory
+      .parseString("""
+        |# EventSourcingTick will be emitted manually by each test case.
+        |# Use enough larger value to avoid emitting such the tick by timers.
+        |lerna.akka.entityreplication.raft.eventsourced.committed-log-entries-check-interval = 1000s
+        |""".stripMargin).withFallback(defaultRaftConfig)
+
   private def spawnLeader(
       currentTerm: Term,
       replicatedLog: ReplicatedLog,
@@ -26,11 +35,13 @@ final class RaftActorLeaderEventSourcingSpec extends TestKit(classic.ActorSystem
       lastApplied: LogEntryIndex,
       eventSourcingIndex: Option[LogEntryIndex],
       shardId: NormalizedShardId = createUniqueShardId(),
+      raftSettings: RaftSettings = RaftSettings(raftConfig),
       commitLogStore: ActorRef = TestProbe().ref,
   ): RaftTestFSMRef = {
     val leader = createRaftActor(
       shardId = shardId,
       selfMemberIndex = createUniqueMemberIndex(),
+      settings = raftSettings,
       commitLogStore = commitLogStore,
     )
     val leaderData = createLeaderData(
@@ -280,6 +291,162 @@ final class RaftActorLeaderEventSourcingSpec extends TestKit(classic.ActorSystem
           appendCommittedEntries.entries(1),
         )
       }
+    }
+
+    "handle EventSourcingTick and send multiple batched AppendCommittedEntries if it has more entries than `max-append-committed-entries-size`" in {
+      val shardId        = createUniqueShardId()
+      val commitLogStore = TestProbe()
+      val entityId       = NormalizedEntityId.from("entity1")
+      val raftSettings = RaftSettings(
+        ConfigFactory
+          .parseString("""
+            |lerna.akka.entityreplication.raft.eventsourced.max-append-committed-entries-size = 2
+            |lerna.akka.entityreplication.raft.eventsourced.max-append-committed-entries-batch-size = 3
+            |""".stripMargin)
+          .withFallback(raftConfig),
+      )
+      val leader = {
+        val replicatedLog = {
+          newReplicatedLog(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event1"), Term(1)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event2"), Term(1)),
+            LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event3"), Term(1)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event4"), Term(1)),
+            LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "event5"), Term(1)),
+          )
+        }
+        spawnLeader(
+          currentTerm = Term(1),
+          replicatedLog = replicatedLog,
+          commitIndex = LogEntryIndex(6),
+          lastApplied = LogEntryIndex(6),
+          eventSourcingIndex = Some(LogEntryIndex(1)),
+          shardId = shardId,
+          raftSettings = raftSettings,
+          commitLogStore = commitLogStore.ref,
+        )
+      }
+      leader ! RaftActor.EventSourcingTick
+
+      inside(commitLogStore.expectMsgType[CommitLogStoreActor.AppendCommittedEntries]) { appendCommittedEntries =>
+        appendCommittedEntries.shardId should be(shardId)
+        appendCommittedEntries.entries.size should be(2)
+        assertEqualsLogEntry(
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event1"), Term(1)),
+          appendCommittedEntries.entries(0),
+        )
+        assertEqualsLogEntry(
+          LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event2"), Term(1)),
+          appendCommittedEntries.entries(1),
+        )
+      }
+
+      inside(commitLogStore.expectMsgType[CommitLogStoreActor.AppendCommittedEntries]) { appendCommittedEntries =>
+        appendCommittedEntries.shardId should be(shardId)
+        appendCommittedEntries.entries.size should be(2)
+        assertEqualsLogEntry(
+          LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event3"), Term(1)),
+          appendCommittedEntries.entries(0),
+        )
+        assertEqualsLogEntry(
+          LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event4"), Term(1)),
+          appendCommittedEntries.entries(1),
+        )
+      }
+
+      inside(commitLogStore.expectMsgType[CommitLogStoreActor.AppendCommittedEntries]) { appendCommittedEntries =>
+        appendCommittedEntries.shardId should be(shardId)
+        appendCommittedEntries.entries.size should be(1)
+        assertEqualsLogEntry(
+          LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "event5"), Term(1)),
+          appendCommittedEntries.entries(0),
+        )
+      }
+
+      commitLogStore.expectNoMessage()
+
+    }
+
+    "handle EventSourcingTick and send at most `max-append-committed-entries-batch-size` AppendCommittedEntries" in {
+      val shardId        = createUniqueShardId()
+      val commitLogStore = TestProbe()
+      val entityId       = NormalizedEntityId.from("entity1")
+      val raftSettings = RaftSettings(
+        ConfigFactory
+          .parseString("""
+                         |lerna.akka.entityreplication.raft.eventsourced.max-append-committed-entries-size = 2
+                         |lerna.akka.entityreplication.raft.eventsourced.max-append-committed-entries-batch-size = 3
+                         |""".stripMargin)
+          .withFallback(raftConfig),
+      )
+      val leader = {
+        val replicatedLog = {
+          newReplicatedLog(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event1"), Term(1)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event2"), Term(1)),
+            LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event3"), Term(1)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event4"), Term(1)),
+            LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "event5"), Term(1)),
+            LogEntry(LogEntryIndex(7), EntityEvent(Option(entityId), "event6"), Term(1)),
+            LogEntry(LogEntryIndex(8), EntityEvent(Option(entityId), "event7"), Term(1)),
+          )
+        }
+        spawnLeader(
+          currentTerm = Term(1),
+          replicatedLog = replicatedLog,
+          commitIndex = LogEntryIndex(8),
+          lastApplied = LogEntryIndex(8),
+          eventSourcingIndex = Some(LogEntryIndex(1)),
+          shardId = shardId,
+          raftSettings = raftSettings,
+          commitLogStore = commitLogStore.ref,
+        )
+      }
+      leader ! RaftActor.EventSourcingTick
+
+      inside(commitLogStore.expectMsgType[CommitLogStoreActor.AppendCommittedEntries]) { appendCommittedEntries =>
+        appendCommittedEntries.shardId should be(shardId)
+        appendCommittedEntries.entries.size should be(2)
+        assertEqualsLogEntry(
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event1"), Term(1)),
+          appendCommittedEntries.entries(0),
+        )
+        assertEqualsLogEntry(
+          LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event2"), Term(1)),
+          appendCommittedEntries.entries(1),
+        )
+      }
+
+      inside(commitLogStore.expectMsgType[CommitLogStoreActor.AppendCommittedEntries]) { appendCommittedEntries =>
+        appendCommittedEntries.shardId should be(shardId)
+        appendCommittedEntries.entries.size should be(2)
+        assertEqualsLogEntry(
+          LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event3"), Term(1)),
+          appendCommittedEntries.entries(0),
+        )
+        assertEqualsLogEntry(
+          LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event4"), Term(1)),
+          appendCommittedEntries.entries(1),
+        )
+      }
+
+      inside(commitLogStore.expectMsgType[CommitLogStoreActor.AppendCommittedEntries]) { appendCommittedEntries =>
+        appendCommittedEntries.shardId should be(shardId)
+        appendCommittedEntries.entries.size should be(2)
+        assertEqualsLogEntry(
+          LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "event5"), Term(1)),
+          appendCommittedEntries.entries(0),
+        )
+        assertEqualsLogEntry(
+          LogEntry(LogEntryIndex(7), EntityEvent(Option(entityId), "event6"), Term(1)),
+          appendCommittedEntries.entries(1),
+        )
+      }
+
+      commitLogStore.expectNoMessage()
+
     }
 
   }

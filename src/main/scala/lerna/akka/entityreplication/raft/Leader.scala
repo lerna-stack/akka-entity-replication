@@ -332,18 +332,46 @@ private[raft] trait Leader { this: RaftActor =>
             )
           }
         } else {
-          // TODO limit the number of entries per one AppendCommittedEntries
-          // TODO Batch AppendCommittedEntries
+          val limitedNewCommittedEntries =
+            newCommittedEntries
+              .take(
+                settings.eventSourcedMaxAppendCommittedEntriesSize * settings.eventSourcedMaxAppendCommittedEntriesBatchSize,
+              )
+          val batches =
+            limitedNewCommittedEntries
+              .sliding(
+                settings.eventSourcedMaxAppendCommittedEntriesSize,
+                settings.eventSourcedMaxAppendCommittedEntriesSize,
+              ).toSeq
           if (log.isInfoEnabled) {
             log.info(
-              "=== [Leader] sending AppendCommittedEntries(shardId=[{}], [{}] entries with indices [{}..{}])",
-              shardId,
-              newCommittedEntries.size,
-              newCommittedEntries.head.index,
-              newCommittedEntries.last.index,
+              s"=== [Leader] sending [{}] batched AppendCommittedEntries(shardId=[$shardId]). [{}] entries with indices [{}..{}] will be sent in multiple batches.",
+              batches.size,
+              limitedNewCommittedEntries.size,
+              limitedNewCommittedEntries.head.index,
+              limitedNewCommittedEntries.last.index,
             )
           }
-          commitLogStore ! CommitLogStoreActor.AppendCommittedEntries(shardId, newCommittedEntries)
+          batches.foreach { batchedEntries =>
+            assert(
+              batchedEntries.sizeIs > 0,
+              s"The number of entries of each batch (${batchedEntries.size}) should be greater than 0.",
+            )
+            assert(
+              batchedEntries.sizeIs <= settings.eventSourcedMaxAppendCommittedEntriesSize,
+              s"The number of entries of each batch (${batchedEntries.size}) should be less than ${settings.eventSourcedMaxAppendCommittedEntriesSize}.",
+            )
+            if (log.isDebugEnabled) {
+              log.debug(
+                "=== [Leader] sending AppendCommittedEntries(shardId=[{}], [{}] entries with indices [{}..{}]).",
+                shardId,
+                batchedEntries.size,
+                batchedEntries.head.index,
+                batchedEntries.last.index,
+              )
+            }
+            commitLogStore ! CommitLogStoreActor.AppendCommittedEntries(shardId, batchedEntries)
+          }
         }
     }
     resetEventSourcingTickTimer()

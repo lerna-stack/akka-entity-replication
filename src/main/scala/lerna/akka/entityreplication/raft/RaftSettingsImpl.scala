@@ -33,6 +33,8 @@ private[entityreplication] final case class RaftSettingsImpl(
     snapshotStorePluginId: String,
     queryPluginId: String,
     eventSourcedCommittedLogEntriesCheckInterval: FiniteDuration,
+    eventSourcedMaxAppendCommittedEntriesSize: Int,
+    eventSourcedMaxAppendCommittedEntriesBatchSize: Int,
     eventSourcedJournalPluginId: String,
     eventSourcedSnapshotStorePluginId: String,
     eventSourcedSnapshotEvery: Int,
@@ -177,6 +179,20 @@ private[entityreplication] object RaftSettingsImpl {
       s"eventsourced.committed-log-entries-check-interval (${eventSourcedCommittedLogEntriesCheckInterval.toMillis}ms) should be greater than 0 milli.",
     )
 
+    val eventSourcedMaxAppendCommittedEntriesSize: Int =
+      config.getInt("eventsourced.max-append-committed-entries-size")
+    require(
+      eventSourcedMaxAppendCommittedEntriesSize > 0,
+      s"eventsourced.max-append-committed-entries-size ($eventSourcedMaxAppendCommittedEntriesSize) should be greater than 0.",
+    )
+
+    val eventSourcedMaxAppendCommittedEntriesBatchSize: Int =
+      config.getInt("eventsourced.max-append-committed-entries-batch-size")
+    require(
+      eventSourcedMaxAppendCommittedEntriesBatchSize > 0,
+      s"eventsourced.max-append-committed-entries-batch-size ($eventSourcedMaxAppendCommittedEntriesBatchSize) should be greater than 0.",
+    )
+
     val eventSourcedJournalPluginId: String = config.getString("eventsourced.persistence.journal.plugin")
 
     val eventSourcedSnapshotStorePluginId: String = config.getString("eventsourced.persistence.snapshot-store.plugin")
@@ -212,6 +228,8 @@ private[entityreplication] object RaftSettingsImpl {
       snapshotStorePluginId = snapshotStorePluginId,
       queryPluginId = queryPluginId,
       eventSourcedCommittedLogEntriesCheckInterval = eventSourcedCommittedLogEntriesCheckInterval,
+      eventSourcedMaxAppendCommittedEntriesSize,
+      eventSourcedMaxAppendCommittedEntriesBatchSize,
       eventSourcedJournalPluginId = eventSourcedJournalPluginId,
       eventSourcedSnapshotStorePluginId = eventSourcedSnapshotStorePluginId,
       eventSourcedSnapshotEvery = eventSourcedSnapshotEvery,
