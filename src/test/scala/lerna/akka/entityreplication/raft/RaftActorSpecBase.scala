@@ -61,7 +61,6 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
           selfMemberIndex,
           otherMemberIndexes,
           settings,
-          maybeCommitLogStore = None,
           commitLogStore,
         ) with RaftTestProbeSupport,
       ),

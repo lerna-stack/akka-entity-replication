@@ -7,7 +7,6 @@ import lerna.akka.entityreplication.ClusterReplication.EntityPropsProvider
 import lerna.akka.entityreplication.ReplicationRegion.Msg
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, _ }
-import lerna.akka.entityreplication.raft.eventsourced.CommitLogStore
 import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
@@ -30,7 +29,6 @@ private[entityreplication] object RaftActor {
       selfMemberIndex: MemberIndex,
       otherMemberIndexes: Set[MemberIndex],
       settings: RaftSettings,
-      maybeCommitLogStore: Option[CommitLogStore],
       commitLogStore: ActorRef,
   ) =
     Props(
@@ -43,7 +41,6 @@ private[entityreplication] object RaftActor {
         selfMemberIndex,
         otherMemberIndexes,
         settings,
-        maybeCommitLogStore,
         commitLogStore,
       ),
     )
@@ -130,7 +127,6 @@ private[raft] class RaftActor(
     _selfMemberIndex: MemberIndex,
     _otherMemberIndexes: Set[MemberIndex],
     val settings: RaftSettings,
-    maybeCommitLogStore: Option[CommitLogStore],
     _commitLogStore: ActorRef,
 ) extends RaftActorBase
     with RuntimePluginConfig
@@ -239,16 +235,12 @@ private[raft] class RaftActor(
           .applyCommittedLogEntries { logEntries =>
             logEntries.foreach { logEntry =>
               applyToReplicationActor(logEntry)
-              maybeCommitLogStore.foreach(_.save(shardId, logEntry.index, logEntry.event.event))
             }
           }
       case Committed(logEntryIndex) =>
         currentData
           .commit(logEntryIndex)
           .handleCommittedLogEntriesAndClients { entries =>
-            maybeCommitLogStore.foreach(store => {
-              entries.map(_._1).foreach(logEntry => store.save(shardId, logEntry.index, logEntry.event.event))
-            })
             entries.foreach {
               case (logEntry, Some(client)) =>
                 if (log.isDebugEnabled)

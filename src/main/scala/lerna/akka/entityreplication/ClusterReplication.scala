@@ -3,7 +3,7 @@ package lerna.akka.entityreplication
 import akka.actor.{ Actor, ActorRef, ExtendedActorSystem, Extension, ExtensionId, ExtensionIdProvider, Props, Status }
 import lerna.akka.entityreplication.ClusterReplication.EntityPropsProvider
 import lerna.akka.entityreplication.model.TypeName
-import lerna.akka.entityreplication.raft.eventsourced.{ CommitLogStore, ShardedCommitLogStore }
+import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.util.ActorIds
 import akka.util.Timeout
 import akka.pattern.ask
@@ -92,12 +92,8 @@ private[entityreplication] class ClusterReplicationGuardian extends Actor {
         val _typeName  = TypeName.from(typeName)
         val regionName = ActorIds.actorName(_typeName.underlying)
 
-        val maybeCommitLogStore: Option[CommitLogStore] = {
-          // TODO: RMUの有効無効をconfigから指定
-          val enabled = true // FIXME: settings から取得する (typeName ごとに切り替えられる必要あり)
-          // TODO: テストのために差し替え出来るようにする
-          Option.when(enabled)(new ShardedCommitLogStore(_typeName, context.system, settings))
-        }
+        val commitLogStore: ActorRef =
+          CommitLogStoreActor.startClusterSharding(_typeName, context.system, settings)
 
         val regionRef: ActorRef =
           context.child(regionName) match {
@@ -111,7 +107,7 @@ private[entityreplication] class ClusterReplicationGuardian extends Actor {
                   extractEntityId,
                   extractShardId,
                   possibleShardIds,
-                  maybeCommitLogStore,
+                  commitLogStore,
                 ),
                 regionName,
               )
