@@ -437,6 +437,19 @@ private[entityreplication] trait RaftMemberData
     updatePersistentState(lastSnapshotStatus = SnapshotStatus(snapshotLastTerm, snapshotLastIndex))
   }
 
+  /** Returns the estimated size of [[replicatedLog]] after compaction completes.
+    *
+    * This estimated size is helpful to decide whether the compaction executes or not.
+    * Note that this value is '''estimation''' since values for the calculation can change during compaction.
+    */
+  def estimatedReplicatedLogSizeAfterCompaction(preserveLogSize: Int): Int = {
+    val toIndex = LogEntryIndex.min(
+      lastApplied,
+      eventSourcingIndex.getOrElse(LogEntryIndex(0)),
+    )
+    replicatedLog.deleteOldEntries(toIndex, preserveLogSize).entries.size
+  }
+
   /** Return new [[RaftMemberData]] those [[replicatedLog]] compacted (some prefix entries are deleted)
     *
     * While preserving that the compacted log has at least the given `preserveLogSize` entries, the compaction deletes

@@ -140,6 +140,97 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
     )
   }
 
+  behavior of "RaftMemberData.estimatedReplicatedLogSizeAfterCompaction"
+
+  it should "return estimated compacted log size when lastApplied is greater than eventSourcingIndex" in {
+    val entityId = NormalizedEntityId("entity1")
+    val replicatedLog = {
+      ReplicatedLog().merge(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event2"), Term(2)),
+        ),
+        LogEntryIndex(0),
+      )
+    }
+    val data = RaftMemberData(
+      replicatedLog = replicatedLog,
+      commitIndex = LogEntryIndex(3),
+      lastApplied = LogEntryIndex(3),
+      eventSourcingIndex = Some(LogEntryIndex(2)),
+    )
+    data.estimatedReplicatedLogSizeAfterCompaction(1) should be(2)
+  }
+
+  it should "return estimated compacted log size when lastApplied is less than eventSourcingIndex" in {
+    val entityId = NormalizedEntityId("entity1")
+    val replicatedLog = {
+      ReplicatedLog().merge(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event2"), Term(2)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event3"), Term(2)),
+        ),
+        LogEntryIndex(0),
+      )
+    }
+    val data = RaftMemberData(
+      replicatedLog = replicatedLog,
+      commitIndex = LogEntryIndex(3),
+      lastApplied = LogEntryIndex(3),
+      eventSourcingIndex = Some(LogEntryIndex(4)),
+    )
+    data.estimatedReplicatedLogSizeAfterCompaction(1) should be(2)
+  }
+
+  it should "return estimated compacted log size when eventSourcingIndex is unknown" in {
+    val entityId = NormalizedEntityId("entity1")
+    val replicatedLog = {
+      ReplicatedLog().merge(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
+        ),
+        LogEntryIndex(0),
+      )
+    }
+    val data = RaftMemberData(
+      replicatedLog = replicatedLog,
+      commitIndex = LogEntryIndex(2),
+      lastApplied = LogEntryIndex(2),
+      eventSourcingIndex = None,
+    )
+    data.estimatedReplicatedLogSizeAfterCompaction(1) should be(2)
+  }
+
+  it should "return estimated compacted log size (preserveLogSize floors this size)" in {
+    val entityId = NormalizedEntityId("entity1")
+    val replicatedLog = {
+      ReplicatedLog().merge(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event2"), Term(1)),
+        ),
+        LogEntryIndex(0),
+      )
+    }
+    val data = RaftMemberData(
+      replicatedLog = replicatedLog,
+      commitIndex = LogEntryIndex(2),
+      lastApplied = LogEntryIndex(2),
+      eventSourcingIndex = Some(LogEntryIndex(2)),
+    )
+    data.estimatedReplicatedLogSizeAfterCompaction(1) should be(1)
+    data.estimatedReplicatedLogSizeAfterCompaction(2) should be(2)
+    data.estimatedReplicatedLogSizeAfterCompaction(3) should be(3)
+    data.estimatedReplicatedLogSizeAfterCompaction(4) should be(3)
+  }
+
   behavior of "RaftMemberData.compactReplicatedLog"
 
   it should "return new RaftMemberData with compacted entries. The number of compacted entries should be greater than or equal to preserveLogSize)" in {

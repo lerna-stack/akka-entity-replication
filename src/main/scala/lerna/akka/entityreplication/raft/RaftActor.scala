@@ -462,15 +462,28 @@ private[raft] class RaftActor(
     }
     commitLogStore ! CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty)
 
-    // TODO Should skip the compaction if new compacted log entries aren't less than the threshold.
     if (
       currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold
       && currentData.hasLogEntriesThatCanBeCompacted
     ) {
+      val estimatedCompactedLogSize: Int =
+        currentData.estimatedReplicatedLogSizeAfterCompaction(settings.compactionPreserveLogSize)
       if (snapshotSynchronizationIsInProgress) {
         // Snapshot updates during synchronizing snapshot will break consistency
         if (log.isInfoEnabled)
           log.info("Skipping compaction because snapshot synchronization is in progress")
+      } else if (estimatedCompactedLogSize >= settings.compactionLogSizeThreshold) {
+        if (log.isWarningEnabled) {
+          log.warning(
+            "[{}] Skipping compaction since compaction might not delete enough entries " +
+            "(even if this compaction continues, the remaining entries will trigger new compaction at the next tick). " +
+            "Estimated compacted log size is [{}] entries. compaction.log-size-threshold is [{}] entries. " +
+            "This warning happens if event sourcing is too slow or compaction is too fast.",
+            currentState,
+            estimatedCompactedLogSize,
+            settings.compactionLogSizeThreshold,
+          )
+        }
       } else {
         val (term, logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
         applyDomainEvent(SnapshottingStarted(term, logEntryIndex, entityIds)) { _ =>
