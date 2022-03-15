@@ -1,7 +1,9 @@
 package lerna.akka.entityreplication.typed
 
 import akka.actor.RootActorPath
+import akka.actor.testkit.typed.TestKitSettings
 import akka.actor.testkit.typed.scaladsl.LoggingTestKit
+import akka.actor.testkit.typed.scaladsl._
 import akka.actor.typed.scaladsl.adapter._
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.{ ActorRef, ActorSystem }
@@ -27,6 +29,8 @@ object LogReplicationDuringSnapshotSyncSpecConfig extends MultiNodeConfig {
   val node4: RoleName = role("node4")
 
   testTransport(true)
+
+  private implicit val testKitSettings: TestKitSettings = TestKitSettings(ConfigFactory.load())
 
   private val testConfig: Config =
     ConfigFactory.parseString {
@@ -75,22 +79,28 @@ object LogReplicationDuringSnapshotSyncSpecConfig extends MultiNodeConfig {
     """
   })
 
+  def renderAsConfigValue(duration: FiniteDuration): String = {
+    s"${duration.toMillis}ms"
+  }
+
   nodeConfig(node1)(ConfigFactory.parseString {
-    """
+    s"""
     akka.cluster.roles = ["member-1"]
     // This node will become a leader
     lerna.akka.entityreplication.raft.heartbeat-interval = 50ms
-    lerna.akka.entityreplication.raft.election-timeout = 750ms
+    // This test is prone to false positives in the CI environment 
+    lerna.akka.entityreplication.raft.election-timeout = ${renderAsConfigValue(750.millis.dilated)}
     lerna.akka.entityreplication.raft.compaction.log-size-threshold = 3005
     """
   })
 
   nodeConfig(node2)(ConfigFactory.parseString {
-    """
+    s"""
     akka.cluster.roles = ["member-2"]
     // This node will become a leader
     lerna.akka.entityreplication.raft.heartbeat-interval = 50ms
-    lerna.akka.entityreplication.raft.election-timeout = 750ms
+    // This test is prone to false positives in the CI environment 
+    lerna.akka.entityreplication.raft.election-timeout = ${renderAsConfigValue(750.millis.dilated)}
     // To disable compaction
     lerna.akka.entityreplication.raft.compaction.log-size-threshold = 999999
     """
