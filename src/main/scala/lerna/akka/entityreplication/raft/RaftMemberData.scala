@@ -441,8 +441,11 @@ private[entityreplication] trait RaftMemberData
     *
     * This estimated size is helpful to decide whether the compaction executes or not.
     * Note that this value is '''estimation''' since values for the calculation can change during compaction.
+    *
+    * Throws an [[IllegalArgumentException]] if the given `preserveLogSize` is less than or equals to 0.
     */
   def estimatedReplicatedLogSizeAfterCompaction(preserveLogSize: Int): Int = {
+    require(preserveLogSize > 0, s"preserveLogSize($preserveLogSize) should be greater than 0.")
     val toIndex = LogEntryIndex.min(
       lastApplied,
       eventSourcingIndex.getOrElse(LogEntryIndex(0)),
