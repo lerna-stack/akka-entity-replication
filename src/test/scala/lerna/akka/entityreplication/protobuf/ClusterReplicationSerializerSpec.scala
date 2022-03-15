@@ -40,7 +40,11 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
   EntitySnapshotMetadata,
   EntityState,
 }
-import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager.{ SyncCompleted, SyncProgress }
+import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager.{
+  SnapshotCopied,
+  SyncCompleted,
+  SyncProgress,
+}
 import lerna.akka.entityreplication.testkit.KryoSerializable
 import lerna.akka.entityreplication.typed.ReplicationEnvelope
 
@@ -254,6 +258,23 @@ final class ClusterReplicationSerializerSpec
     checkSerialization(SyncProgress(NoOffset))
     checkSerialization(SyncProgress(Sequence(283)))
     checkSerialization(SyncProgress(TimeBasedUUID(UUID.fromString("ed286108-8a13-11eb-8dcd-0242ac130003"))))
+    Seq(NoOffset, Sequence(345), TimeBasedUUID(UUID.fromString("04b3ee72-8d39-11ec-9503-00155da8e61b"))).foreach {
+      offset =>
+        checkSerialization(
+          SnapshotCopied(
+            offset,
+            MemberIndex("member&need%url?encode"),
+            NormalizedShardId.from("shard&need%url?encode"),
+            Term(85714),
+            LogEntryIndex(2357),
+            Set(
+              NormalizedEntityId.from("shard1"),
+              NormalizedEntityId.from("shard2&need%url?encode"),
+              NormalizedEntityId.from("shard3"),
+            ),
+          ),
+        )
+    }
 
     // raft.model
     checkSerialization(NoOp)

@@ -25,6 +25,7 @@ private[entityreplication] final case class RaftSettingsImpl(
     compactionLogSizeCheckInterval: FiniteDuration,
     snapshotSyncCopyingParallelism: Int,
     snapshotSyncPersistenceOperationTimeout: FiniteDuration,
+    snapshotSyncMaxSnapshotBatchSize: Int,
     clusterShardingConfig: Config,
     raftActorAutoStartFrequency: FiniteDuration,
     raftActorAutoStartNumberOfActors: Int,
@@ -140,6 +141,13 @@ private[entityreplication] object RaftSettingsImpl {
     val snapshotSyncPersistenceOperationTimeout: FiniteDuration =
       config.getDuration("snapshot-sync.persistence-operation-timeout").toScala
 
+    val snapshotSyncMaxSnapshotBatchSize: Int =
+      config.getInt("snapshot-sync.max-snapshot-batch-size")
+    require(
+      snapshotSyncMaxSnapshotBatchSize > 0,
+      s"snapshot-sync.max-snapshot-batch-size (${snapshotSyncMaxSnapshotBatchSize}) should be larger than 0",
+    )
+
     val clusterShardingConfig: Config = config.getConfig("sharding")
 
     val raftActorAutoStartFrequency: FiniteDuration =
@@ -196,6 +204,7 @@ private[entityreplication] object RaftSettingsImpl {
       compactionLogSizeCheckInterval = compactionLogSizeCheckInterval,
       snapshotSyncCopyingParallelism = snapshotSyncCopyingParallelism,
       snapshotSyncPersistenceOperationTimeout = snapshotSyncPersistenceOperationTimeout,
+      snapshotSyncMaxSnapshotBatchSize = snapshotSyncMaxSnapshotBatchSize,
       clusterShardingConfig = clusterShardingConfig,
       raftActorAutoStartFrequency = raftActorAutoStartFrequency,
       raftActorAutoStartNumberOfActors = raftActorAutoStartNumberOfActors,

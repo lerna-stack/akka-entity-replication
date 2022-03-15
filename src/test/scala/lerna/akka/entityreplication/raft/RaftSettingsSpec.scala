@@ -33,6 +33,7 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.compactionLogSizeCheckInterval shouldBe 10.seconds
       settings.snapshotSyncCopyingParallelism shouldBe 10
       settings.snapshotSyncPersistenceOperationTimeout shouldBe 10.seconds
+      settings.snapshotSyncMaxSnapshotBatchSize shouldBe 1_000
       settings.clusterShardingConfig shouldBe defaultConfig.getConfig("lerna.akka.entityreplication.raft.sharding")
       settings.raftActorAutoStartFrequency shouldBe 3.seconds
       settings.raftActorAutoStartNumberOfActors shouldBe 5
@@ -98,6 +99,29 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
         .withFallback(defaultConfig)
       a[IllegalArgumentException] shouldBe thrownBy {
         RaftSettings(config)
+      }
+    }
+
+    "throw an IllegalArgumentException if the given snapshot-sync.max-snapshot-batch-size is less than or equal to 0" in {
+      {
+        val config = ConfigFactory
+          .parseString("""
+              |lerna.akka.entityreplication.raft.snapshot-sync.max-snapshot-batch-size = -1
+              |""".stripMargin)
+          .withFallback(defaultConfig)
+        a[IllegalArgumentException] shouldBe thrownBy {
+          RaftSettings(config)
+        }
+      }
+      {
+        val config = ConfigFactory
+          .parseString("""
+              |lerna.akka.entityreplication.raft.snapshot-sync.max-snapshot-batch-size = 0
+              |""".stripMargin)
+          .withFallback(defaultConfig)
+        a[IllegalArgumentException] shouldBe thrownBy {
+          RaftSettings(config)
+        }
       }
     }
 
