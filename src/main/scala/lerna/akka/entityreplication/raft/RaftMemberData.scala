@@ -459,8 +459,11 @@ private[entityreplication] trait RaftMemberData
     * entries with indices less than or equal to the minimum of index of [[lastSnapshotStatus]] and [[eventSourcingIndex]].
     * If [[eventSourcingIndex]] is unknown (it is [[None]]), the compaction deletes no entries.
     * The compacted log entries might be less than `preserveLogSize` if the current number of entries is already smaller than that size.
+    *
+    * Throws an [[IllegalArgumentException]] if the given `preserveLogSize` is less than or equals to 0.
     */
   def compactReplicatedLog(preserveLogSize: Int): RaftMemberData = {
+    require(preserveLogSize > 0, s"preserveLogSize($preserveLogSize) should be greater than 0.")
     val toIndex = LogEntryIndex.min(
       lastSnapshotStatus.snapshotLastLogIndex,
       // Use 0 as the default since this must not delete entries if eventSourcingIndex is unknown.

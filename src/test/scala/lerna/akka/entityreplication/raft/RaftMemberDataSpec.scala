@@ -399,6 +399,29 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
     }
   }
 
+  it should "throw an IllegalArgumentException if the given preserveLogSize is less than or equals to 0" in {
+    val data = {
+      val replicatedLog =
+        ReplicatedLog().merge(Seq(LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1))), LogEntryIndex(0))
+      RaftMemberData(
+        replicatedLog = replicatedLog,
+        commitIndex = LogEntryIndex(1),
+        lastApplied = LogEntryIndex(1),
+        eventSourcingIndex = None,
+      )
+    }
+
+    val exceptionWithZero = intercept[IllegalArgumentException] {
+      data.compactReplicatedLog(0)
+    }
+    exceptionWithZero.getMessage should be("requirement failed: preserveLogSize(0) should be greater than 0.")
+
+    val exceptionWithMinusOne = intercept[IllegalArgumentException] {
+      data.compactReplicatedLog(-1)
+    }
+    exceptionWithMinusOne.getMessage should be("requirement failed: preserveLogSize(-1) should be greater than 0.")
+  }
+
   behavior of "RaftMemberData.resolveCommittedEntriesForEventSourcing"
 
   it should "return UnknownCurrentEventSourcingIndex when it has no eventSourcingIndex" in {
