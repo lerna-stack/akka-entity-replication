@@ -134,6 +134,10 @@ private[entityreplication] object RaftSettingsImpl {
       0 < compactionPreserveLogSize,
       s"preserve-log-size ($compactionPreserveLogSize) should be larger than 0",
     )
+    require(
+      compactionPreserveLogSize < compactionLogSizeThreshold,
+      s"preserve-log-size ($compactionPreserveLogSize) should be less than log-size-threshold ($compactionLogSizeThreshold).",
+    )
 
     val compactionLogSizeCheckInterval: FiniteDuration =
       config.getDuration("compaction.log-size-check-interval").toScala

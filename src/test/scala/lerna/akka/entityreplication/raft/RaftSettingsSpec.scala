@@ -104,6 +104,56 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       }
     }
 
+    "throw an IllegalArgumentException if the given compaction.preserve-log-size is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.compaction.preserve-log-size = 0
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: preserve-log-size (0) should be larger than 0"
+    }
+
+    "throw an IllegalArgumentException if the given compaction.preserve-log-size is -1" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.compaction.preserve-log-size = -1
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: preserve-log-size (-1) should be larger than 0"
+    }
+
+    "throw an IllegalArgumentException if the given compaction.preserve-log-size equals compaction.log-size-threshold" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.compaction.log-size-threshold = 100
+                       |lerna.akka.entityreplication.raft.compaction.preserve-log-size = 100
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: preserve-log-size (100) should be less than log-size-threshold (100)."
+    }
+
+    "throw an IllegalArgumentException if the given compaction.preserve-log-size is greater than compaction.log-size-threshold" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.compaction.log-size-threshold = 100
+                       |lerna.akka.entityreplication.raft.compaction.preserve-log-size = 101
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: preserve-log-size (101) should be less than log-size-threshold (100)."
+    }
+
     "throw an IllegalArgumentException if the given raft-actor-auto-start.frequency is 0 milli" in {
       val config = ConfigFactory
         .parseString("""
