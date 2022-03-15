@@ -8,6 +8,7 @@ import lerna.akka.entityreplication.{ model, raft, typed, ClusterReplicationSeri
 
 import java.io.NotSerializableException
 import java.util.UUID
+import scala.annotation.nowarn
 import scala.collection.immutable.HashMap
 
 private[entityreplication] final class ClusterReplicationSerializer(val system: ExtendedActorSystem)
@@ -408,6 +409,7 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     raft.eventsourced.InternalEvent
   }
 
+  @nowarn("msg=Use CommitLogStoreActor.AppendCommittedEntries instead.")
   private def commitLogStoreSaveToBinary(message: raft.eventsourced.Save): Array[Byte] = {
     msg.CommitLogStoreSave
       .of(
@@ -417,6 +419,7 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
       ).toByteArray
   }
 
+  @nowarn("msg=Use CommitLogStoreActor.AppendCommittedEntries instead.")
   private def commitLogStoreSaveFromBinary(bytes: Array[Byte]): raft.eventsourced.Save = {
     val proto = msg.CommitLogStoreSave.parseFrom(bytes)
     raft.eventsourced.Save(

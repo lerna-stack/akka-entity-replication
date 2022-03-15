@@ -13,6 +13,7 @@ import lerna.akka.entityreplication.util.ActorIds
 
 import java.net.URLDecoder
 
+@deprecated("Use CommitLogStoreActor.AppendCommittedEntries instead.", "2.1.0")
 private[entityreplication] final case class Save(
     shardId: NormalizedShardId,
     index: LogEntryIndex,

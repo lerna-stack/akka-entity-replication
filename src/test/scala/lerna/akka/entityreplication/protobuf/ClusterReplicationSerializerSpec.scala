@@ -46,6 +46,7 @@ import lerna.akka.entityreplication.typed.ReplicationEnvelope
 
 import java.io.NotSerializableException
 import java.util.UUID
+import scala.annotation.nowarn
 
 object ClusterReplicationSerializerSpec {
   case class MyEntity(id: Long, name: String, age: Int) extends KryoSerializable
@@ -53,6 +54,8 @@ object ClusterReplicationSerializerSpec {
   case class MyEvent(id: Long, message: String)         extends KryoSerializable
   object MyStopMessage                                  extends KryoSerializable
 }
+
+@nowarn("msg=Use CommitLogStoreActor.AppendCommittedEntries instead.")
 final class ClusterReplicationSerializerSpec
     extends SerializerSpecBase(ActorSystem("ClusterReplicationSerializerSpec")) {
 

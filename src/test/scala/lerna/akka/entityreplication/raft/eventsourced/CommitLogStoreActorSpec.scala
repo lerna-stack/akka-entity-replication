@@ -15,6 +15,7 @@ import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntry
 import org.scalatest.{ BeforeAndAfterAll, OptionValues }
 
 import java.util.UUID
+import scala.annotation.nowarn
 
 object CommitLogStoreActorSpec {
 
@@ -55,6 +56,7 @@ object CommitLogStoreActorSpec {
 
 }
 
+@nowarn("msg=Use CommitLogStoreActor.AppendCommittedEntries instead.")
 final class CommitLogStoreActorSpec
     extends TestKit(ActorSystem("CommitLogStoreActorSpec", CommitLogStoreActorSpec.config))
     with ActorSpec
