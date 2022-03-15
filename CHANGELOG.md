@@ -18,6 +18,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This feature is enabled only by using `typed.ClusterReplication`.
   It is highly recommended that you switch using the typed API since the classic API was deprecated.
 
+- Raft actors track the progress of the event sourcing [#136](https://github.com/lerna-stack/akka-entity-replication/issues/136).
+
+  This feature ensures that
+  - Event Sourcing won't halt even if the event-sourcing store is unavailable for a long period.
+    After the event-sourcing store recovers, Event Sourcing will work again automatically.
+  - Compaction won't delete committed events that are not persisted to the event-sourcing store yet.
+
+  It adds new following settings (for more details, please see `reference.conf`):
+  - `lerna.akka.entityreplication.raft.eventsourced.committed-log-entries-check-interval`
+  - `lerna.akka.entityreplication.raft.eventsourced.max-append-committed-entries-size`
+  - `lerna.akka.entityreplication.raft.eventsourced.max-append-committed-entries-batch-size`
+
+  It deletes the following settings:
+  - `lerna.akka.entityreplication.raft.eventsourced.commit-log-store.retry.attempts`
+  - `lerna.akka.entityreplication.raft.eventsourced.commit-log-store.retry.delay`
+
+  It requires that
+  `lerna.akka.entityreplication.raft.compaction.preserve-log-size` is less than
+  `lerna.akka.entityreplication.raft.compaction.log-size-threshold`. 
+
+
 ### Changed
 - Bump up Akka version to 2.6.17 [PR#98](https://github.com/lerna-stack/akka-entity-replication/pull/98)
 
