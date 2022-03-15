@@ -180,6 +180,12 @@ private[raft] class RaftActor(
   override val persistenceId: String =
     ActorIds.persistenceId("raft", typeName.underlying, shardId.underlying, selfMemberIndex.role)
 
+  /**
+    * NOTE:
+    * [[RaftActor]] has to use the same journal plugin as [[SnapshotSyncManager]]
+    * because snapshot synchronization is achieved by reading both the events
+    * [[CompactionCompleted]] which [[RaftActor]] persisted and SnapshotCopied which [[SnapshotSyncManager]] persisted.
+    */
   override def journalPluginId: String = settings.journalPluginId
 
   override def journalPluginConfig: Config = settings.journalPluginAdditionalConfig
