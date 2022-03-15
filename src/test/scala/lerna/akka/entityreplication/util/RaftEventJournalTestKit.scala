@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.util
 
 import akka.Done
-import akka.actor.ActorSystem
+import akka.actor.{ ActorRef, ActorSystem }
 import akka.persistence.query.{ EventEnvelope, Offset, PersistenceQuery }
 import akka.persistence.query.scaladsl.{ CurrentEventsByPersistenceIdQuery, EventsByTagQuery }
 import akka.stream.Materializer
@@ -27,7 +27,10 @@ final class RaftEventJournalTestKit(system: ActorSystem, settings: ClusterReplic
     extends TestKit(system)
     with ImplicitSender {
 
-  private val eventStore = system.actorOf(EventStore.props(settings), "RaftEventPersistenceTestKitEventStore")
+  private var eventStore = spawnEventStore()
+
+  private def spawnEventStore(): ActorRef =
+    childActorOf(EventStore.props(settings), "RaftEventPersistenceTestKitEventStore")
 
   private type ReadJournalType = CurrentEventsByPersistenceIdQuery with EventsByTagQuery
 
@@ -116,5 +119,9 @@ final class RaftEventJournalTestKit(system: ActorSystem, settings: ClusterReplic
 
   def reset(): Unit = {
     nextSeqNoByPersistenceId = Map.empty
+    watch(eventStore)
+    system.stop(eventStore)
+    expectTerminated(eventStore)
+    eventStore = spawnEventStore()
   }
 }

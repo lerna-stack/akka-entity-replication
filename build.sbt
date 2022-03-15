@@ -32,6 +32,8 @@ lazy val lerna = (project in file("."))
     name := "akka-entity-replication",
     fork in Test := true,
     parallelExecution in Test := false,
+    javaOptions in Test ++= sbtJavaOptions,
+    jvmOptions in MultiJvm ++= sbtJavaOptions,
     libraryDependencies ++= Seq(
         "com.typesafe.akka" %% "akka-cluster-typed"    % akkaVersion,
         "com.typesafe.akka" %% "akka-stream"           % akkaVersion,
@@ -83,6 +85,20 @@ lazy val lerna = (project in file("."))
     mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %% moduleName.value % _).toSet,
     mimaReportSignatureProblems := true, // check also generic parameters
   )
+
+/**
+  * This is used to pass specific system properties (mostly from CI environment variables)
+  * to the forked process by sbt
+  */
+val sbtJavaOptions: Seq[String] = {
+  // selects properties starting with the following
+  val includes = Set(
+    "akka.",
+  )
+  sys.props.collect {
+    case (k, v) if includes.exists(k.startsWith) => s"-D$k=$v"
+  }.toSeq
+}
 
 addCommandAlias(
   "testCoverage",

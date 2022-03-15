@@ -654,6 +654,6 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
 
   protected def getState(raftActor: ActorRef): RaftState = {
     raftActor ! GetState
-    expectMsgType[RaftState]
+    expectMsgType[RaftState](max = 1.second)
   }
 }

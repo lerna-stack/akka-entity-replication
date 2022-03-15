@@ -285,7 +285,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
         val replicationActorPath = s"/system/sharding/raft-shard-$typeName-$role/$clusterShard/$raftShardId/$entityId"
         awaitAssert {
           system.actorSelection(replicationActorPath) ! GetStatus(entityId)
-          expectMsg(Status(3))
+          expectMsg(max = 1.second, Status(3))
         }
       }
     }

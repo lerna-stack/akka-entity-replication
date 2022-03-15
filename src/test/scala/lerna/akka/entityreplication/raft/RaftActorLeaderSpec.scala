@@ -252,8 +252,12 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         state.stateData.lastSnapshotStatus.snapshotLastLogIndex should be(lastLogIndex)
       }
       // InstallSnapshot is idempotent: InstallSnapshot will succeed again if it has already succeeded
-      leader ! installSnapshotCommand
-      region.expectMsgType[ReplicationRegion.DeliverTo].message should be(expectedSuccessfulResponse)
+      awaitAssert {
+        leader ! installSnapshotCommand
+        region.expectMsgType[ReplicationRegion.DeliverTo](max = 500.millis).message should be(
+          expectedSuccessfulResponse,
+        )
+      }
     }
 
     "send AppendEntries to the follower when the leader has log entries that follower requires" in {

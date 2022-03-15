@@ -33,14 +33,16 @@ class RaftActorSnapshotSynchronizationSpec
   override def beforeEach(): Unit = {
     super.beforeEach()
     // clear storage
+    val probe   = TestProbe()
     val storage = StorageExtension(system)
-    storage.journalStorage ! InMemoryJournalStorage.ClearJournal
-    storage.snapshotStorage ! InMemorySnapshotStorage.ClearSnapshots
-    receiveWhile(messages = 2) {
+    probe.send(storage.journalStorage, InMemoryJournalStorage.ClearJournal)
+    probe.send(storage.snapshotStorage, InMemorySnapshotStorage.ClearSnapshots)
+    probe.receiveWhile(messages = 2) {
       case _: Status.Success => Done
     } should have length 2
     // reset SnapshotStore
     leaderRaftSnapshotStoreTestKit.reset()
+    raftEventJournalTestKit.reset()
   }
 
   "RaftActor snapshot synchronization" should {
