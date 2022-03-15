@@ -207,6 +207,10 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       val leaderMemberIndex = candidateMemberIndex
       follower ! createAppendEntries(shardId, term, leaderMemberIndex)
       expectMsg(AppendEntriesSucceeded(term, LogEntryIndex(0), followerMemberIndex))
+
+      val state = getState(follower)
+      state.stateName should be(Follower)
+      state.stateData.leaderMember should contain(leaderMemberIndex)
     }
 
     "自分が持っている Term より新しい場合は AppendEntries を成功させる" in {
@@ -227,6 +231,11 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       val leaderMemberIndex = candidateMemberIndex
       follower ! createAppendEntries(shardId, term2, leaderMemberIndex)
       expectMsg(AppendEntriesSucceeded(term2, LogEntryIndex(0), followerMemberIndex))
+
+      val state = getState(follower)
+      state.stateName should be(Follower)
+      state.stateData.currentTerm should be(term2)
+      state.stateData.leaderMember should contain(leaderMemberIndex)
     }
 
     "自分が持っている Term より古い場合は AppendEntries を失敗させる" in {
@@ -494,6 +503,10 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
         logEntries,
       )
       expectMsg(AppendEntriesFailed(term1, followerMemberIndex))
+
+      val state = getState(follower)
+      state.stateName should be(Follower)
+      state.stateData.leaderMember should contain(leaderMemberIndex)
     }
 
     "agree to a term if it receives AppendEntries which includes log entries that cannot be merged and newer Term" in {
@@ -598,6 +611,10 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
         followerLogEntries.last.term.next(),
       )
       expectMsg(AppendEntriesFailed(term1, followerMemberIndex))
+
+      val state = getState(follower)
+      state.stateName should be(Follower)
+      state.stateData.leaderMember should contain(leaderMemberIndex)
     }
 
   }
