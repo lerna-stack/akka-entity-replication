@@ -301,7 +301,7 @@ private[raft] trait Leader { this: RaftActor =>
       case Left(UnknownCurrentEventSourcingIndex) =>
         if (log.isInfoEnabled) {
           log.info(
-            "=== [Leader] doesn't know eventSourcingIndex yet. " +
+            "[Leader] doesn't know eventSourcingIndex yet. " +
             "sending AppendCommittedEntries(shardId=[{}], entries=empty) to CommitLogStore [{}] to fetch such an index.",
             shardId,
             commitLogStore,
@@ -311,7 +311,7 @@ private[raft] trait Leader { this: RaftActor =>
       case Left(NextCommittedEntryNotFound(nextEventSourcingIndex, foundFirstIndex)) =>
         if (log.isErrorEnabled) {
           log.error(
-            "=== [Leader] could not resolve new committed log entries, but there should be. " +
+            "[Leader] could not resolve new committed log entries, but there should be. " +
             "nextEventSourcingIndex=[{}], commitIndex=[{}], foundFirstIndex=[{}]. " +
             "This error might happen if compaction deletes such entries before introducing the event-sourcing progress track feature. " +
             "For confirmation, the leader is sending AppendCommittedEntries(shardId=[{}], entries=empty) to fetch the latest eventSourcingIndex.",
@@ -345,7 +345,7 @@ private[raft] trait Leader { this: RaftActor =>
               ).toSeq
           if (log.isInfoEnabled) {
             log.info(
-              s"=== [Leader] sending [{}] batched AppendCommittedEntries(shardId=[$shardId]). [{}] entries with indices [{}..{}] will be sent in multiple batches.",
+              s"[Leader] sending [{}] batched AppendCommittedEntries(shardId=[$shardId]). [{}] entries with indices [{}..{}] will be sent in multiple batches.",
               batches.size,
               limitedNewCommittedEntries.size,
               limitedNewCommittedEntries.head.index,

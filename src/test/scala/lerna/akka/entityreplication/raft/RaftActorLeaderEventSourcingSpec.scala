@@ -209,7 +209,7 @@ final class RaftActorLeaderEventSourcingSpec extends TestKit(classic.ActorSystem
 
       LoggingTestKit
         .error(
-          "=== [Leader] could not resolve new committed log entries, but there should be. " +
+          "[Leader] could not resolve new committed log entries, but there should be. " +
           "nextEventSourcingIndex=[2], commitIndex=[2], foundFirstIndex=[None]. " +
           "This error might happen if compaction deletes such entries before introducing the event-sourcing progress track feature. " +
           s"For confirmation, the leader is sending AppendCommittedEntries(shardId=[$shardId], entries=empty) to fetch the latest eventSourcingIndex.",
@@ -244,7 +244,7 @@ final class RaftActorLeaderEventSourcingSpec extends TestKit(classic.ActorSystem
 
       LoggingTestKit
         .error(
-          "=== [Leader] could not resolve new committed log entries, but there should be. " +
+          "[Leader] could not resolve new committed log entries, but there should be. " +
           "nextEventSourcingIndex=[2], commitIndex=[3], foundFirstIndex=[Some(3)]. " +
           "This error might happen if compaction deletes such entries before introducing the event-sourcing progress track feature. " +
           s"For confirmation, the leader is sending AppendCommittedEntries(shardId=[$shardId], entries=empty) to fetch the latest eventSourcingIndex.",
