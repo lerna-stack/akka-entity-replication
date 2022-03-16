@@ -360,7 +360,7 @@ This is useful when you would like to change the datastore that persists events 
 
 ### Configuration
 
-On the command side, the related settings are defined at `lerna.akka.entityreplication` in [reference.conf](/src/main/resources/reference.conf).
+On the command side, the related settings are defined at `lerna.akka.entityreplication`(except `lerna.akka.entityreplication.raft.eventsourced`) in [reference.conf](/src/main/resources/reference.conf).
 
 
 ## Read Side
