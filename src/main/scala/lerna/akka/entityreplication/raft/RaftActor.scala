@@ -466,11 +466,7 @@ private[raft] class RaftActor(
     ) {
       val estimatedCompactedLogSize: Int =
         currentData.estimatedReplicatedLogSizeAfterCompaction(settings.compactionPreserveLogSize)
-      if (snapshotSynchronizationIsInProgress) {
-        // Snapshot updates during synchronizing snapshot will break consistency
-        if (log.isInfoEnabled)
-          log.info("Skipping compaction because snapshot synchronization is in progress")
-      } else if (estimatedCompactedLogSize >= settings.compactionLogSizeThreshold) {
+      if (estimatedCompactedLogSize >= settings.compactionLogSizeThreshold) {
         if (log.isWarningEnabled) {
           log.warning(
             "[{}] Skipping compaction since compaction might not delete enough entries " +
@@ -484,6 +480,10 @@ private[raft] class RaftActor(
             currentData.eventSourcingIndex,
           )
         }
+      } else if (snapshotSynchronizationIsInProgress) {
+        // Snapshot updates during synchronizing snapshot will break consistency
+        if (log.isInfoEnabled)
+          log.info("Skipping compaction because snapshot synchronization is in progress")
       } else {
         val (term, logEntryIndex, entityIds) = currentData.resolveSnapshotTargets()
         applyDomainEvent(SnapshottingStarted(term, logEntryIndex, entityIds)) { _ =>
