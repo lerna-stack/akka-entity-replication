@@ -229,12 +229,14 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
         }
         sender() ! AppendCommittedEntriesResponse(state.currentIndex)
       } else {
-        log.info(
-          "Received AppendCommittedEntries([{}] entries with indices [{}..{}]).",
-          entries.size,
-          entries.head.index.underlying,
-          entries.last.index.underlying,
-        )
+        if (log.isInfoEnabled) {
+          log.info(
+            "Received AppendCommittedEntries([{}] entries with indices [{}..{}]).",
+            entries.size,
+            entries.head.index.underlying,
+            entries.last.index.underlying,
+          )
+        }
         // Copy state.nextIndex since persisting events of entries will update state.nextIndex.
         val nextIndex = state.nextIndex
         // For logging, calculate the number of persisted events.
@@ -242,13 +244,15 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
         var numOfPersistedEvents = 0
         entries.foreach { entry =>
           if (entry.index < nextIndex) {
-            log.debug(
-              "Ignored LogEntry(term=[{}], index=[{}], event type=[{}]) since its event is already persisted. Expected next index is [{}].",
-              entry.term.term,
-              entry.index.underlying,
-              entry.event.getClass.getName,
-              nextIndex.underlying,
-            )
+            if (log.isDebugEnabled) {
+              log.debug(
+                "Ignored LogEntry(term=[{}], index=[{}], event type=[{}]) since its event is already persisted. Expected next index is [{}].",
+                entry.term.term,
+                entry.index.underlying,
+                entry.event.getClass.getName,
+                nextIndex.underlying,
+              )
+            }
             numOfIgnoredEvents += 1
           } else {
             val event = entry.event.event match {
@@ -256,12 +260,14 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
               case domainEvent => domainEvent
             }
             persist(event) { _ =>
-              log.info(
-                "Persisted event type [{}] of LogEntry(term=[{}], index=[{}]).",
-                event.getClass.getName,
-                entry.term.term,
-                entry.index.underlying,
-              )
+              if (log.isInfoEnabled) {
+                log.info(
+                  "Persisted event type [{}] of LogEntry(term=[{}], index=[{}]).",
+                  event.getClass.getName,
+                  entry.term.term,
+                  entry.index.underlying,
+                )
+              }
               numOfPersistedEvents += 1
               updateState()
               if (shouldSaveSnapshot()) {
@@ -273,12 +279,14 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
         // Note that this InternalEvent won't be persisted.
         // `defer` is needed since this actor should reply after all persistence is done.
         defer(InternalEvent) { _ =>
-          log.info(
-            "Persisted [{}/{}] events ([{}] events are already persisted).",
-            numOfPersistedEvents,
-            entries.size,
-            numOfIgnoredEvents,
-          )
+          if (log.isInfoEnabled) {
+            log.info(
+              "Persisted [{}/{}] events ([{}] events are already persisted).",
+              numOfPersistedEvents,
+              entries.size,
+              numOfIgnoredEvents,
+            )
+          }
           sender() ! AppendCommittedEntriesResponse(state.currentIndex)
         }
       }
