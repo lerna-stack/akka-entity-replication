@@ -538,7 +538,8 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         .warn(
           "[Follower] Skipping compaction since compaction might not delete enough entries " +
           "(even if this compaction continues, the remaining entries will trigger new compaction at the next tick). " +
-          "Estimated compacted log size is [3] entries. compaction.log-size-threshold is [3] entries. " +
+          "Estimated compacted log size is [3] entries (lastApplied [3], eventSourcingIndex [Some(0)], preserveLogSize [1]), " +
+          "however compaction.log-size-threshold is [3] entries. " +
           "This warning happens if event sourcing is too slow or compaction is too fast.",
         ).expect {
           val leaderMemberIndex = createUniqueMemberIndex()

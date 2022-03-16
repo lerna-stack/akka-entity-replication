@@ -475,11 +475,13 @@ private[raft] class RaftActor(
           log.warning(
             "[{}] Skipping compaction since compaction might not delete enough entries " +
             "(even if this compaction continues, the remaining entries will trigger new compaction at the next tick). " +
-            "Estimated compacted log size is [{}] entries. compaction.log-size-threshold is [{}] entries. " +
+            s"Estimated compacted log size is [{}] entries (lastApplied [{}], eventSourcingIndex [{}], preserveLogSize [${settings.compactionPreserveLogSize}]), " +
+            s"however compaction.log-size-threshold is [${settings.compactionLogSizeThreshold}] entries. " +
             "This warning happens if event sourcing is too slow or compaction is too fast.",
             currentState,
             estimatedCompactedLogSize,
-            settings.compactionLogSizeThreshold,
+            currentData.lastApplied,
+            currentData.eventSourcingIndex,
           )
         }
       } else {
