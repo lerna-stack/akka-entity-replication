@@ -193,6 +193,8 @@ final class RaftActorLeaderEventSourcingSpec extends TestKit(classic.ActorSystem
         val replicatedLog = {
           val entityId = NormalizedEntityId.from("entity1")
           newReplicatedLog(
+            ancestorLastTerm = Term(1),
+            ancestorLastIndex = LogEntryIndex(2),
             LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event2"), Term(1)),
           )
         }
@@ -228,6 +230,8 @@ final class RaftActorLeaderEventSourcingSpec extends TestKit(classic.ActorSystem
         val replicatedLog = {
           val entityId = NormalizedEntityId.from("entity1")
           newReplicatedLog(
+            ancestorLastTerm = Term(1),
+            ancestorLastIndex = LogEntryIndex(2),
             LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event2"), Term(1)),
           )
         }
@@ -489,18 +493,25 @@ object RaftActorLeaderEventSourcingSpec {
     ).initializeLeaderData()
   }
 
+  private def newReplicatedLog(entries: LogEntry*): ReplicatedLog =
+    newReplicatedLog(Term(0), LogEntryIndex(0), entries: _*)
+
   private def newReplicatedLog(
+      ancestorLastTerm: Term,
+      ancestorLastIndex: LogEntryIndex,
       entries: LogEntry*,
   ): ReplicatedLog = {
     if (entries.isEmpty) {
-      ReplicatedLog()
+      ReplicatedLog().reset(ancestorLastTerm, ancestorLastIndex)
     } else {
       val firstTerm  = entries.head.term
       val firstIndex = entries.head.index
       require(firstTerm > Term(0))
       require(firstIndex > LogEntryIndex(0))
+      require(firstTerm >= ancestorLastTerm)
+      require(firstIndex == ancestorLastIndex.next())
       ReplicatedLog()
-        .reset(Term(firstTerm.term - 1), firstIndex.prev())
+        .reset(ancestorLastTerm, ancestorLastIndex)
         .merge(entries, firstIndex.prev())
     }
   }
