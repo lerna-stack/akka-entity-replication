@@ -242,14 +242,17 @@ class MultiSnapshotSyncSpec extends MultiNodeSpec(MultiSnapshotSyncSpecConfig) w
   }
 
   private def setValue(id: String, value: Int)(implicit timeout: Timeout): Int = {
+    // NOTE:
+    // Too short retryInterval (e.g.200ms) will cause premature compaction and make this test unstable
+    // because also read-only operations create new LogEntry(NoOp) to guarantee consistency
     val entityRef = clusterReplication.entityRefFor(Register.TypeKey, id)
-    val reply     = AtLeastOnceComplete.askTo(entityRef, Register.Set(value, _), retryInterval = 200.millis)
+    val reply     = AtLeastOnceComplete.askTo(entityRef, Register.Set(value, _), retryInterval = 2.seconds)
     reply.await.value
   }
 
   private def getValue(id: String)(implicit timeout: Timeout): Int = {
     val entityRef = clusterReplication.entityRefFor(Register.TypeKey, id)
-    val reply     = AtLeastOnceComplete.askTo(entityRef, Register.Get(_), retryInterval = 200.millis)
+    val reply     = AtLeastOnceComplete.askTo(entityRef, Register.Get(_), retryInterval = 2.seconds)
     reply.await.value
   }
 
