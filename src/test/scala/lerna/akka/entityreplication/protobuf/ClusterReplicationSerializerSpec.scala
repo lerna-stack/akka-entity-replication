@@ -50,6 +50,7 @@ import lerna.akka.entityreplication.typed.ReplicationEnvelope
 
 import java.io.NotSerializableException
 import java.util.UUID
+import scala.annotation.nowarn
 
 import org.scalatest.Inside._
 
@@ -59,6 +60,8 @@ object ClusterReplicationSerializerSpec {
   case class MyEvent(id: Long, message: String)         extends KryoSerializable
   object MyStopMessage                                  extends KryoSerializable
 }
+
+@nowarn("msg=Use CommitLogStoreActor.AppendCommittedEntries instead.")
 final class ClusterReplicationSerializerSpec
     extends SerializerSpecBase(ActorSystem("ClusterReplicationSerializerSpec")) {
 
@@ -159,6 +162,22 @@ final class ClusterReplicationSerializerSpec
       ),
     )
     checkSerialization(CommitLogStoreActor.State(LogEntryIndex(6451)))
+    checkSerialization(
+      CommitLogStoreActor.AppendCommittedEntries(
+        NormalizedShardId.from("shard&need%url?encode"),
+        Seq(
+          LogEntry(
+            LogEntryIndex(3),
+            EntityEvent(Option(NormalizedEntityId("entity1")), MyEvent(21, "my-event:abc:127")),
+            Term(3),
+          ),
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(4)),
+        ),
+      ),
+    )
+    checkSerialization(
+      CommitLogStoreActor.AppendCommittedEntriesResponse(LogEntryIndex(4)),
+    )
 
     // raft.protocol
     checkSerialization(

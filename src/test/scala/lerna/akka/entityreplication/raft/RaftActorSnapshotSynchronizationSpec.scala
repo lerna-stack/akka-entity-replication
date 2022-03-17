@@ -10,6 +10,7 @@ import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.RaftActor.{ CompactionCompleted, ElectionTimeout, Follower, SnapshotTick }
+import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -64,6 +65,7 @@ class RaftActorSnapshotSynchronizationSpec
       val leader                = TestProbe()
       val snapshotStore         = TestProbe()
       val replicationActorProbe = TestProbe()
+      val commitLogStore        = TestProbe()
       val followerMemberIndex   = createUniqueMemberIndex()
       val follower = createRaftActor(
         typeName = typeName,
@@ -72,6 +74,7 @@ class RaftActorSnapshotSynchronizationSpec
         shardSnapshotStore = snapshotStore.ref,
         replicationActor = replicationActorProbe.ref,
         settings = RaftSettings(raftConfig),
+        commitLogStore = commitLogStore.ref,
       )
       val term                   = Term(1)
       val leaderSnapshotTerm     = term
@@ -85,6 +88,7 @@ class RaftActorSnapshotSynchronizationSpec
       raftEventJournalTestKit.persistEvents(
         CompactionCompleted(leaderMemberIndex, shardId, leaderSnapshotTerm, leaderSnapshotLogIndex, entityIds),
       )
+
       /* check */
       leader.send(
         follower,
@@ -112,6 +116,10 @@ class RaftActorSnapshotSynchronizationSpec
           srcLatestSnapshotLastLogLogIndex = leaderSnapshotLogIndex,
         ),
       )
+
+      // Let follower know that compaction can delete entries (indices <= 2)
+      follower ! CommitLogStoreActor.AppendCommittedEntriesResponse(LogEntryIndex(2))
+
       LoggingTestKit.info("Skipping compaction because snapshot synchronization is in progress").expect {
         // trigger compaction
         follower ! SnapshotTick
@@ -139,6 +147,9 @@ class RaftActorSnapshotSynchronizationSpec
         ),
       )
       leader.expectMsgType[AppendEntriesSucceeded]
+      // Let follower know that compaction can delete entries (indices <= 5)
+      follower ! CommitLogStoreActor.AppendCommittedEntriesResponse(LogEntryIndex(5))
+
       LoggingTestKit.info("compaction started").expect {
         // trigger compaction
         follower ! SnapshotTick

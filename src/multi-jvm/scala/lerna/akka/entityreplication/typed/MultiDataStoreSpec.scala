@@ -96,6 +96,9 @@ class MultiDataStoreSpec extends MultiNodeSpec(MultiDataStoreSpecConfig) with ST
 
   private[this] val storage = StorageExtension(typedSystem)
 
+  /** Timeout in which persisting journal entries and snapshots eventually succeed */
+  private val eventuallyPersistTimeout: FiniteDuration = 10.seconds
+
   "MultiDataStore" should {
 
     "wait for all nodes to join the cluster" in {
@@ -119,8 +122,13 @@ class MultiDataStoreSpec extends MultiNodeSpec(MultiDataStoreSpecConfig) with ST
         val reply2 = AtLeastOnceComplete.askTo(entityRef, PingPongEntity.Ping(_), retryInterval = 200.millis)
         reply2.await shouldBe a[PingPongEntity.Pong]
 
-        fetchAllJournalEntriesFromSecondaryStorage() should be(empty)
-        fetchSnapshots(entityRef.entityId) should be(empty)
+        assertForDuration(
+          {
+            fetchAllJournalEntriesFromSecondaryStorage() should be(empty)
+            fetchSnapshots(entityRef.entityId) should be(empty)
+          },
+          eventuallyPersistTimeout,
+        )
       }
     }
 
@@ -136,8 +144,13 @@ class MultiDataStoreSpec extends MultiNodeSpec(MultiDataStoreSpecConfig) with ST
         val reply2 = AtLeastOnceComplete.askTo(entityRef, PingPongEntity.Ping(_), retryInterval = 200.millis)
         reply2.await shouldBe a[PingPongEntity.Pong]
 
-        fetchAllJournalEntriesFromSecondaryStorage() should not be empty
-        fetchSnapshots(entityRef.entityId) should not be empty
+        awaitAssert(
+          {
+            fetchAllJournalEntriesFromSecondaryStorage() should not be empty
+            fetchSnapshots(entityRef.entityId) should not be empty
+          },
+          eventuallyPersistTimeout,
+        )
       }
     }
 

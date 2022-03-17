@@ -12,7 +12,6 @@ import lerna.akka.entityreplication.ReplicationRegion.{ ExtractEntityId, Extract
 import lerna.akka.entityreplication.model._
 import lerna.akka.entityreplication.raft.RaftActor
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand }
-import lerna.akka.entityreplication.raft.eventsourced.CommitLogStore
 import lerna.akka.entityreplication.raft.protocol.ShardRequest
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.ShardSnapshotStore
@@ -61,7 +60,7 @@ object ReplicationRegion {
       extractEntityId: ExtractEntityId,
       extractShardId: ExtractShardId,
       possibleShardIds: Set[ReplicationRegion.ShardId],
-      maybeCommitLogStore: Option[CommitLogStore],
+      commitLogStore: ActorRef,
   ) =
     Props(
       new ReplicationRegion(
@@ -71,7 +70,7 @@ object ReplicationRegion {
         extractEntityId,
         extractShardId,
         possibleShardIds,
-        maybeCommitLogStore,
+        commitLogStore,
       ),
     )
 
@@ -108,7 +107,7 @@ private[entityreplication] class ReplicationRegion(
     extractEntityId: ExtractEntityId,
     extractShardId: ExtractShardId,
     possibleShardIds: Set[ReplicationRegion.ShardId],
-    maybeCommitLogStore: Option[CommitLogStore],
+    commitLogStore: ActorRef,
 ) extends Actor
     with ActorLogging
     with Stash {
@@ -331,7 +330,7 @@ private[entityreplication] class ReplicationRegion(
       selfMemberIndex,
       otherMemberIndexes,
       settings = settings.raftSettings,
-      maybeCommitLogStore = maybeCommitLogStore,
+      commitLogStore = commitLogStore,
     )
   }
 

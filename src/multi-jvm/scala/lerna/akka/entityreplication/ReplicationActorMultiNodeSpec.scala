@@ -33,8 +33,8 @@ object ReplicationActorSpecConfig extends MultiNodeConfig {
       akka.actor.provider = cluster
       akka.test.single-expect-default = 15s
       lerna.akka.entityreplication.raft.multi-raft-roles = ["member-1", "member-2", "member-3"]
-      // 1 イベントごとに snapshot が取得されるようにする
-      lerna.akka.entityreplication.raft.compaction.log-size-threshold = 1
+      // Use small values as possible to generate at least one snapshot in this test.
+      lerna.akka.entityreplication.raft.compaction.log-size-threshold = 2
       lerna.akka.entityreplication.raft.compaction.preserve-log-size = 1
       lerna.akka.entityreplication.raft.compaction.log-size-check-interval = 0.1s
       lerna.akka.entityreplication.recovery-entity-timeout = 1s

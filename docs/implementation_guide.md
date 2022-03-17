@@ -166,81 +166,8 @@ AtLeastOnceComplete.askTo(
 
 ### Configuration
 
-On the command side, there are the following settings.
+On the command side, the related settings are defined at `lerna.akka.entityreplication`(except `lerna.akka.entityreplication.raft.eventsourced`) in [reference.conf](/src/main/resources/reference.conf).
 
-```hocon
-lerna.akka.entityreplication {
-
-    // How long wait before giving up entity recovery.
-    // Entity recovery requires a snapshot, and failure fetching it will cause this timeout.
-    // If timed out, entity recovery will be retried.
-    recovery-entity-timeout = 10s
-
-    raft {
-        // The time it takes to start electing a new leader after the heartbeat is no longer received from the leader.
-        election-timeout = 750 ms
-        
-        // The interval between leaders sending heartbeats to their followers
-        heartbeat-interval = 100 ms
-        
-        // A role to identify the nodes to place replicas on
-        // The number of roles is the number of replicas. It is recommended to set up at least three roles.
-        multi-raft-roles = ["replica-group-1", "replica-group-2", "replica-group-3"]
-
-        // Maximum number of entries which AppendEntries contains.
-        // The too large size will cause message serialization failure.
-        max-append-entries-size = 16
-  
-        // The maximum number of AppendEnteis that will be sent at once at every heartbeat-interval.
-        max-append-entries-batch-size = 10
-      
-        // log compaction settings
-        compaction {
-
-          // Time interval to check the size of the log and check if a snapshotting is needed to be taken
-          log-size-check-interval = 10s
-
-          // Threshold for saving snapshots and compaction of the log.
-          // If this value is too large, your application will use a lot of memory and you may get an OutOfMemoryError.
-          // If this value is too small, it compaction may occur frequently and overload the application and the data store.
-          log-size-threshold = 50000
-
-          // Preserving log entries from log reduction to avoid log replication failure.
-          // If more number of logs than this value cannot be synchronized, the raft member will be unavailable.
-          // It is recommended to set this value even less than log-size-threshold. Otherwise compaction will be run at every log-size-check-interval.
-          preserve-log-size = 10000
-
-          // Time to keep a cache of snapshots in memory
-          snapshot-cache-time-to-live = 10s
-        }
-
-        // snapshot synchronization settings
-        snapshot-sync {
-  
-          // Number of snapshots of entities that are copied in parallel
-          snapshot-copying-parallelism = 10
-  
-          // Time to abort operations related to persistence
-          persistence-operation-timeout = 10s
-        }
-
-        // data persistent settings
-        persistence {
-          // Absolute path to the journal plugin configuration entry.
-          // The journal will be stored events which related to Raft.
-          journal.plugin = ""
-
-          // Absolute path to the snapshot store plugin configuration entry.
-          // The snapshot store will be stored state which related to Raft.
-          snapshot-store.plugin = ""
-
-          // Absolute path to the query plugin configuration entry.
-          // Snapshot synchronization reads events that related to Raft.
-          query.plugin = ""
-        }
-    }
-}
-```
 
 ## Read Side
 
@@ -358,33 +285,8 @@ object EventHandler {
 
 ### Configuration
 
-On the read side, there are the following settings.
+On the read side, the related settings are defined at `lerna.akka.entityreplication.raft.eventsourced` in [reference.conf](/src/main/resources/reference.conf).
 
-```hocon
-lerna.akka.entityreplication.raft.eventsourced {
-    // Settings for saving committed events from each RaftActor
-    commit-log-store {
-      // Retry setting to prevent events from being lost if commit-log-store(sharding) stops temporarily
-      retry {
-        attempts = 15
-        delay = 3 seconds
-      }
-    }
-
-    persistence {
-      // Absolute path to the journal plugin configuration entry.
-      // The journal stores Raft-committed events.
-      journal.plugin = ""
-
-      // Absolute path to the snapshot-store plugin configuration entry.
-      // The snapshot-store stores a state (snapshot) built from Raft-committed events.
-      snapshot-store.plugin = ""
-
-      // Snapshot after this number of events.
-      snapshot-every = 1000
-    }
-}
-```
 
 ## Persistence plugin configuration
 

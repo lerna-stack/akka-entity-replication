@@ -41,6 +41,9 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.journalPluginId shouldBe ""
       settings.snapshotStorePluginId shouldBe ""
       settings.queryPluginId shouldBe ""
+      settings.eventSourcedCommittedLogEntriesCheckInterval shouldBe 100.millis
+      settings.eventSourcedMaxAppendCommittedEntriesSize shouldBe settings.maxAppendEntriesSize
+      settings.eventSourcedMaxAppendCommittedEntriesBatchSize shouldBe settings.maxAppendEntriesBatchSize
       settings.eventSourcedJournalPluginId shouldBe ""
       settings.eventSourcedSnapshotStorePluginId shouldBe ""
       settings.eventSourcedSnapshotEvery shouldBe 1_000
@@ -102,6 +105,56 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       }
     }
 
+    "throw an IllegalArgumentException if the given compaction.preserve-log-size is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.compaction.preserve-log-size = 0
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: preserve-log-size (0) should be larger than 0"
+    }
+
+    "throw an IllegalArgumentException if the given compaction.preserve-log-size is -1" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.compaction.preserve-log-size = -1
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: preserve-log-size (-1) should be larger than 0"
+    }
+
+    "throw an IllegalArgumentException if the given compaction.preserve-log-size equals compaction.log-size-threshold" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.compaction.log-size-threshold = 100
+                       |lerna.akka.entityreplication.raft.compaction.preserve-log-size = 100
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: preserve-log-size (100) should be less than log-size-threshold (100)."
+    }
+
+    "throw an IllegalArgumentException if the given compaction.preserve-log-size is greater than compaction.log-size-threshold" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.compaction.log-size-threshold = 100
+                       |lerna.akka.entityreplication.raft.compaction.preserve-log-size = 101
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: preserve-log-size (101) should be less than log-size-threshold (100)."
+    }
+
     "throw an IllegalArgumentException if the given snapshot-sync.max-snapshot-batch-size is less than or equal to 0" in {
       {
         val config = ConfigFactory
@@ -156,6 +209,66 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       a[IllegalArgumentException] shouldBe thrownBy {
         RaftSettings(config)
       }
+    }
+
+    "throw an IllegalArgumentException if the given eventsourced.max-append-committed-entries-size is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.eventsourced.max-append-committed-entries-size = 0
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: eventsourced.max-append-committed-entries-size (0) should be greater than 0."
+    }
+
+    "throw an IllegalArgumentException if the given eventsourced.max-append-committed-entries-size is -1" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.eventsourced.max-append-committed-entries-size = -1
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: eventsourced.max-append-committed-entries-size (-1) should be greater than 0."
+    }
+
+    "throw an IllegalArgumentException if the given eventsourced.max-append-committed-entries-batch-size is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.eventsourced.max-append-committed-entries-batch-size = 0
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: eventsourced.max-append-committed-entries-batch-size (0) should be greater than 0."
+    }
+
+    "throw an IllegalArgumentException if the given eventsourced.max-append-committed-entries-batch-size is -1" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.eventsourced.max-append-committed-entries-batch-size = -1
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: eventsourced.max-append-committed-entries-batch-size (-1) should be greater than 0."
+    }
+
+    "throw an IllegalArgumentException if the given eventsourced.committed-log-entries-check-interval is 0 milli" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.eventsourced.committed-log-entries-check-interval = 0ms
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: eventsourced.committed-log-entries-check-interval (0ms) should be greater than 0 milli."
     }
 
     "throw an IllegalArgumentException if the given snapshot-every is out of range" in {
