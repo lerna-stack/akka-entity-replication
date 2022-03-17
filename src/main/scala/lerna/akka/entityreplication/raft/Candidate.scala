@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.raft
 
 import lerna.akka.entityreplication.raft.RaftProtocol._
+import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, SuspendEntity, TryCreateEntity }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
@@ -46,6 +47,11 @@ private[raft] trait Candidate { this: RaftActor =>
     case response: SnapshotProtocol.SaveSnapshotResponse => receiveSaveSnapshotResponse(response)
     case _: akka.persistence.SaveSnapshotSuccess         => // ignore
     case _: akka.persistence.SaveSnapshotFailure         => // ignore: no problem because events exist even if snapshot saving failed
+
+    // Event sourcing protocol
+    case response: CommitLogStoreActor.AppendCommittedEntriesResponse =>
+      receiveAppendCommittedEntriesResponse(response)
+
   }
 
   private[this] def receiveRequestVote(request: RequestVote): Unit =

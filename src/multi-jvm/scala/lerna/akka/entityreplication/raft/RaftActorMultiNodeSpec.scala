@@ -598,7 +598,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
           extractEntityId,
           extractShardId,
           possibleShardIds = Set.empty,
-          maybeCommitLogStore = None,
+          commitLogStore = system.deadLetters,
         ) {
           override def createRaftActorProps(): Props = {
             Props(
@@ -611,7 +611,7 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
                 selfMemberIndex,
                 otherMemberIndexes,
                 settings,
-                maybeCommitLogStore = None,
+                _commitLogStore = system.deadLetters,
               ) with RaftTestProbeSupport,
             )
           }
