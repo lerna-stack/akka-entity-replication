@@ -201,7 +201,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
               DummyReplicationActor.extractEntityId,
               DummyReplicationActor.extractShardId,
               possibleShardIds = Set.empty,
-              maybeCommitLogStore = None,
+              commitLogStore = system.deadLetters,
             ) {
               override def createRaftActorProps(): Props =
                 Props(new Actor {

@@ -81,6 +81,16 @@ message CommitLogStoreActorState {
   required LogEntryIndex current_index = 1;
 }
 
+message CommitLogStoreAppendCommittedEntries {
+  required NormalizedShardId shard_id = 1;
+  repeated LogEntry entries = 2;
+}
+
+message CommitLogStoreAppendCommittedEntriesResponse {
+  required LogEntryIndex current_index = 1;
+}
+
+
 // ===
 // raft.protocol
 // ===

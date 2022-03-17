@@ -7,7 +7,7 @@ import lerna.akka.entityreplication.ClusterReplication.EntityPropsProvider
 import lerna.akka.entityreplication.ReplicationRegion.Msg
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, _ }
-import lerna.akka.entityreplication.raft.eventsourced.CommitLogStore
+import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
 import lerna.akka.entityreplication.raft.protocol.RaftCommands.{ InstallSnapshot, InstallSnapshotSucceeded }
@@ -29,7 +29,7 @@ private[entityreplication] object RaftActor {
       selfMemberIndex: MemberIndex,
       otherMemberIndexes: Set[MemberIndex],
       settings: RaftSettings,
-      maybeCommitLogStore: Option[CommitLogStore],
+      commitLogStore: ActorRef,
   ) =
     Props(
       new RaftActor(
@@ -41,7 +41,7 @@ private[entityreplication] object RaftActor {
         selfMemberIndex,
         otherMemberIndexes,
         settings,
-        maybeCommitLogStore,
+        commitLogStore,
       ),
     )
 
@@ -55,6 +55,23 @@ private[entityreplication] object RaftActor {
   case object ElectionTimeout  extends TimerEvent
   case object HeartbeatTimeout extends TimerEvent
   case object SnapshotTick     extends TimerEvent
+
+  /** Timer event in which Leader checks its committed log entries
+    *
+    * If this timer expires, the leader checks its committed log entries. When new committed log entries are available,
+    * the leader sends [[eventsourced.CommitLogStoreActor.AppendCommittedEntries]] containing those entries to [[eventsourced.CommitLogStoreActor]].
+    * CommitLogStoreActor replies to the leader with [[eventsourced.CommitLogStoreActor.AppendCommittedEntriesResponse]].
+    * This response contains a [[LogEntryIndex]] that indicate that `CommitLogStoreActor` has already persisted events with
+    * indices lower than or equal to that index. The leader updates its `eventSourcedIndex` to that index if that index
+    * is greater. The new `eventSourcedIndex` will be used for calculating new committed entries available or not.
+    *
+    * NOTE:
+    * Followers and Candidates should not handles this event. However, they send `AppendCommittedEntries` periodically
+    * (specifically at [[SnapshotTick]]) and update its `eventSourceIndex`. This interval is less frequent than EventSourcingTick
+    * for efficient network resource usage. This mechanism allows follower and candidate to compact their log entries.
+    * It is also effective in lessening the number of entries to sent when the leader changes.
+    */
+  case object EventSourcingTick extends TimerEvent
 
   sealed trait DomainEvent
 
@@ -95,6 +112,9 @@ private[entityreplication] object RaftActor {
   final case class PassivatedEntity(entityId: NormalizedEntityId)        extends NonPersistEvent
   final case class TerminatedEntity(entityId: NormalizedEntityId)        extends NonPersistEvent
 
+  /** Occurs when RaftActor detects new `eventSourcingIndex` by receiving [[eventsourced.CommitLogStoreActor.AppendCommittedEntriesResponse]] */
+  final case class DetectedNewEventSourcingIndex(newEventSourcingIndex: LogEntryIndex) extends NonPersistEvent
+
   trait NonPersistEventLike extends NonPersistEvent // テスト用
 }
 
@@ -107,7 +127,7 @@ private[raft] class RaftActor(
     _selfMemberIndex: MemberIndex,
     _otherMemberIndexes: Set[MemberIndex],
     val settings: RaftSettings,
-    maybeCommitLogStore: Option[CommitLogStore],
+    _commitLogStore: ActorRef,
 ) extends RaftActorBase
     with RuntimePluginConfig
     with Stash
@@ -131,6 +151,8 @@ private[raft] class RaftActor(
   protected[this] def selfMemberIndex: MemberIndex = _selfMemberIndex
 
   protected[this] def otherMemberIndexes: Set[MemberIndex] = _otherMemberIndexes
+
+  protected def commitLogStore: ActorRef = _commitLogStore
 
   protected[this] def createEntityIfNotExists(entityId: NormalizedEntityId): Unit = replicationActor(entityId)
 
@@ -219,16 +241,12 @@ private[raft] class RaftActor(
           .applyCommittedLogEntries { logEntries =>
             logEntries.foreach { logEntry =>
               applyToReplicationActor(logEntry)
-              maybeCommitLogStore.foreach(_.save(shardId, logEntry.index, logEntry.event.event))
             }
           }
       case Committed(logEntryIndex) =>
         currentData
           .commit(logEntryIndex)
           .handleCommittedLogEntriesAndClients { entries =>
-            maybeCommitLogStore.foreach(store => {
-              entries.map(_._1).foreach(logEntry => store.save(shardId, logEntry.index, logEntry.event.event))
-            })
             entries.foreach {
               case (logEntry, Some(client)) =>
                 if (log.isDebugEnabled)
@@ -257,6 +275,8 @@ private[raft] class RaftActor(
         currentData.passivateEntity(entityId)
       case TerminatedEntity(entityId) =>
         currentData.terminateEntity(entityId)
+      case DetectedNewEventSourcingIndex(newEventSourcingIndex) =>
+        currentData.updateEventSourcingIndex(newEventSourcingIndex)
       // TODO: Remove when test code is modified
       case _: NonPersistEventLike =>
         if (log.isErrorEnabled) log.error("must not use NonPersistEventLike in production code")
@@ -279,15 +299,18 @@ private[raft] class RaftActor(
     case _ -> Follower =>
       applyDomainEvent(BecameFollower()) { _ =>
         resetElectionTimeoutTimer()
+        cancelEventSourcingTickTimer()
         unstashAll()
       }
     case _ -> Candidate =>
       applyDomainEvent(BecameCandidate()) { _ =>
         resetElectionTimeoutTimer()
+        cancelEventSourcingTickTimer()
       }
     case Candidate -> Leader =>
       resetHeartbeatTimeoutTimer()
       applyDomainEvent(BecameLeader()) { _ =>
+        resetEventSourcingTickTimer()
         self ! Replicate.internal(NoOp, self)
         unstashAll()
       }
@@ -383,6 +406,31 @@ private[raft] class RaftActor(
     snapshotTickTimer = Some(context.system.scheduler.scheduleOnce(timeout, self, SnapshotTick))
   }
 
+  private var eventSourcingTickTimer: Option[Cancellable] = None
+
+  /** Reset the [[EventSourcingTick]] timer
+    *
+    * Start a new timer from now.
+    * If the existing timer doesn't expire yet, cancel the existing timer and then start a new timer from now.
+    */
+  def resetEventSourcingTickTimer(): Unit = {
+    val timeout = settings.eventSourcedCommittedLogEntriesCheckInterval
+    cancelEventSourcingTickTimer()
+    if (log.isDebugEnabled) {
+      log.debug("=== [{}] EventSourcingTick after {} ms ===", currentState, settings.heartbeatInterval.toMillis)
+    }
+    eventSourcingTickTimer = Some(context.system.scheduler.scheduleOnce(timeout, self, EventSourcingTick))
+  }
+
+  /** Cancel the [[EventSourcingTick]] timer
+    *
+    * Cancel the existing timer if the timer doesn't expire yet.
+    * If the timer has already expired, do nothing.
+    */
+  def cancelEventSourcingTickTimer(): Unit = {
+    eventSourcingTickTimer.foreach(_.cancel())
+  }
+
   def broadcast(message: Any): Unit = {
     if (log.isDebugEnabled) log.debug("=== [{}] broadcast {} ===", currentState, message)
     region ! ReplicationRegion.Broadcast(message)
@@ -400,11 +448,39 @@ private[raft] class RaftActor(
     }
 
   def handleSnapshotTick(): Unit = {
+    if (log.isInfoEnabled) {
+      log.info(
+        "[{}] sending AppendCommittedEntries(shardId=[{}], entries=empty) to CommitLogStore [{}] to fetch the latest eventSourcingIndex at SnapshotTick. " +
+        "The current eventSourcingIndex is [{}].",
+        currentState,
+        shardId,
+        commitLogStore,
+        currentData.eventSourcingIndex,
+      )
+    }
+    commitLogStore ! CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty)
+
     if (
       currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold
       && currentData.hasLogEntriesThatCanBeCompacted
     ) {
-      if (snapshotSynchronizationIsInProgress) {
+      val estimatedCompactedLogSize: Int =
+        currentData.estimatedReplicatedLogSizeAfterCompaction(settings.compactionPreserveLogSize)
+      if (estimatedCompactedLogSize >= settings.compactionLogSizeThreshold) {
+        if (log.isWarningEnabled) {
+          log.warning(
+            "[{}] Skipping compaction since compaction might not delete enough entries " +
+            "(even if this compaction continues, the remaining entries will trigger new compaction at the next tick). " +
+            s"Estimated compacted log size is [{}] entries (lastApplied [{}], eventSourcingIndex [{}], preserveLogSize [${settings.compactionPreserveLogSize}]), " +
+            s"however compaction.log-size-threshold is [${settings.compactionLogSizeThreshold}] entries. " +
+            "This warning happens if event sourcing is too slow or compaction is too fast.",
+            currentState,
+            estimatedCompactedLogSize,
+            currentData.lastApplied,
+            currentData.eventSourcingIndex,
+          )
+        }
+      } else if (snapshotSynchronizationIsInProgress) {
         // Snapshot updates during synchronizing snapshot will break consistency
         if (log.isInfoEnabled)
           log.info("Skipping compaction because snapshot synchronization is in progress")
@@ -539,9 +615,38 @@ private[raft] class RaftActor(
       )
   }
 
+  protected def receiveAppendCommittedEntriesResponse(
+      appendCommittedEntriesResponse: CommitLogStoreActor.AppendCommittedEntriesResponse,
+  ): Unit = {
+    currentData.eventSourcingIndex match {
+      case None =>
+        val newEventSourcingIndex = appendCommittedEntriesResponse.currentIndex
+        applyDomainEvent(DetectedNewEventSourcingIndex(newEventSourcingIndex)) { _ =>
+          if (log.isInfoEnabled) {
+            log.info("[{}] detected new event sourcing index [{}].", currentState, newEventSourcingIndex)
+          }
+        }
+      case Some(currentEventSourcingIndex) =>
+        if (currentEventSourcingIndex < appendCommittedEntriesResponse.currentIndex) {
+          val newEventSourcingIndex = appendCommittedEntriesResponse.currentIndex
+          applyDomainEvent(DetectedNewEventSourcingIndex(newEventSourcingIndex)) { _ =>
+            if (log.isInfoEnabled) {
+              log.info(
+                "[{}] detected new event sourcing index [{}]. The old index was [{}].",
+                currentState,
+                newEventSourcingIndex,
+                currentEventSourcingIndex,
+              )
+            }
+          }
+        }
+    }
+  }
+
   override def postStop(): Unit = {
     cancelHeartbeatTimeoutTimer()
     cancelElectionTimeoutTimer()
+    cancelEventSourcingTickTimer()
     super.postStop()
   }
 }

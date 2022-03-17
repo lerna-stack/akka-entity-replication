@@ -9,6 +9,7 @@ import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion }
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, ReplicationFailed }
+import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.testkit.CustomTestProbe._
@@ -547,6 +548,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val region           = TestProbe()
       val snapshotStore    = TestProbe()
       val replicationActor = TestProbe()
+      val commitLogStore   = TestProbe()
       val entityId         = NormalizedEntityId("test")
       val entityInstanceId = EntityInstanceId(1)
       val config = ConfigFactory.parseString {
@@ -559,6 +561,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         """
       }
       val leader = createRaftActor(
+        shardId = shardId,
         selfMemberIndex = leaderIndex,
         otherMemberIndexes = Set(follower1Index, follower2Index),
         region = region.ref,
@@ -566,11 +569,16 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         replicationActor = replicationActor.ref,
         entityId = entityId,
         settings = RaftSettings(config.withFallback(defaultRaftConfig)),
+        commitLogStore = commitLogStore.ref,
       )
       val term       = Term(1)
       val leaderData = createLeaderData(term)
       setState(leader, Candidate, leaderData)
       setState(leader, Leader, leaderData)
+
+      // To let the leader know the first eventSourcingIndex, CommitLogStore should handle AppendCommittedEntries.
+      commitLogStore.expectMsg(CommitLogStoreActor.AppendCommittedEntries(shardId, entries = Seq.empty))
+      commitLogStore.reply(CommitLogStoreActor.AppendCommittedEntriesResponse(LogEntryIndex(0)))
 
       region.fishForMessageN(messages = 2) {
 
@@ -610,6 +618,13 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
           // don't reply to the leader
           msg.index
       } should contain theSameElementsAs (Set(follower1Index, follower2Index))
+
+      // To advance compaction target entries, CommitLogStore should handle AppendCommittedEntries.
+      commitLogStore.fishForSpecificMessage() {
+        case CommitLogStoreActor.AppendCommittedEntries(`shardId`, entries)
+            if entries.lastOption.exists(_.index == LogEntryIndex(2)) =>
+          commitLogStore.reply(CommitLogStoreActor.AppendCommittedEntriesResponse(LogEntryIndex(2)))
+      }
 
       // compaction started
       replicationActor.fishForSpecificMessage() {

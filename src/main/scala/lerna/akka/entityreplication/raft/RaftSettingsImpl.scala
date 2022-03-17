@@ -33,6 +33,9 @@ private[entityreplication] final case class RaftSettingsImpl(
     journalPluginId: String,
     snapshotStorePluginId: String,
     queryPluginId: String,
+    eventSourcedCommittedLogEntriesCheckInterval: FiniteDuration,
+    eventSourcedMaxAppendCommittedEntriesSize: Int,
+    eventSourcedMaxAppendCommittedEntriesBatchSize: Int,
     eventSourcedJournalPluginId: String,
     eventSourcedSnapshotStorePluginId: String,
     eventSourcedSnapshotEvery: Int,
@@ -132,6 +135,10 @@ private[entityreplication] object RaftSettingsImpl {
       0 < compactionPreserveLogSize,
       s"preserve-log-size ($compactionPreserveLogSize) should be larger than 0",
     )
+    require(
+      compactionPreserveLogSize < compactionLogSizeThreshold,
+      s"preserve-log-size ($compactionPreserveLogSize) should be less than log-size-threshold ($compactionLogSizeThreshold).",
+    )
 
     val compactionLogSizeCheckInterval: FiniteDuration =
       config.getDuration("compaction.log-size-check-interval").toScala
@@ -177,6 +184,27 @@ private[entityreplication] object RaftSettingsImpl {
 
     val queryPluginId: String = config.getString("persistence.query.plugin")
 
+    val eventSourcedCommittedLogEntriesCheckInterval: FiniteDuration =
+      config.getDuration("eventsourced.committed-log-entries-check-interval").toScala
+    require(
+      eventSourcedCommittedLogEntriesCheckInterval > 0.milli,
+      s"eventsourced.committed-log-entries-check-interval (${eventSourcedCommittedLogEntriesCheckInterval.toMillis}ms) should be greater than 0 milli.",
+    )
+
+    val eventSourcedMaxAppendCommittedEntriesSize: Int =
+      config.getInt("eventsourced.max-append-committed-entries-size")
+    require(
+      eventSourcedMaxAppendCommittedEntriesSize > 0,
+      s"eventsourced.max-append-committed-entries-size ($eventSourcedMaxAppendCommittedEntriesSize) should be greater than 0.",
+    )
+
+    val eventSourcedMaxAppendCommittedEntriesBatchSize: Int =
+      config.getInt("eventsourced.max-append-committed-entries-batch-size")
+    require(
+      eventSourcedMaxAppendCommittedEntriesBatchSize > 0,
+      s"eventsourced.max-append-committed-entries-batch-size ($eventSourcedMaxAppendCommittedEntriesBatchSize) should be greater than 0.",
+    )
+
     val eventSourcedJournalPluginId: String = config.getString("eventsourced.persistence.journal.plugin")
 
     val eventSourcedSnapshotStorePluginId: String = config.getString("eventsourced.persistence.snapshot-store.plugin")
@@ -212,6 +240,9 @@ private[entityreplication] object RaftSettingsImpl {
       journalPluginId = journalPluginId,
       snapshotStorePluginId = snapshotStorePluginId,
       queryPluginId = queryPluginId,
+      eventSourcedCommittedLogEntriesCheckInterval = eventSourcedCommittedLogEntriesCheckInterval,
+      eventSourcedMaxAppendCommittedEntriesSize,
+      eventSourcedMaxAppendCommittedEntriesBatchSize,
       eventSourcedJournalPluginId = eventSourcedJournalPluginId,
       eventSourcedSnapshotStorePluginId = eventSourcedSnapshotStorePluginId,
       eventSourcedSnapshotEvery = eventSourcedSnapshotEvery,
