@@ -519,10 +519,10 @@ class RaftActorSnapshotSynchronizationSpec
         ),
       )
       LoggingTestKit.info("Snapshot synchronization completed").expect {
-        snapshotStore.receiveWhile(messages = 2) {
+        snapshotStore.receiveWhile(messages = 1) {
           case msg: SaveSnapshot =>
             msg.replyTo ! SaveSnapshotSuccess(msg.snapshot.metadata)
-        } should have length 2
+        } should have length 1
       }
       inside(region.expectMsgType[ReplicationRegion.DeliverTo]) {
         case ReplicationRegion.DeliverTo(`leaderMemberIndex`, reply: InstallSnapshotSucceeded) =>
