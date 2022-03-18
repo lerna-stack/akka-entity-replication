@@ -309,7 +309,10 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       candidate ! createAppendEntries(shardId, term2, anotherMemberIndex)
       expectMsg(AppendEntriesSucceeded(term2, LogEntryIndex(0), candidateMemberIndex))
 
-      getState(candidate).stateName should be(Follower)
+      val state = getState(candidate)
+      state.stateName should be(Follower)
+      state.stateData.currentTerm should be(term2)
+      state.stateData.leaderMember should contain(anotherMemberIndex)
     }
 
     "AppendEntries が同じ Term を持っているときは（先に別のリーダーが当選したということなので）Follower に降格" in {
@@ -324,7 +327,9 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       candidate ! createAppendEntries(shardId, term, anotherMemberIndex)
       expectMsg(AppendEntriesSucceeded(term, LogEntryIndex(0), candidateMemberIndex))
 
-      getState(candidate).stateName should be(Follower)
+      val state = getState(candidate)
+      state.stateName should be(Follower)
+      state.stateData.leaderMember should contain(anotherMemberIndex)
     }
 
     "コマンドは保留し、フォロワーに降格した場合はリーダーに転送する" in {
@@ -440,6 +445,10 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       setState(candidate, Candidate, candidateData)
       candidate ! createAppendEntries(shardId, term1, leaderMemberIndex, index3, term1)
       expectMsg(AppendEntriesFailed(term1, candidateMemberIndex))
+
+      val state = getState(candidate)
+      state.stateName should be(Follower)
+      state.stateData.leaderMember should contain(leaderMemberIndex)
     }
 
     "prevLogIndex の Term が prevLogTerm に一致するログエントリでない場合は AppendEntriesFailed を返す" in {
@@ -497,6 +506,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       val state = getState(candidate)
       state.stateName should be(Follower)
       state.stateData.currentTerm should be(leaderTerm)
+      state.stateData.leaderMember should contain(leaderMemberIndex)
     }
 
     "leaderCommit > commitIndex となる場合、 commitIndex に min(leaderCommit, 新規エントリの最後のインデックス) を設定" in {

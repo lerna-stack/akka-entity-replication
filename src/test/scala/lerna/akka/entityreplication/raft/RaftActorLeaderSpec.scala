@@ -61,7 +61,10 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       leader ! createAppendEntries(shardId, term2, anotherMemberIndex)
       expectMsg(AppendEntriesSucceeded(term2, LogEntryIndex(0), leaderMemberIndex))
 
-      getState(leader).stateName should be(Follower)
+      val state = getState(leader)
+      state.stateName should be(Follower)
+      state.stateData.currentTerm should be(term2)
+      state.stateData.leaderMember should contain(anotherMemberIndex)
     }
 
     "コマンドを ReplicationActor に転送する" ignore {}
@@ -107,6 +110,11 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
 
       leader ! createAppendEntries(shardId, term2, newLeaderMemberIndex, index3, term1, logEntries)
       expectMsg(AppendEntriesFailed(term2, leaderMemberIndex))
+
+      val state = getState(leader)
+      state.stateName should be(Follower)
+      state.stateData.currentTerm should be(term2)
+      state.stateData.leaderMember should contain(newLeaderMemberIndex)
     }
 
     "prevLogIndex の Term が prevLogTerm に一致するログエントリでない場合は AppendEntriesFailed を返す" in {
