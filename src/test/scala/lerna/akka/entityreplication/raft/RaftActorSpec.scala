@@ -530,7 +530,8 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
           "(even if this compaction continues, the remaining entries might trigger new compaction at the next tick). " +
           "Estimated compacted log size is [3] entries (lastApplied [3], eventSourcingIndex [Some(0)], preserveLogSize [1]), " +
           "however compaction.log-size-threshold is [3] entries. " +
-          "This warning might happen if event sourcing is too slow or compaction is too fast (or too slow).",
+          "This warning might happen if event sourcing is too slow or compaction is too fast (or too slow). " +
+          "If this warning continues, please consult settings related to event sourcing and compaction.",
         ).expect {
           val leaderMemberIndex = createUniqueMemberIndex()
           val entityId          = NormalizedEntityId.from("entity1")
