@@ -105,10 +105,6 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         leaderCommit = applicableIndex,
       )
 
-      // To ensure compaction starts, CommitLogStore should handle AppendCommittedEntries.
-      commitLogStore.expectMsg(CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty))
-      commitLogStore.reply(CommitLogStoreActor.AppendCommittedEntriesResponse(applicableIndex))
-
       val command =
         replicationActor.fishForSpecificMessage() {
           case msg: TakeSnapshot => msg
@@ -413,10 +409,6 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         leaderCommit = applicableIndex,
       )
 
-      // To ensure compaction starts, CommitLogStore should handle AppendCommittedEntries.
-      commitLogStore.expectMsg(CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty))
-      commitLogStore.reply(CommitLogStoreActor.AppendCommittedEntriesResponse(applicableIndex))
-
       // wait for starting compaction
       val takeSnapshot =
         replicationActor.fishForSpecificMessage() {
@@ -470,10 +462,6 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         leaderCommit = LogEntryIndex(4),
       )
 
-      // To ensure compaction starts, CommitLogStore should handle AppendCommittedEntries.
-      commitLogStore.expectMsg(CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty))
-      commitLogStore.reply(CommitLogStoreActor.AppendCommittedEntriesResponse(LogEntryIndex(4)))
-
       replicationActor.fishForSpecificMessage() {
         case msg: TakeSnapshot =>
           msg.metadata.entityId should be(entityId1)
@@ -516,16 +504,18 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
       }
     }
 
-    "not start if the compaction might not delete enough log entries" in {
+    "warn and continue if the compaction might not delete enough log entries" in {
       val commitLogStore      = TestProbe()
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val raftSettings        = RaftSettings(raftConfig)
+      val replicationActor    = TestProbe()
       val follower = createRaftActor(
         shardId = shardId,
         selfMemberIndex = followerMemberIndex,
         commitLogStore = commitLogStore.ref,
         settings = raftSettings,
+        replicationActor = replicationActor.ref,
       )
 
       // The compaction cannot delete any entries by setting eventSourcingIndex to 0
@@ -536,11 +526,11 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
       assume(raftSettings.compactionLogSizeThreshold == 3)
       LoggingTestKit
         .warn(
-          "[Follower] Skipping compaction since compaction might not delete enough entries " +
-          "(even if this compaction continues, the remaining entries will trigger new compaction at the next tick). " +
+          "[Follower] Compaction might not delete enough entries, but will continue to reduce log size as possible " +
+          "(even if this compaction continues, the remaining entries might trigger new compaction at the next tick). " +
           "Estimated compacted log size is [3] entries (lastApplied [3], eventSourcingIndex [Some(0)], preserveLogSize [1]), " +
           "however compaction.log-size-threshold is [3] entries. " +
-          "This warning happens if event sourcing is too slow or compaction is too fast.",
+          "This warning might happen if event sourcing is too slow or compaction is too fast (or too slow).",
         ).expect {
           val leaderMemberIndex = createUniqueMemberIndex()
           val entityId          = NormalizedEntityId.from("entity1")
@@ -556,11 +546,12 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
             entries = logEntries,
             leaderCommit = LogEntryIndex(3),
           )
-          // A few seconds later (`compaction.log-size-check-interval`),
-          // the follower will output a warn log and not start the compaction
-          // since the estimated compacted entries size is larger than the threshold (`compaction.log-size-threshold`).
-        }
 
+          val takeSnapshot = replicationActor.fishForSpecificMessage() {
+            case msg: TakeSnapshot => msg
+          }
+          takeSnapshot.metadata shouldBe EntitySnapshotMetadata(entityId, LogEntryIndex(3))
+        }
     }
 
   }

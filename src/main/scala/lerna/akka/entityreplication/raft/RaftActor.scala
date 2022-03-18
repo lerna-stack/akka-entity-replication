@@ -467,25 +467,28 @@ private[raft] class RaftActor(
 
     if (
       currentData.replicatedLog.entries.size >= settings.compactionLogSizeThreshold
-      && currentData.hasLogEntriesThatCanBeCompacted
+      // This value might be false if Log Replication stops or there is no leader (e.g. split-vote) until SnapshotTick expires.
+      && currentData.hasAppliedLogEntries
     ) {
       val estimatedCompactedLogSize: Int =
         currentData.estimatedReplicatedLogSizeAfterCompaction(settings.compactionPreserveLogSize)
       if (estimatedCompactedLogSize >= settings.compactionLogSizeThreshold) {
+        // This warning might also happen if there is already enough applied entries (>= compactionLogSizeThreshold) when the first SnapshotTick expires.
         if (log.isWarningEnabled) {
           log.warning(
-            "[{}] Skipping compaction since compaction might not delete enough entries " +
-            "(even if this compaction continues, the remaining entries will trigger new compaction at the next tick). " +
+            "[{}] Compaction might not delete enough entries, but will continue to reduce log size as possible " +
+            "(even if this compaction continues, the remaining entries might trigger new compaction at the next tick). " +
             s"Estimated compacted log size is [{}] entries (lastApplied [{}], eventSourcingIndex [{}], preserveLogSize [${settings.compactionPreserveLogSize}]), " +
             s"however compaction.log-size-threshold is [${settings.compactionLogSizeThreshold}] entries. " +
-            "This warning happens if event sourcing is too slow or compaction is too fast.",
+            "This warning might happen if event sourcing is too slow or compaction is too fast (or too slow).",
             currentState,
             estimatedCompactedLogSize,
             currentData.lastApplied,
             currentData.eventSourcingIndex,
           )
         }
-      } else if (snapshotSynchronizationIsInProgress) {
+      }
+      if (snapshotSynchronizationIsInProgress) {
         // Snapshot updates during synchronizing snapshot will break consistency
         if (log.isInfoEnabled)
           log.info("Skipping compaction because snapshot synchronization is in progress")

@@ -397,7 +397,8 @@ private[entityreplication] trait RaftMemberData
     prevLogIndex == lastSnapshotStatus.targetSnapshotLastLogIndex
   }
 
-  def hasLogEntriesThatCanBeCompacted: Boolean = {
+  /** Returns true if [[replicatedLog]] has entries that have been already applied */
+  def hasAppliedLogEntries: Boolean = {
     replicatedLog.sliceEntriesFromHead(lastApplied).nonEmpty
   }
 
