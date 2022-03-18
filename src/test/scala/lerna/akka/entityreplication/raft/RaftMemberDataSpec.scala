@@ -84,6 +84,21 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
     )
   }
 
+  it should "return true on willGetMatchSnapshots when 'prevLogTerm' and 'prevLogIndex' match with 'targetSnapshotLastTerm' and 'targetSnapshotLastLogIndex'" in {
+    val data = RaftMemberData(
+      lastSnapshotStatus = SnapshotStatus(
+        snapshotLastTerm = Term.initial(),
+        snapshotLastLogIndex = LogEntryIndex.initial(),
+        targetSnapshotLastTerm = Term(20),
+        targetSnapshotLastLogIndex = LogEntryIndex(100),
+      ),
+    )
+    data.willGetMatchSnapshots(prevLogTerm = Term(1), prevLogIndex = LogEntryIndex(3)) should be(false)
+    data.willGetMatchSnapshots(prevLogTerm = Term(20), prevLogIndex = LogEntryIndex(3)) should be(false)
+    data.willGetMatchSnapshots(prevLogTerm = Term(1), prevLogIndex = LogEntryIndex(100)) should be(false)
+    data.willGetMatchSnapshots(prevLogTerm = Term(20), prevLogIndex = LogEntryIndex(100)) should be(true)
+  }
+
   behavior of "RaftMemberData.updateEventSourcingIndex"
 
   it should "return new RaftMemberData with the given new eventSourcingIndex when it has no eventSourcingIndex" in {
@@ -274,7 +289,7 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
       replicatedLog = replicatedLog,
       commitIndex = LogEntryIndex(3),
       lastApplied = LogEntryIndex(3),
-      lastSnapshotStatus = SnapshotStatus(Term(2), LogEntryIndex(3)),
+      lastSnapshotStatus = nonDirtySnapshotStatus(Term(2), LogEntryIndex(3)),
       eventSourcingIndex = Some(LogEntryIndex(3)),
     )
 
@@ -344,7 +359,7 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
       replicatedLog = replicatedLog,
       commitIndex = LogEntryIndex(3),
       lastApplied = LogEntryIndex(3),
-      lastSnapshotStatus = SnapshotStatus(Term(2), LogEntryIndex(3)),
+      lastSnapshotStatus = nonDirtySnapshotStatus(Term(2), LogEntryIndex(3)),
       eventSourcingIndex = Some(LogEntryIndex(2)),
     )
     inside(data.compactReplicatedLog(preserveLogSize = 2).replicatedLog) {
@@ -385,7 +400,7 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
       replicatedLog = replicatedLog,
       commitIndex = LogEntryIndex(3),
       lastApplied = LogEntryIndex(3),
-      lastSnapshotStatus = SnapshotStatus(Term(2), LogEntryIndex(3)),
+      lastSnapshotStatus = nonDirtySnapshotStatus(Term(2), LogEntryIndex(3)),
       eventSourcingIndex = None,
     )
     inside(data.compactReplicatedLog(preserveLogSize = 2).replicatedLog) {
@@ -556,4 +571,12 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
     actual.event should be(expected.event)
   }
 
+  private def nonDirtySnapshotStatus(snapshotLastTerm: Term, snapshotLastLogIndex: LogEntryIndex): SnapshotStatus = {
+    SnapshotStatus(
+      snapshotLastTerm = snapshotLastTerm,
+      snapshotLastLogIndex = snapshotLastLogIndex,
+      targetSnapshotLastTerm = snapshotLastTerm,
+      targetSnapshotLastLogIndex = snapshotLastLogIndex,
+    )
+  }
 }

@@ -197,4 +197,17 @@ trait STMultiNodeSpec
     _activeNodes = _activeNodes.filterNot(nodes.contains)
     leftNodes ++= nodes
   }
+
+  def leaveClusterAsync(nodes: RoleName*): Unit = {
+    runOn(nodes: _*) {
+      val address = myAddress
+      cluster.leave(address)
+      clusterEventSubscriber.fishForSpecificMessage(max = 60.seconds) {
+        case removed: MemberRemoved if removed.member.address == address =>
+          Done
+      }
+    }
+    _activeNodes = _activeNodes.filterNot(nodes.contains)
+    leftNodes ++= nodes
+  }
 }

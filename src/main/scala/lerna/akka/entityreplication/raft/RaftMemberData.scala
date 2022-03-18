@@ -392,6 +392,11 @@ private[entityreplication] trait RaftMemberData
     prevLogIndex == LogEntryIndex.initial() || replicatedLog.termAt(prevLogIndex).contains(prevLogTerm)
   }
 
+  def willGetMatchSnapshots(prevLogIndex: LogEntryIndex, prevLogTerm: Term): Boolean = {
+    prevLogTerm == lastSnapshotStatus.targetSnapshotLastTerm &&
+    prevLogIndex == lastSnapshotStatus.targetSnapshotLastLogIndex
+  }
+
   def hasLogEntriesThatCanBeCompacted: Boolean = {
     replicatedLog.sliceEntriesFromHead(lastApplied).nonEmpty
   }
@@ -434,7 +439,9 @@ private[entityreplication] trait RaftMemberData
   }
 
   def updateLastSnapshotStatus(snapshotLastTerm: Term, snapshotLastIndex: LogEntryIndex): RaftMemberData = {
-    updatePersistentState(lastSnapshotStatus = SnapshotStatus(snapshotLastTerm, snapshotLastIndex))
+    updatePersistentState(lastSnapshotStatus =
+      lastSnapshotStatus.updateSnapshotsCompletely(snapshotLastTerm, snapshotLastIndex),
+    )
   }
 
   /** Returns the estimated size of [[replicatedLog]] after compaction completes.
@@ -474,9 +481,20 @@ private[entityreplication] trait RaftMemberData
     )
   }
 
-  def syncSnapshot(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex): RaftMemberData = {
+  def startSnapshotSync(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex): RaftMemberData = {
     updatePersistentState(
-      lastSnapshotStatus = SnapshotStatus(snapshotLastLogTerm, snapshotLastLogIndex),
+      lastSnapshotStatus = lastSnapshotStatus.startSnapshotSync(snapshotLastLogTerm, snapshotLastLogIndex),
+    )
+  }
+
+  def completeSnapshotSync(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex): RaftMemberData = {
+    updatePersistentState(
+      /**
+        * [[startSnapshotSync()]] updates [[SnapshotStatus.snapshotLastTerm]] and [[SnapshotStatus.snapshotLastLogIndex]]
+        * but we updates these value again here for backward-compatibility.
+        * Because the event sequence produced by v2.0.0 doesn't call [[startSnapshotSync()]].
+        */
+      lastSnapshotStatus = lastSnapshotStatus.updateSnapshotsCompletely(snapshotLastLogTerm, snapshotLastLogIndex),
       replicatedLog = replicatedLog.reset(snapshotLastLogTerm, snapshotLastLogIndex),
     )
   }

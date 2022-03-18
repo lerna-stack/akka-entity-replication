@@ -55,6 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `InstallSnapshot` can miss snapshots to copy [PR#128](https://github.com/lerna-stack/akka-entity-replication/pull/128)
 
   ⚠️ This change adds a new persistence event. This might don't allow downgrading after upgrading.
+- Moving a leader during snapshot synchronization can delete committed log entries [#133](https://github.com/lerna-stack/akka-entity-replication/issues/133)
+
+  ⚠️ This change adds a new persistence event. This might don't allow downgrading after upgrading.
 
 ## [v2.0.0] - 2021-07-16
 [v2.0.0]: https://github.com/lerna-stack/akka-entity-replication/compare/v1.0.0...v2.0.0
