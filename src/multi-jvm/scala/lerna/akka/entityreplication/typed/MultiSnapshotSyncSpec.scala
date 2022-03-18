@@ -154,6 +154,9 @@ class MultiSnapshotSyncSpec extends MultiNodeSpec(MultiSnapshotSyncSpecConfig) w
   /** RaftActor should compact it's log within this timeout */
   private val compactionTimeout: FiniteDuration = 10.seconds
 
+  /** Delayed Followers should synchronize snapshot within this timeout */
+  private val snapshotSynchronizationTimeout: FiniteDuration = 10.seconds
+
   /** None if this node doesn't shut it down. */
   private var maybeNewSystem: Option[classic.ActorSystem] = None
   private var runningNodes: Seq[RoleName]                 = roles
@@ -241,6 +244,14 @@ class MultiSnapshotSyncSpec extends MultiNodeSpec(MultiSnapshotSyncSpecConfig) w
     Thread.sleep(compactionTimeout.toMillis)
   }
 
+  /** Verifies snapshot synchronization completed by inspecting logging
+    */
+  private def expectSnapshotSynchronizationCompleted(): Unit = {
+    LoggingTestKit.info("Snapshot synchronization completed").expect {
+      Thread.sleep(snapshotSynchronizationTimeout.toMillis)
+    }
+  }
+
   private def setValue(id: String, value: Int)(implicit timeout: Timeout): Int = {
     // NOTE:
     // Too short retryInterval (e.g.200ms) will cause premature compaction and make this test unstable
@@ -286,6 +297,13 @@ class MultiSnapshotSyncSpec extends MultiNodeSpec(MultiSnapshotSyncSpecConfig) w
     enterBarrier("The cluster has nodes: [4,_,5].")
   }
 
+  "The leader (which is on node4) installs snapshots to the delayed follower (node5)" in {
+    runOn(node5) {
+      expectSnapshotSynchronizationCompleted()
+    }
+    enterBarrier("The snapshots were installed")
+  }
+
   "The leader (which is on node4) replicates some log entries. Nodes ([4,5]) compacts their log entries" in {
     object BarrierNames {
       val ExpectingCompactionCompleted = "Expecting compaction completed"
@@ -323,6 +341,13 @@ class MultiSnapshotSyncSpec extends MultiNodeSpec(MultiSnapshotSyncSpecConfig) w
       clusterReplication.init(Register(typedSystem))
     }
     enterBarrier("The cluster has nodes: [6,7,8].")
+  }
+
+  "The leader (which is on node8) installs snapshots to the delayed follower (node7)" in {
+    runOn(node7) {
+      expectSnapshotSynchronizationCompleted()
+    }
+    enterBarrier("The snapshots were installed")
   }
 
   "The leader (which is on node8) replicates some log entries" in {
