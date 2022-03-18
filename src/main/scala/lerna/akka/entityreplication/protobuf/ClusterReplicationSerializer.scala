@@ -18,47 +18,49 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   private lazy val serialization = SerializationExtension(system)
 
   // Manifests
+  // make them public for testing purposes
   // raft
-  private val BegunNewTermManifest          = "AA"
-  private val VotedManifest                 = "AB"
-  private val DetectedNewTermManifest       = "AC"
-  private val AppendedEntriesManifest       = "AD"
-  private val AppendedEventManifest         = "AE"
-  private val CompactionCompletedManifest   = "AF"
-  private val SnapshotSyncCompletedManifest = "AG"
-  private val PersistentStateManifest       = "AH"
-  private val CommandManifest               = "AI"
-  private val ForwardedCommandManifest      = "AJ"
+  val BegunNewTermManifest          = "AA"
+  val VotedManifest                 = "AB"
+  val DetectedNewTermManifest       = "AC"
+  val AppendedEntriesManifest       = "AD"
+  val AppendedEventManifest         = "AE"
+  val CompactionCompletedManifest   = "AF"
+  val SnapshotSyncCompletedManifest = "AG"
+  val PersistentStateManifest       = "AH"
+  val CommandManifest               = "AI"
+  val ForwardedCommandManifest      = "AJ"
+  val SnapshotSyncStartedManifest   = "AK"
   // raft.eventsourced
-  private val CommitLogStoreInternalEventManifest                  = "BA"
-  private val CommitLogStoreSaveManifest                           = "BB"
-  private val CommitLogStoreActorStateManifest                     = "BC"
-  private val CommitLogStoreAppendCommittedEntriesManifest         = "BD"
-  private val CommitLogStoreAppendCommittedEntriesResponseManifest = "BE"
+  val CommitLogStoreInternalEventManifest                  = "BA"
+  val CommitLogStoreSaveManifest                           = "BB"
+  val CommitLogStoreActorStateManifest                     = "BC"
+  val CommitLogStoreAppendCommittedEntriesManifest         = "BD"
+  val CommitLogStoreAppendCommittedEntriesResponseManifest = "BE"
   // raft.protocol
-  private val RequestVoteManifest              = "CA"
-  private val RequestVoteAcceptedManifest      = "CB"
-  private val RequestVoteDeniedManifest        = "CC"
-  private val AppendEntriesManifest            = "CD"
-  private val AppendEntriesSucceededManifest   = "CE"
-  private val AppendEntriesFailedManifest      = "CF"
-  private val InstallSnapshotManifest          = "CG"
-  private val InstallSnapshotSucceededManifest = "CH"
-  private val SuspendEntityManifest            = "CI"
-  private val TryCreateEntityManifest          = "CJ"
+  val RequestVoteManifest              = "CA"
+  val RequestVoteAcceptedManifest      = "CB"
+  val RequestVoteDeniedManifest        = "CC"
+  val AppendEntriesManifest            = "CD"
+  val AppendEntriesSucceededManifest   = "CE"
+  val AppendEntriesFailedManifest      = "CF"
+  val InstallSnapshotManifest          = "CG"
+  val InstallSnapshotSucceededManifest = "CH"
+  val SuspendEntityManifest            = "CI"
+  val TryCreateEntityManifest          = "CJ"
   // raft.snapshot
-  private val EntitySnapshotManifest = "DA"
+  val EntitySnapshotManifest = "DA"
   // raft.snapshot.sync
-  private val SyncCompletedManifest  = "EA"
-  private val SyncProgressManifest   = "EB"
-  private val NoOffsetManifest       = "EC"
-  private val SequenceManifest       = "ED"
-  private val TimeBasedUUIDManifest  = "EE"
-  private val SnapshotCopiedManifest = "EF"
+  val SyncCompletedManifest  = "EA"
+  val SyncProgressManifest   = "EB"
+  val NoOffsetManifest       = "EC"
+  val SequenceManifest       = "ED"
+  val TimeBasedUUIDManifest  = "EE"
+  val SnapshotCopiedManifest = "EF"
   // raft.model
-  private val NoOpManifest = "FA"
+  val NoOpManifest = "FA"
   // typed
-  private val ReplicationEnvelopeManifest = "GA"
+  val ReplicationEnvelopeManifest = "GA"
 
   // Manifest -> fromBinary
   private val fromBinaryMap = HashMap[String, Array[Byte] => ClusterReplicationSerializable](
@@ -69,6 +71,7 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     AppendedEntriesManifest       -> appendedEntriesFromBinary,
     AppendedEventManifest         -> appendedEventFromBinary,
     CompactionCompletedManifest   -> compactionCompletedFromBinary,
+    SnapshotSyncStartedManifest   -> snapshotSyncStartedFromBinary,
     SnapshotSyncCompletedManifest -> snapshotSyncCompletedFromBinary,
     PersistentStateManifest       -> persistentStateFromBinary,
     CommandManifest               -> commandFromBinary,
@@ -141,6 +144,7 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     case _: raft.RaftActor.AppendedEntries           => AppendedEntriesManifest
     case _: raft.RaftActor.AppendedEvent             => AppendedEventManifest
     case _: raft.RaftActor.CompactionCompleted       => CompactionCompletedManifest
+    case _: raft.RaftActor.SnapshotSyncStarted       => SnapshotSyncStartedManifest
     case _: raft.RaftActor.SnapshotSyncCompleted     => SnapshotSyncCompletedManifest
     case _: raft.PersistentStateData.PersistentState => PersistentStateManifest
     case _: raft.RaftProtocol.Command                => CommandManifest
@@ -187,6 +191,7 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     case m: raft.RaftActor.AppendedEntries           => appendedEntriesToBinary(m)
     case m: raft.RaftActor.AppendedEvent             => appendedEventToBinary(m)
     case m: raft.RaftActor.CompactionCompleted       => compactionCompletedToBinary(m)
+    case m: raft.RaftActor.SnapshotSyncStarted       => snapshotSyncStartedToBinary(m)
     case m: raft.RaftActor.SnapshotSyncCompleted     => snapshotSyncCompletedToBinary(m)
     case m: raft.PersistentStateData.PersistentState => persistentStateToBinary(m)
     case m: raft.RaftProtocol.Command                => commandToBinary(m)
@@ -324,6 +329,22 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
       snapshotLastLogTerm = termFromProto(proto.snapshotLastLogTerm),
       snapshotLastLogIndex = logEntryIndexFromProto(proto.snapshotLastLogIndex),
       entityIds = proto.entityIds.map(normalizedEntityIdFromProto).toSet,
+    )
+  }
+
+  private def snapshotSyncStartedToBinary(message: raft.RaftActor.SnapshotSyncStarted): Array[Byte] = {
+    msg.SnapshotSyncStarted
+      .of(
+        snapshotLastLogTerm = termToProto(message.snapshotLastLogTerm),
+        snapshotLastLogIndex = logEntryIndexToProto(message.snapshotLastLogIndex),
+      ).toByteArray
+  }
+
+  private def snapshotSyncStartedFromBinary(bytes: Array[Byte]): raft.RaftActor.SnapshotSyncStarted = {
+    val proto = msg.SnapshotSyncStarted.parseFrom(bytes)
+    raft.RaftActor.SnapshotSyncStarted(
+      snapshotLastLogTerm = termFromProto(proto.snapshotLastLogTerm),
+      snapshotLastLogIndex = logEntryIndexFromProto(proto.snapshotLastLogIndex),
     )
   }
 
@@ -976,6 +997,8 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     msg.SnapshotStatus.of(
       snapshotLastTerm = termToProto(message.snapshotLastTerm),
       snapshotLastLogIndex = logEntryIndexToProto(message.snapshotLastLogIndex),
+      targetSnapshotLastTerm = Option(termToProto(message.targetSnapshotLastTerm)),
+      targetSnapshotLastLogIndex = Option(logEntryIndexToProto(message.targetSnapshotLastLogIndex)),
     )
   }
 
@@ -983,6 +1006,9 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     raft.model.SnapshotStatus(
       snapshotLastTerm = termFromProto(proto.snapshotLastTerm),
       snapshotLastLogIndex = logEntryIndexFromProto(proto.snapshotLastLogIndex),
+      targetSnapshotLastTerm = termFromProto(proto.targetSnapshotLastTerm.getOrElse(proto.snapshotLastTerm)),
+      targetSnapshotLastLogIndex =
+        logEntryIndexFromProto(proto.targetSnapshotLastLogIndex.getOrElse(proto.snapshotLastLogIndex)),
     )
   }
 

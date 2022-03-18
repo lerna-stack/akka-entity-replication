@@ -52,6 +52,8 @@ import java.io.NotSerializableException
 import java.util.UUID
 import scala.annotation.nowarn
 
+import org.scalatest.Inside._
+
 object ClusterReplicationSerializerSpec {
   case class MyEntity(id: Long, name: String, age: Int) extends KryoSerializable
   case class MyCommand(id: Long, message: String)       extends KryoSerializable
@@ -113,6 +115,12 @@ final class ClusterReplicationSerializerSpec
       ),
     )
     checkSerialization(
+      SnapshotSyncStarted(
+        Term(5223),
+        LogEntryIndex(26632),
+      ),
+    )
+    checkSerialization(
       SnapshotSyncCompleted(
         Term(12831),
         LogEntryIndex(1238),
@@ -133,7 +141,12 @@ final class ClusterReplicationSerializerSpec
           Term(2781),
           LogEntryIndex(12305),
         ),
-        SnapshotStatus(Term(820), LogEntryIndex(9751)),
+        SnapshotStatus(
+          snapshotLastTerm = Term(820),
+          snapshotLastLogIndex = LogEntryIndex(9751),
+          targetSnapshotLastTerm = Term(820),
+          targetSnapshotLastLogIndex = LogEntryIndex(9752),
+        ),
       ),
     )
     checkSerialization(Command(MyCommand(112947, "big")))
@@ -317,6 +330,31 @@ final class ClusterReplicationSerializerSpec
         val invalidManifest = "THIS_IS_INVALID_MANIFEST"
         a[NotSerializableException] shouldBe thrownBy {
           serializer.fromBinary(Array.empty, invalidManifest)
+        }
+      }
+    }
+
+    "SnapshotStatus doesn't have `targetSnapshotLastTerm` and `targetSnapshotLastLogIndex`" should {
+      "set `snapshotLastTerm` and `snapshotLastLogIndex` as default values for backward-compatibility" in {
+        val outdatedSnapshotStatus = msg.SnapshotStatus(
+          snapshotLastTerm = msg.Term(10),
+          snapshotLastLogIndex = msg.LogEntryIndex(1000),
+          targetSnapshotLastTerm = None,
+          targetSnapshotLastLogIndex = None,
+        )
+        val expectSnapshotStatus = SnapshotStatus(
+          snapshotLastTerm = Term(10),
+          snapshotLastLogIndex = LogEntryIndex(1000),
+          targetSnapshotLastTerm = Term(10),
+          targetSnapshotLastLogIndex = LogEntryIndex(1000),
+        )
+        val blob =
+          msg.PersistentState.defaultInstance
+            .withLastSnapshotStatus(outdatedSnapshotStatus).toByteArray
+
+        inside(serializer.fromBinary(blob, serializer.PersistentStateManifest)) {
+          case state: PersistentState =>
+            state.lastSnapshotStatus should be(expectSnapshotStatus)
         }
       }
     }

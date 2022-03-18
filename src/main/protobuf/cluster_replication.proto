@@ -1,5 +1,8 @@
 // Style Guide
 // https://developers.google.com/protocol-buffers/docs/style
+//
+// Please see the rules described on the following to maintain compatibility:
+// https://developers.google.com/protocol-buffers/docs/proto#updating
 
 syntax = "proto2";
 
@@ -40,6 +43,11 @@ message CompactionCompleted {
   required Term snapshot_last_log_term = 3;
   required LogEntryIndex snapshot_last_log_index = 4;
   repeated NormalizedEntityId entity_ids = 5;
+}
+
+message SnapshotSyncStarted {
+  required Term snapshot_last_log_term = 1;
+  required LogEntryIndex snapshot_last_log_index = 2;
 }
 
 message SnapshotSyncCompleted {
@@ -262,6 +270,8 @@ message ReplicatedLog {
 message SnapshotStatus {
   required Term snapshot_last_term = 1;
   required LogEntryIndex snapshot_last_log_index = 2;
+  optional Term target_snapshot_last_term = 3;
+  optional LogEntryIndex target_snapshot_last_log_index = 4;
 }
 
 message Term {
