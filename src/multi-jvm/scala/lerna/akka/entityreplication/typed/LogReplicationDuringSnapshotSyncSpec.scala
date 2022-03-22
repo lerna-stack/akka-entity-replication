@@ -47,11 +47,7 @@ object LogReplicationDuringSnapshotSyncSpecConfig extends MultiNodeConfig {
         raft-actor-auto-start.number-of-actors = 1
         
         sharding {
-          // Sharding will be available as possible quick.
-          retry-interval = 500ms
-          waiting-for-state-timeout = 500ms
-          updating-state-timeout = 500ms
-          
+          // drop old messages actively 
           buffer-size = 50
         }
         compaction {
@@ -65,6 +61,16 @@ object LogReplicationDuringSnapshotSyncSpecConfig extends MultiNodeConfig {
       akka.testconductor.barrier-timeout = 5m
       // This spec don't use the eventsourced feature
       lerna.akka.entityreplication.raft.eventsourced.commit-log-store.retry.attempts = 0
+      
+      akka.cluster.sharding {
+        // Sharding will be available as possible quick.
+        retry-interval = 500ms
+        waiting-for-state-timeout = 500ms
+        updating-state-timeout = 500ms
+        distributed-data.majority-min-cap = 2
+        coordinator-state.write-majority-plus = 0
+        coordinator-state.read-majority-plus = 0
+      }
       """
     }
 
@@ -202,7 +208,7 @@ class LogReplicationDuringSnapshotSyncSpec
   "LogReplicationDuringSnapshotSyncSpec" should {
 
     "elect node1 as a leader" in {
-      newCluster(controller, node1, node2, node3)
+      newCluster(node1, node2, node3)
       runOn(node1) {
         expectNewLeaderElected {
           clusterReplication.init(Register(typedSystem))
