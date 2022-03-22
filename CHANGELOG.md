@@ -18,7 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   This feature is enabled only by using `typed.ClusterReplication`.
   It is highly recommended that you switch using the typed API since the classic API was deprecated.
 
-- Raft actors track the progress of the event sourcing [#136](https://github.com/lerna-stack/akka-entity-replication/issues/136).
+- Raft actors track the progress of the event sourcing
+  [#136](https://github.com/lerna-stack/akka-entity-replication/issues/136),
+  [PR#137](https://github.com/lerna-stack/akka-entity-replication/pull/137),
+  [PR#142](https://github.com/lerna-stack/akka-entity-replication/pull/142).
 
   This feature ensures that
   - Event Sourcing won't halt even if the event-sourcing store is unavailable for a long period.
@@ -36,8 +39,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
   It requires that
   `lerna.akka.entityreplication.raft.compaction.preserve-log-size` is less than
-  `lerna.akka.entityreplication.raft.compaction.log-size-threshold`. 
+  `lerna.akka.entityreplication.raft.compaction.log-size-threshold`.
 
+- Compaction warns if it might not delete enough entries [PR#142](https://github.com/lerna-stack/akka-entity-replication/pull/142)
 
 ### Changed
 - Bump up Akka version to 2.6.17 [PR#98](https://github.com/lerna-stack/akka-entity-replication/pull/98)
