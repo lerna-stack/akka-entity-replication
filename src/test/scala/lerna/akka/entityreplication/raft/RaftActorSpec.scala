@@ -75,7 +75,6 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
     "ログが追加された後にログの長さがしきい値を超えている場合はスナップショットがとられる" in {
       val snapshotStore       = TestProbe()
       val replicationActor    = TestProbe()
-      val commitLogStore      = TestProbe()
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val follower = createRaftActor(
@@ -84,7 +83,6 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         shardSnapshotStore = snapshotStore.ref,
         replicationActor = replicationActor.ref,
         settings = RaftSettings(raftConfig),
-        commitLogStore = commitLogStore.ref,
       )
 
       val leaderMemberIndex = createUniqueMemberIndex()
@@ -371,7 +369,6 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
     "prevent to start snapshot synchronization during compaction" in {
       val snapshotStore       = TestProbe()
       val replicationActor    = TestProbe()
-      val commitLogStore      = TestProbe()
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val follower = createRaftActor(
@@ -380,7 +377,6 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         shardSnapshotStore = snapshotStore.ref,
         replicationActor = replicationActor.ref,
         settings = RaftSettings(raftConfig),
-        commitLogStore = commitLogStore.ref,
       )
 
       val leaderMemberIndex = createUniqueMemberIndex()
@@ -432,7 +428,6 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
     "not persist snapshots that have already been persisted in the next compaction" in {
       val snapshotStore       = TestProbe()
       val replicationActor    = TestProbe()
-      val commitLogStore      = TestProbe()
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val follower = createRaftActor(
@@ -441,7 +436,6 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         shardSnapshotStore = snapshotStore.ref,
         replicationActor = replicationActor.ref,
         settings = RaftSettings(raftConfig),
-        commitLogStore = commitLogStore.ref,
       )
 
       val leaderMemberIndex = createUniqueMemberIndex()
@@ -486,10 +480,6 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         ),
         leaderCommit = LogEntryIndex(7),
       )
-
-      // To ensure compaction starts, CommitLogStore should handle AppendCommittedEntries.
-      commitLogStore.expectMsg(CommitLogStoreActor.AppendCommittedEntries(shardId, Seq.empty))
-      commitLogStore.reply(CommitLogStoreActor.AppendCommittedEntriesResponse(LogEntryIndex(7)))
 
       // the snapshot should be only for entity2
       replicationActor.fishForSpecificMessage() {
