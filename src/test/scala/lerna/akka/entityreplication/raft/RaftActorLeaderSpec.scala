@@ -8,7 +8,14 @@ import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion }
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId, TypeName }
-import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, ReplicationFailed }
+import lerna.akka.entityreplication.raft.RaftProtocol.{
+  Command,
+  ProcessCommand,
+  Replica,
+  Replicate,
+  ReplicationFailed,
+  ReplicationSucceeded,
+}
 import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
@@ -207,6 +214,443 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       expectMsg(AppendEntriesSucceeded(term2, index3, leaderMemberIndex))
 
       getState(leader).stateData.commitIndex should be(index2)
+    }
+
+    "handle AppendEntriesSucceeded with the current term, " +
+    "update matchIndex and nextIndex for the follower(sender), " +
+    "and do nothing if the index update doesn't contribute a new commit" in {
+      // If the AppendEntriesSucceeded contributes new commits, the commit index will change. Furthermore, the leader will
+      // send ReplicationSucceeded to ReplicationActor. This test verifies such changes won't happen.
+      val leaderMemberIndex   = createUniqueMemberIndex()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val replicationActor    = TestProbe()
+      val clientActor         = TestProbe()
+      val settings = RaftSettings(
+        ConfigFactory
+          .parseString(
+            """
+              |lerna.akka.entityreplication.raft.multi-raft-roles = [
+              |  "replica-group-1", "replica-group-2", "replica-group-3", "replica-group-4"
+              |]
+              |""".stripMargin,
+          ).withFallback(defaultRaftConfig),
+      )
+      assert(settings.replicationFactor > 3, "For making no new commit, replicationFactor should be greater than 3.")
+      val leaderData = {
+        val log = ReplicatedLog().merge(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
+          ),
+          LogEntryIndex(0),
+        )
+        val clientContext = ClientContext(
+          replicationActor.ref,
+          Some(EntityInstanceId(1)),
+          Some(clientActor.ref),
+        )
+        createLeaderData(
+          currentTerm = Term(1),
+          log = log,
+          commitIndex = LogEntryIndex(1),
+          lastApplied = LogEntryIndex(1),
+        )
+          .syncLastLogIndex(followerMemberIndex, LogEntryIndex(1))
+          .registerClient(clientContext, LogEntryIndex(2))
+      }
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+        settings = settings,
+        replicationActor = replicationActor.ref,
+        entityId = entityId,
+      )
+      setState(leader, Leader, leaderData)
+
+      val oldStateData = getState(leader).stateData
+      oldStateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(2))
+      oldStateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(1))
+      oldStateData.commitIndex should be(LogEntryIndex(1))
+      oldStateData.lastApplied should be(LogEntryIndex(1))
+
+      leader ! AppendEntriesSucceeded(Term(1), LogEntryIndex(2), followerMemberIndex)
+
+      val newStateData = getState(leader).stateData
+      newStateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(3))
+      newStateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(2))
+      newStateData.commitIndex should be(LogEntryIndex(1))
+      newStateData.lastApplied should be(LogEntryIndex(1))
+
+      replicationActor.expectNoMessage()
+      clientActor.expectNoMessage()
+    }
+
+    "handle AppendEntriesSucceeded with the current term " +
+    "and send ReplicationSucceeded with new committed entry (== NoOp) to the client (the leader itself)" in {
+      val leaderMemberIndex   = createUniqueMemberIndex()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val replicationActor    = TestProbe()
+
+      // The leader will send ReplicationSucceeded to ClientContext.replyTo (this should be the leader itself).
+      val clientContextReplyTo = TestProbe()
+      val clientContext        = ClientContext(clientContextReplyTo.ref, None, None)
+
+      val leaderData = {
+        val log = ReplicatedLog().merge(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+          ),
+          LogEntryIndex(0),
+        )
+        createLeaderData(
+          currentTerm = Term(2),
+          log = log,
+          commitIndex = LogEntryIndex(1),
+          lastApplied = LogEntryIndex(1),
+        )
+          .registerClient(clientContext, LogEntryIndex(2))
+          .syncLastLogIndex(followerMemberIndex, LogEntryIndex(1))
+      }
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+        replicationActor = replicationActor.ref,
+        entityId = entityId,
+      )
+      setState(leader, Leader, leaderData)
+
+      val oldStateData = getState(leader).stateData
+      oldStateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(2))
+      oldStateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(1))
+      oldStateData.commitIndex should be(LogEntryIndex(1))
+      oldStateData.lastApplied should be(LogEntryIndex(1))
+
+      leader ! AppendEntriesSucceeded(Term(2), LogEntryIndex(2), followerMemberIndex)
+
+      val newStateData = getState(leader).stateData
+      newStateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(3))
+      newStateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(2))
+      newStateData.commitIndex should be(LogEntryIndex(2))
+      newStateData.lastApplied should be(LogEntryIndex(2))
+
+      clientContextReplyTo.expectMsg(
+        ReplicationSucceeded(NoOp, LogEntryIndex(2), None),
+      )
+      replicationActor.expectNoMessage()
+    }
+
+    "handle AppendEntriesSucceeded with the current term " +
+    "and send ReplicationSucceeded with new committed entry (!= NoOp) to the registered client" in {
+      val leaderMemberIndex   = createUniqueMemberIndex()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val replicationActor    = TestProbe()
+      val clientActor         = TestProbe()
+      val clientContext = ClientContext(
+        replicationActor.ref,
+        Some(EntityInstanceId(1)),
+        Some(clientActor.ref),
+      )
+      val leaderData = {
+        val log = ReplicatedLog().merge(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
+          ),
+          LogEntryIndex(0),
+        )
+        createLeaderData(
+          currentTerm = Term(1),
+          log = log,
+          commitIndex = LogEntryIndex(1),
+          lastApplied = LogEntryIndex(1),
+        )
+          .syncLastLogIndex(followerMemberIndex, LogEntryIndex(1))
+          .registerClient(clientContext, LogEntryIndex(2))
+      }
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+        replicationActor = replicationActor.ref,
+        entityId = entityId,
+      )
+      setState(leader, Leader, leaderData)
+
+      val oldStateData = getState(leader).stateData
+      oldStateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(2))
+      oldStateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(1))
+      oldStateData.commitIndex should be(LogEntryIndex(1))
+      oldStateData.lastApplied should be(LogEntryIndex(1))
+
+      leader ! AppendEntriesSucceeded(Term(1), LogEntryIndex(2), followerMemberIndex)
+
+      val newStateData = getState(leader).stateData
+      newStateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(3))
+      newStateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(2))
+      newStateData.commitIndex should be(LogEntryIndex(2))
+      newStateData.lastApplied should be(LogEntryIndex(2))
+
+      replicationActor.expectMsg(
+        ReplicationSucceeded("event1", LogEntryIndex(2), clientContext.instanceId),
+      )
+      replicationActor.lastSender should be(clientActor.ref)
+      // The leader should not send any message to the client.
+      // ReplicationActor will send a response message after applying the new committed event to its state.
+      clientActor.expectNoMessage()
+    }
+
+    "handle AppendEntriesSucceeded with the current term, " +
+    "send Replica with new committed event (!= NoOp) to its ReplicationActor if a client is unknown, " +
+    "unstash stashed Commands, and then send unstashed Commands to ReplicationActor" in {
+      val leaderMemberIndex   = createUniqueMemberIndex()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val replicationActor    = TestProbe()
+      val leaderData = {
+        val log = ReplicatedLog().merge(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
+            LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+          ),
+          LogEntryIndex(0),
+        )
+        createLeaderData(currentTerm = Term(2), log = log)
+          // This follower doesn't have any entries yet for some reason, like network partition.
+          .syncLastLogIndex(followerMemberIndex, LogEntryIndex(0))
+      }
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+        replicationActor = replicationActor.ref,
+        entityId = entityId,
+      )
+      setState(leader, Leader, leaderData)
+
+      val oldStateData = getState(leader).stateData
+      oldStateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(1))
+      oldStateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(0))
+      oldStateData.commitIndex should be(LogEntryIndex(0))
+      oldStateData.lastApplied should be(LogEntryIndex(0))
+      oldStateData.clients should not contain key(LogEntryIndex(1))
+
+      // The leader is elected, but all entries is not committed yet (e.g. full cluster restart).
+      // The leader can receives Commands from
+      //   * Another follower that knows the leader (where replicationFactor > 3)
+      //   * ReplicationRegion
+      leader ! Command("stashed command 1")
+      leader ! Command("stashed command 2")
+
+      leader ! AppendEntriesSucceeded(Term(2), LogEntryIndex(3), followerMemberIndex)
+
+      val newStateData = getState(leader).stateData
+      newStateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(4))
+      newStateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(3))
+      newStateData.commitIndex should be(LogEntryIndex(3))
+      newStateData.lastApplied should be(LogEntryIndex(3))
+
+      val replica = replicationActor.fishForSpecificMessage[Replica]() {
+        case replica: Replica => replica
+      }
+      replica.logEntry.index should be(LogEntryIndex(2))
+      replica.logEntry.term should be(Term(1))
+      replica.logEntry.event.entityId should contain(entityId)
+      replica.logEntry.event.event should be("event1")
+
+      replicationActor.expectMsg(ProcessCommand("stashed command 1"))
+      replicationActor.expectMsg(ProcessCommand("stashed command 2"))
+    }
+
+    "ignore AppendEntriesSucceeded with a newer term and warn" in {
+      // If the leader handles AppendEntriesSucceeded, the next index and the match index for the follower(sender) will
+      // change. This test verifies that AppendEntriesSucceeded with a newer term won't trigger such changes. In another
+      // aspect, if the leader handles AppendEntriesFailed with a newer term, the leader will update its term and become
+      // a follower. This test also verifies AppendEntriesSucceeded with a newer term won't trigger such changes.
+      val leaderMemberIndex   = createUniqueMemberIndex()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val leaderData = {
+        val log = ReplicatedLog().merge(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
+          ),
+          LogEntryIndex(0),
+        )
+        createLeaderData(currentTerm = Term(1), log = log)
+          .syncLastLogIndex(followerMemberIndex, LogEntryIndex(1))
+      }
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+      )
+      setState(leader, Leader, leaderData)
+
+      val oldState = getState(leader)
+      oldState.stateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(2))
+      oldState.stateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(1))
+
+      val succeeded = AppendEntriesSucceeded(Term(2), LogEntryIndex(2), followerMemberIndex)
+      LoggingTestKit
+        .warn(
+          s"Unexpected message received: $succeeded (currentTerm: Term(1))",
+        ).expect {
+          leader ! succeeded
+        }
+
+      val newState = getState(leader)
+      newState.stateName should be(Leader)
+      newState.stateData.currentTerm should be(Term(1))
+      newState.stateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(2))
+      newState.stateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(1))
+    }
+
+    "ignore AppendEntriesSucceeded with an older term" in {
+      // If the leader handles AppendEntriesSucceeded, the next index and the match index for the follower(sender) will
+      // change. This test verifies that AppendEntriesSucceeded with an older term won't trigger such changes.
+      val leaderMemberIndex   = createUniqueMemberIndex()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val leaderData = {
+        val log = ReplicatedLog().merge(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event1"), Term(2)),
+          ),
+          LogEntryIndex(0),
+        )
+        createLeaderData(currentTerm = Term(2), log = log)
+          .syncLastLogIndex(followerMemberIndex, LogEntryIndex(2))
+      }
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+      )
+      setState(leader, Leader, leaderData)
+
+      val oldState = getState(leader)
+      oldState.stateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(3))
+      oldState.stateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(2))
+
+      leader ! AppendEntriesSucceeded(Term(1), LogEntryIndex(3), followerMemberIndex)
+
+      val newState = getState(leader)
+      newState.stateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(3))
+      newState.stateData.matchIndex.indexes(followerMemberIndex) should be(LogEntryIndex(2))
+    }
+
+    "handle AppendEntriesFailed with the current term and update next index for the follower(sender)" in {
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val leaderData = {
+        val log = ReplicatedLog().merge(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event1"), Term(2)),
+          ),
+          LogEntryIndex(0),
+        )
+        createLeaderData(currentTerm = Term(2), log = log)
+      }
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+      )
+      setState(leader, Leader, leaderData)
+
+      val followerMemberIndex = createUniqueMemberIndex()
+
+      val oldState = getState(leader)
+      oldState.stateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(4))
+      oldState.stateData.matchIndex.indexes should not contain key(followerMemberIndex)
+
+      leader ! AppendEntriesFailed(Term(2), followerMemberIndex)
+
+      val newState = getState(leader)
+      newState.stateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(3))
+      newState.stateData.matchIndex.indexes should not contain key(followerMemberIndex)
+    }
+
+    "handle AppendEntriesFailed with the current term and not update next index for the follower(sender) if the next index is zero" in {
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val leaderData = {
+        val log = ReplicatedLog().merge(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event1"), Term(2)),
+          ),
+          LogEntryIndex(0),
+        )
+        createLeaderData(currentTerm = Term(2), log = log)
+      }
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+      )
+      setState(leader, Leader, leaderData)
+
+      val followerMemberIndex = createUniqueMemberIndex()
+
+      getState(leader).stateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(4))
+      leader ! AppendEntriesFailed(Term(2), followerMemberIndex) // next index: 4 => 3
+      leader ! AppendEntriesFailed(Term(2), followerMemberIndex) // next index: 3 => 2
+      leader ! AppendEntriesFailed(Term(2), followerMemberIndex) // next index: 2 => 1
+      leader ! AppendEntriesFailed(Term(2), followerMemberIndex) // next index: 1 => 0
+      val oldState = getState(leader)
+      oldState.stateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(0))
+      oldState.stateData.matchIndex.indexes should not contain key(followerMemberIndex)
+
+      leader ! AppendEntriesFailed(Term(2), followerMemberIndex) // next index: 0 => 0
+
+      val newState = getState(leader)
+      newState.stateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(0))
+      newState.stateData.matchIndex.indexes should not contain key(followerMemberIndex)
+    }
+
+    "handle AppendEntriesFailed with a newer term, update its term, and become a follower" in {
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val leaderData = {
+        val log = ReplicatedLog().merge(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          ),
+          LogEntryIndex(0),
+        )
+        createLeaderData(currentTerm = Term(1), log = log)
+      }
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+      )
+      setState(leader, Leader, leaderData)
+
+      val followerMemberIndex = createUniqueMemberIndex()
+      leader ! AppendEntriesFailed(Term(2), followerMemberIndex)
+
+      val state = getState(leader)
+      state.stateName should be(Follower)
+      state.stateData.currentTerm should be(Term(2))
+      state.stateData.leaderMember should be(None)
+    }
+
+    "ignore AppendEntriesFailed with an older term" in {
+      // If the leader handles AppendEntriesFailed, the next index for the follower(sender) will change. This test verifies
+      // that AppendEntriesFailed with an older term won't trigger such changes.
+      val leaderMemberIndex   = createUniqueMemberIndex()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val leaderData = {
+        val log = ReplicatedLog().merge(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+          ),
+          LogEntryIndex(0),
+        )
+        createLeaderData(currentTerm = Term(2), log = log)
+          .syncLastLogIndex(followerMemberIndex, LogEntryIndex(1))
+      }
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+      )
+      setState(leader, Leader, leaderData)
+
+      val oldState = getState(leader)
+      oldState.stateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(2))
+
+      leader ! AppendEntriesFailed(Term(1), followerMemberIndex)
+
+      val newState = getState(leader)
+      newState.stateData.nextIndexFor(followerMemberIndex) should be(LogEntryIndex(2))
     }
 
     "become a follower and synchronize snapshots if it receives InstallSnapshot" in {
@@ -729,6 +1173,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       currentTerm: Term,
       log: ReplicatedLog = ReplicatedLog(),
       commitIndex: LogEntryIndex = LogEntryIndex.initial(),
+      lastApplied: LogEntryIndex = LogEntryIndex.initial(),
       nextIndex: NextIndex = NextIndex(ReplicatedLog()),
       matchIndex: MatchIndex = MatchIndex(),
   ): RaftMemberData =
@@ -736,6 +1181,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       currentTerm = currentTerm,
       replicatedLog = log,
       commitIndex = commitIndex,
+      lastApplied = lastApplied,
       nextIndex = Some(nextIndex),
       matchIndex = matchIndex,
     ).initializeLeaderData()
