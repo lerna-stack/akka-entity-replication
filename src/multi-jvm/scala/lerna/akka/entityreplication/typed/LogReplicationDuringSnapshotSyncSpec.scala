@@ -14,6 +14,7 @@ import akka.util.Timeout
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.util.AtLeastOnceComplete
 import lerna.akka.entityreplication.{ STMultiNodeSerializable, STMultiNodeSpec }
+import org.scalatest.Ignore
 
 import scala.concurrent.Future
 import scala.concurrent.duration._
@@ -132,12 +133,20 @@ object LogReplicationDuringSnapshotSyncSpecConfig extends MultiNodeConfig {
   })
 }
 
-class LogReplicationDuringSnapshotSyncSpecMultiJvmController extends LogReplicationDuringSnapshotSyncSpec
-class LogReplicationDuringSnapshotSyncSpecMultiJvmNode1      extends LogReplicationDuringSnapshotSyncSpec
-class LogReplicationDuringSnapshotSyncSpecMultiJvmNode2      extends LogReplicationDuringSnapshotSyncSpec
-class LogReplicationDuringSnapshotSyncSpecMultiJvmNode3      extends LogReplicationDuringSnapshotSyncSpec
-class LogReplicationDuringSnapshotSyncSpecMultiJvmNode4      extends LogReplicationDuringSnapshotSyncSpec
+// This test is ignored due to that stabilizing this test in a CI environment is difficult.
+// To enable this test, remove all @Ignore below:
+@Ignore class LogReplicationDuringSnapshotSyncSpecMultiJvmController extends LogReplicationDuringSnapshotSyncSpec
+@Ignore class LogReplicationDuringSnapshotSyncSpecMultiJvmNode1      extends LogReplicationDuringSnapshotSyncSpec
+@Ignore class LogReplicationDuringSnapshotSyncSpecMultiJvmNode2      extends LogReplicationDuringSnapshotSyncSpec
+@Ignore class LogReplicationDuringSnapshotSyncSpecMultiJvmNode3      extends LogReplicationDuringSnapshotSyncSpec
+@Ignore class LogReplicationDuringSnapshotSyncSpecMultiJvmNode4      extends LogReplicationDuringSnapshotSyncSpec
 
+/**
+  * This test doesn't verify specific features but reproduces a specific fault.
+  *
+  * This test verifies that the committed events don't disappear even if new events are produced by entities
+  * while only the leader and the member synchronizing the snapshot exist.
+  */
 class LogReplicationDuringSnapshotSyncSpec
     extends MultiNodeSpec(LogReplicationDuringSnapshotSyncSpecConfig)
     with STMultiNodeSpec {
