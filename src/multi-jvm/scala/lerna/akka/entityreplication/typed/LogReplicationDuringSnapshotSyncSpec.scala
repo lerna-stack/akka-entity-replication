@@ -59,8 +59,6 @@ object LogReplicationDuringSnapshotSyncSpecConfig extends MultiNodeConfig {
       // This spec requires longer timeouts
       akka.actor.testkit.typed.filter-leeway = 30s
       akka.testconductor.barrier-timeout = 5m
-      // This spec don't use the eventsourced feature
-      lerna.akka.entityreplication.raft.eventsourced.commit-log-store.retry.attempts = 0
       
       akka.cluster.sharding {
         // Sharding will be available as possible quick.
