@@ -31,9 +31,7 @@ object LogReplicationDuringSnapshotSyncSpecConfig extends MultiNodeConfig {
 
   testTransport(true)
 
-  private implicit val testKitSettings: TestKitSettings = TestKitSettings(
-    ConfigFactory.load().getConfig("akka.actor.testkit.typed"),
-  )
+  private implicit val testKitSettings: TestKitSettings = TestKitSettings(ConfigFactory.load())
 
   private val testConfig: Config =
     ConfigFactory.parseString {
