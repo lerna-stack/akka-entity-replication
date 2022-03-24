@@ -66,6 +66,10 @@ For more details, please refer to [Operation Guide](docs/operation_guide.md).
 
 [CONTRIBUTING](CONTRIBUTING.md) may help us.
 
+## For Maintainers
+
+[RELEASING](RELEASING.md) describes how to release a new version.
+
 ## Examples
 
 You can see a sample application using this extension in the following project.
