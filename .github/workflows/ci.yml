@@ -69,6 +69,7 @@ jobs:
       run: sbt coverageAggregate coveralls
       env:
         COVERALLS_REPO_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        COVERALLS_FLAG_NAME: Java ${{ matrix.java }}
 
       # https://www.scala-sbt.org/1.x/docs/GitHub-Actions-with-sbt.html#Caching
     - name: Clean files for caching
