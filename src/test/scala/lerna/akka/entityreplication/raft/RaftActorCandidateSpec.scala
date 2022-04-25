@@ -72,7 +72,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
           LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), Term(1)),
           LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "c"), Term(2)),
         )
-        ReplicatedLog().merge(candidateLogEntries, LogEntryIndex.initial())
+        ReplicatedLog().truncateAndAppend(candidateLogEntries)
       }
       val candidateData = createCandidateData(currentTerm, replicatedLog)
       setState(candidate, Candidate, candidateData)
@@ -163,7 +163,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
         )
         val replicatedLog = ReplicatedLog()
           .reset(ancestorLastTerm, ancestorLastIndex)
-          .merge(candidateLogEntries, LogEntryIndex(0))
+          .truncateAndAppend(candidateLogEntries)
         createCandidateData(currentTerm, replicatedLog)
       }
       setState(candidate, Candidate, candidateData)
@@ -406,7 +406,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
         LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
         LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
       )
-      val log           = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
+      val log           = ReplicatedLog().truncateAndAppend(logEntries)
       val candidateData = createCandidateData(term1, log, index2)
 
       // send appendEntries
@@ -439,7 +439,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
         LogEntry(index2, EntityEvent(Option(entityId), SomeEvent2), term1),
       )
 
-      val log           = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
+      val log           = ReplicatedLog().truncateAndAppend(logEntries)
       val candidateData = createCandidateData(term1, log, index2)
 
       setState(candidate, Candidate, candidateData)
@@ -470,7 +470,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       val leaderLogEntries = Seq(
         LogEntry(index4, EntityEvent(Option(entityId), "e"), term.next()),
       )
-      val log = ReplicatedLog().merge(followerLogEntries, LogEntryIndex.initial())
+      val log = ReplicatedLog().truncateAndAppend(followerLogEntries)
       setState(candidate, Candidate, createCandidateData(term, log))
 
       candidate ! createAppendEntries(shardId, term, leaderMemberIndex, index3, term.next(), leaderLogEntries)
@@ -497,7 +497,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
       val appendLogEntries = Seq(
         LogEntry(index4, EntityEvent(Option(entityId), "e"), leaderTerm),
       )
-      val log = ReplicatedLog().merge(candidateLogEntries, LogEntryIndex.initial())
+      val log = ReplicatedLog().truncateAndAppend(candidateLogEntries)
       setState(candidate, Candidate, createCandidateData(selfTerm, log))
 
       candidate ! createAppendEntries(shardId, leaderTerm, leaderMemberIndex, index3, leaderTerm, appendLogEntries)
@@ -525,7 +525,7 @@ class RaftActorCandidateSpec extends TestKit(ActorSystem()) with RaftActorSpecBa
         LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
         LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
       )
-      val log           = ReplicatedLog().merge(logEntries1, LogEntryIndex.initial())
+      val log           = ReplicatedLog().truncateAndAppend(logEntries1)
       val candidateData = createCandidateData(term1, log, index2)
 
       val logEntries2 = Seq(

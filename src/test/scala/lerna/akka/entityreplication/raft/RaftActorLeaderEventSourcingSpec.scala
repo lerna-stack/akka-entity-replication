@@ -512,7 +512,7 @@ object RaftActorLeaderEventSourcingSpec {
       require(firstIndex == ancestorLastIndex.next())
       ReplicatedLog()
         .reset(ancestorLastTerm, ancestorLastIndex)
-        .merge(entries, firstIndex.prev())
+        .truncateAndAppend(entries)
     }
   }
 

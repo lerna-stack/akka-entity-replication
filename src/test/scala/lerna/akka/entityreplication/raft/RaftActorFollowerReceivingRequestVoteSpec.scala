@@ -845,7 +845,7 @@ object RaftActorFollowerReceivingRequestVoteSpec {
   ) = {
     ReplicatedLog()
       .reset(ancestorLastTerm = Term(0), ancestorLastIndex = LogEntryIndex(0))
-      .merge(entries, LogEntryIndex(0))
+      .truncateAndAppend(entries)
   }
 
 }

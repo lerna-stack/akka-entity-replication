@@ -82,19 +82,24 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         selfMemberIndex = leaderMemberIndex,
       )
       val newLeaderMemberIndex = createUniqueMemberIndex()
-      val term1                = Term(1)
-      val term2                = Term(2)
-      val index1               = LogEntryIndex(1)
-      val index2               = LogEntryIndex(2)
       val logEntries = Seq(
-        LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
-        LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
+        LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), Term(1)),
       )
-      val log = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
-      setState(leader, Leader, createLeaderData(term1, log))
+      val log = ReplicatedLog().truncateAndAppend(logEntries)
+      setState(leader, Leader, createLeaderData(Term(1), log))
 
-      leader ! createAppendEntries(shardId, term2, newLeaderMemberIndex, index2, term1, logEntries)
-      expectMsg(AppendEntriesSucceeded(term2, index2, leaderMemberIndex))
+      leader ! createAppendEntries(
+        shardId,
+        Term(2),
+        newLeaderMemberIndex,
+        LogEntryIndex(2),
+        Term(1),
+        Seq(
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+        ),
+      )
+      expectMsg(AppendEntriesSucceeded(Term(2), LogEntryIndex(3), leaderMemberIndex))
     }
 
     "AppendEntries が新しい Term を持っていて、prevLogIndex/prevLogTerm に一致するログエントリがない場合は AppendEntriesFailed" in {
@@ -112,7 +117,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
         LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
       )
-      val log = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
+      val log = ReplicatedLog().truncateAndAppend(logEntries)
       setState(leader, Leader, createLeaderData(term1, log))
 
       leader ! createAppendEntries(shardId, term2, newLeaderMemberIndex, index3, term1, logEntries)
@@ -143,7 +148,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val leaderLogEntries = Seq(
         LogEntry(index4, EntityEvent(Option(entityId), "e"), term1.next()),
       )
-      val log = ReplicatedLog().merge(followerLogEntries, LogEntryIndex.initial())
+      val log = ReplicatedLog().truncateAndAppend(followerLogEntries)
       setState(leader, Leader, createLeaderData(term1, log))
 
       leader ! createAppendEntries(shardId, term1, newLeaderMemberIndex, index3, term1.next(), leaderLogEntries)
@@ -165,7 +170,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "a"), term1),
         LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), term1),
       )
-      val log        = ReplicatedLog().merge(logEntries1, LogEntryIndex.initial())
+      val log        = ReplicatedLog().truncateAndAppend(logEntries1)
       val leaderData = createLeaderData(term1, log, index2)
 
       val logEntries2 = Seq(
@@ -193,7 +198,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
         LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
       )
-      val log        = ReplicatedLog().merge(term1LogEntries, LogEntryIndex.initial())
+      val log        = ReplicatedLog().truncateAndAppend(term1LogEntries)
       val leaderData = createLeaderData(term1, log, commitIndex = index2)
       setState(leader, Leader, leaderData)
       // index2 already committed but new Leader doesn't know that
@@ -237,12 +242,11 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       )
       assert(settings.replicationFactor > 3, "For making no new commit, replicationFactor should be greater than 3.")
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
           ),
-          LogEntryIndex(0),
         )
         val clientContext = ClientContext(
           replicationActor.ref,
@@ -295,12 +299,11 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val clientContext        = ClientContext(clientContextReplyTo.ref, None, None)
 
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(
           currentTerm = Term(2),
@@ -350,12 +353,11 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         Some(clientActor.ref),
       )
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(
           currentTerm = Term(1),
@@ -403,13 +405,12 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val followerMemberIndex = createUniqueMemberIndex()
       val replicationActor    = TestProbe()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
             LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(2), log = log)
           // This follower doesn't have any entries yet for some reason, like network partition.
@@ -464,12 +465,11 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val leaderMemberIndex   = createUniqueMemberIndex()
       val followerMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(1), log = log)
           .syncLastLogIndex(followerMemberIndex, LogEntryIndex(1))
@@ -504,13 +504,12 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val leaderMemberIndex   = createUniqueMemberIndex()
       val followerMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
             LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event1"), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(2), log = log)
           .syncLastLogIndex(followerMemberIndex, LogEntryIndex(2))
@@ -534,13 +533,12 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
     "handle AppendEntriesFailed with the current term and update next index for the follower(sender)" in {
       val leaderMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
             LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event1"), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(2), log = log)
       }
@@ -565,13 +563,12 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
     "handle AppendEntriesFailed with the current term and not update next index for the follower(sender) if the next index is zero" in {
       val leaderMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
             LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event1"), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(2), log = log)
       }
@@ -601,11 +598,10 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
     "handle AppendEntriesFailed with a newer term, update its term, and become a follower" in {
       val leaderMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(1), log = log)
       }
@@ -629,12 +625,11 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val leaderMemberIndex   = createUniqueMemberIndex()
       val followerMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(2), log = log)
           .syncLastLogIndex(followerMemberIndex, LogEntryIndex(1))
@@ -856,7 +851,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       )
       val logEntryByIndex = logEntries.map(entry => entry.index -> entry).toMap
       val leaderData = {
-        val replicatedLog = ReplicatedLog().merge(logEntries, LogEntryIndex(0))
+        val replicatedLog = ReplicatedLog().truncateAndAppend(logEntries)
         createLeaderData(currentTerm, replicatedLog, commitIndex = LogEntryIndex(1))
           .syncLastLogIndex(follower1Index, LogEntryIndex(1))
           .syncLastLogIndex(follower2Index, LogEntryIndex(5))

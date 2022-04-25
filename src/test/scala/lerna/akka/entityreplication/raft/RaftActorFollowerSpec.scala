@@ -70,7 +70,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
           LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), Term(1)),
           LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "c"), Term(2)),
         )
-        ReplicatedLog().merge(followerLogEntries, LogEntryIndex.initial())
+        ReplicatedLog().truncateAndAppend(followerLogEntries)
       }
       val followerData = createFollowerData(currentTerm, replicatedLog)
       setState(follower, Follower, followerData)
@@ -161,7 +161,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
         )
         val replicatedLog = ReplicatedLog()
           .reset(ancestorLastTerm, ancestorLastIndex)
-          .merge(followerLogEntries, LogEntryIndex(0))
+          .truncateAndAppend(followerLogEntries)
         createFollowerData(currentTerm, replicatedLog)
       }
       setState(follower, Follower, followerData)
@@ -410,45 +410,47 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
         shardId = shardId,
         selfMemberIndex = followerMemberIndex,
       )
-      val index             = LogEntryIndex.initial()
-      val index1            = LogEntryIndex(1)
-      val term              = Term.initial()
-      val term1             = Term(1)
       val leader            = TestProbe()
       val leaderMemberIndex = createUniqueMemberIndex()
-      val logEntries        = Seq(LogEntry(index1, EntityEvent(Option(entityId), "a"), term1))
-
       // leader を認識させる
-      follower.tell(createAppendEntries(shardId, term, leaderMemberIndex), leader.ref)
-      leader.expectMsg(AppendEntriesSucceeded(term, index, followerMemberIndex))
-
       follower.tell(
         createAppendEntries(
           shardId,
-          term = term1,
+          term = Term(1),
           leader = leaderMemberIndex,
-          prevLogIndex = index,
-          prevLogTerm = term1,
-          entries = logEntries,
-          leaderCommit = index1,
+          prevLogIndex = LogEntryIndex(0),
+          prevLogTerm = Term(0),
+          entries = Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          ),
+          leaderCommit = LogEntryIndex(0),
         ),
         leader.ref,
       )
-      leader.expectMsg(AppendEntriesSucceeded(term1, index1, followerMemberIndex))
+      leader.expectMsg(AppendEntriesSucceeded(Term(1), LogEntryIndex(1), followerMemberIndex))
 
       // leaderCommit > commitIndex となる AppendEntries
-      val lastIndex = LogEntryIndex(3)
       val newLogEntries = Seq(
-        LogEntry(lastIndex, EntityEvent(Option(entityId), "c"), term1),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "c"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "c"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "c"), Term(1)),
       )
       // leaderCommit > 新規エントリ
       val leaderCommit = LogEntryIndex(5)
 
       follower.tell(
-        createAppendEntries(shardId, term1, leaderMemberIndex, index1, term1, newLogEntries, leaderCommit),
+        createAppendEntries(
+          shardId,
+          term = Term(1),
+          leader = leaderMemberIndex,
+          prevLogIndex = LogEntryIndex(1),
+          prevLogTerm = Term(1),
+          newLogEntries,
+          leaderCommit,
+        ),
         leader.ref,
       )
-      leader.expectMsg(AppendEntriesSucceeded(term1, newLogEntries.last.index, followerMemberIndex))
+      leader.expectMsg(AppendEntriesSucceeded(Term(1), newLogEntries.last.index, followerMemberIndex))
 
       getState(follower).stateData.commitIndex should ===(newLogEntries.last.index)
     }
@@ -469,7 +471,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
         LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
       )
       val log  = ReplicatedLog()
-      val log1 = log.merge(logEntries, LogEntryIndex.initial())
+      val log1 = log.truncateAndAppend(logEntries)
       setState(follower, Follower, createFollowerData(term1, log1))
 
       follower ! createAppendEntries(shardId, term1, leaderMemberIndex, index2, term1)
@@ -491,7 +493,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
         LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
         LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
       )
-      val log = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
+      val log = ReplicatedLog().truncateAndAppend(logEntries)
       setState(follower, Follower, createFollowerData(term1, log))
 
       follower ! createAppendEntries(
@@ -531,7 +533,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       val appendLogEntries = Seq(
         LogEntry(index4, EntityEvent(Option(entityId), "e"), leaderTerm),
       )
-      val log = ReplicatedLog().merge(followerLogEntries, LogEntryIndex.initial())
+      val log = ReplicatedLog().truncateAndAppend(followerLogEntries)
       setState(follower, Follower, createFollowerData(selfTerm, log))
 
       follower ! createAppendEntries(shardId, leaderTerm, leaderMemberIndex, index3, leaderTerm, appendLogEntries)
@@ -551,37 +553,34 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
         selfMemberIndex = followerMemberIndex,
       )
       val leaderMemberIndex = createUniqueMemberIndex()
-      val term1             = Term(1)
 
-      // leaderCommit > commitIndex
-      val index2       = LogEntryIndex(2)
-      val leaderCommit = LogEntryIndex(3)
       case object SomeEvent1 extends KryoSerializable
       case object SomeEvent2 extends KryoSerializable
-      case object SomeEvent3 extends KryoSerializable
       val logEntries = Seq(
-        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), SomeEvent1), term1),
-        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), SomeEvent2), term1),
+        LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), SomeEvent1), Term(1)),
       )
-      val log          = ReplicatedLog().merge(logEntries, index2)
-      val followerData = createFollowerData(term1, log, index2)
+      val log          = ReplicatedLog().truncateAndAppend(logEntries)
+      val followerData = createFollowerData(Term(1), log, LogEntryIndex(2))
 
       val newLogEntries = Seq(
-        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), SomeEvent1), term1),
-        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), SomeEvent2), term1),
-        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), SomeEvent3), term1),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), SomeEvent2), Term(1)),
       )
+      val leaderCommit = LogEntryIndex(3)
+      assert(leaderCommit > followerData.commitIndex)
+      assert(newLogEntries.exists(_.index == leaderCommit))
+
       setState(follower, Follower, followerData)
       follower ! createAppendEntries(
         shardId,
-        term1,
+        Term(1),
         leaderMemberIndex,
-        index2,
-        term1,
+        LogEntryIndex(2),
+        Term(1),
         newLogEntries,
-        followerData.commitIndex.next(),
+        leaderCommit,
       )
-      expectMsg(AppendEntriesSucceeded(term1, leaderCommit, followerMemberIndex))
+      expectMsg(AppendEntriesSucceeded(Term(1), LogEntryIndex(3), followerMemberIndex))
 
       getState(follower).stateData.commitIndex should be(leaderCommit)
     }
@@ -600,7 +599,7 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
         LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), Term(1)),
         LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "c"), Term(1)),
       )
-      val log = ReplicatedLog().merge(followerLogEntries, LogEntryIndex.initial())
+      val log = ReplicatedLog().truncateAndAppend(followerLogEntries)
       setState(follower, Follower, createFollowerData(term1, log))
 
       follower ! createAppendEntries(

@@ -30,6 +30,11 @@ message DetectedNewTerm {
 message AppendedEntries {
   required Term term = 1;
   repeated LogEntry log_entries = 2;
+}
+
+message AppendedEntries_V2_1_0 {
+  required Term term = 1;
+  repeated LogEntry log_entries = 2;
   required LogEntryIndex prev_log_index = 3;
 }
 

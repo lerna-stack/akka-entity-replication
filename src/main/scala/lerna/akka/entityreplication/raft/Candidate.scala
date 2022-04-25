@@ -150,16 +150,16 @@ private[raft] trait Candidate { this: RaftActor =>
               become(Follower)
             }
           } else {
-            applyDomainEvent(AppendedEntries(appendEntries.term, appendEntries.entries, appendEntries.prevLogIndex)) {
-              domainEvent =>
-                applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
-                  sender() ! AppendEntriesSucceeded(
-                    domainEvent.term,
-                    currentData.replicatedLog.lastLogIndex,
-                    selfMemberIndex,
-                  )
-                  become(Follower)
-                }
+            val newEntries = currentData.resolveNewLogEntries(appendEntries.entries)
+            applyDomainEvent(AppendedEntries(appendEntries.term, newEntries)) { domainEvent =>
+              applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
+                sender() ! AppendEntriesSucceeded(
+                  domainEvent.term,
+                  currentData.replicatedLog.lastLogIndex,
+                  selfMemberIndex,
+                )
+                become(Follower)
+              }
             }
           }
         } else { // prevLogIndex と prevLogTerm がマッチするエントリが無かった

@@ -3,6 +3,8 @@ package lerna.akka.entityreplication.raft.model
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import org.scalatest.{ Matchers, WordSpecLike }
 
+import scala.annotation.nowarn
+
 class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
   "ReplicatedLog" should {
@@ -193,7 +195,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
       val log = new ReplicatedLog(followerLog)
 
-      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(2))
+      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(2)): @nowarn
 
       updatedLog.entries should be(expectedLog)
       updatedLog.entries.map(_.event) should contain theSameElementsInOrderAs expectedLog.map(_.event)
@@ -220,7 +222,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
       val log = new ReplicatedLog(followerLog)
 
-      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(2))
+      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(2)): @nowarn
 
       updatedLog.entries should be(expectedLog)
       updatedLog.entries.map(_.event) should contain theSameElementsInOrderAs expectedLog.map(_.event)
@@ -245,7 +247,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
       val log = new ReplicatedLog(followerLog)
 
-      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(0))
+      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(0)): @nowarn
 
       updatedLog.entries should be(expectedLog)
       updatedLog.entries.map(_.event) should contain theSameElementsInOrderAs expectedLog.map(_.event)
@@ -275,7 +277,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
       val log = new ReplicatedLog(followerLog)
 
-      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(1))
+      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(1)): @nowarn
 
       updatedLog.entries should be(expectedLog)
       updatedLog.entries.map(_.event) should contain theSameElementsInOrderAs expectedLog.map(_.event)
@@ -351,13 +353,12 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       assert(emptyWithAncestor.isGivenLogUpToDate(Term(4), LogEntryIndex(7))) // index = lastLogIndex
       assert(emptyWithAncestor.isGivenLogUpToDate(Term(4), LogEntryIndex(8))) // index > lastLogIndex
 
-      val nonEmpty = ReplicatedLog().merge(
+      val nonEmpty = ReplicatedLog().truncateAndAppend(
         Seq(
           LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
         ),
-        LogEntryIndex(0),
       )
       assert(nonEmpty.isGivenLogUpToDate(Term(3), LogEntryIndex(2))) // index < lastLogIndex
       assert(nonEmpty.isGivenLogUpToDate(Term(3), LogEntryIndex(3))) // index = lastLogIndex
@@ -375,13 +376,12 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       assert(emptyWithAncestor.isGivenLogUpToDate(Term(3), LogEntryIndex(7))) // index = lastLogIndex
       assert(emptyWithAncestor.isGivenLogUpToDate(Term(3), LogEntryIndex(8))) // index > lastLogIndex
 
-      val nonEmpty = ReplicatedLog().merge(
+      val nonEmpty = ReplicatedLog().truncateAndAppend(
         Seq(
           LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
         ),
-        LogEntryIndex(0),
       )
       assert(nonEmpty.isGivenLogUpToDate(Term(2), LogEntryIndex(3))) // index = lastLogIndex
       assert(nonEmpty.isGivenLogUpToDate(Term(2), LogEntryIndex(4))) // index > lastLogIndex
@@ -393,13 +393,12 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       val emptyWithAncestor = ReplicatedLog().reset(Term(3), LogEntryIndex(7))
       assert(!emptyWithAncestor.isGivenLogUpToDate(Term(3), LogEntryIndex(6))) // index < lastLogIndex
 
-      val nonEmpty = ReplicatedLog().merge(
+      val nonEmpty = ReplicatedLog().truncateAndAppend(
         Seq(
           LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
         ),
-        LogEntryIndex(0),
       )
       assert(!nonEmpty.isGivenLogUpToDate(Term(2), LogEntryIndex(2))) // index < lastLogIndex
 
@@ -412,13 +411,12 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       assert(!emptyWithAncestor.isGivenLogUpToDate(Term(2), LogEntryIndex(7))) // index = lastLogIndex
       assert(!emptyWithAncestor.isGivenLogUpToDate(Term(2), LogEntryIndex(8))) // index > lastLogIndex
 
-      val nonEmpty = ReplicatedLog().merge(
+      val nonEmpty = ReplicatedLog().truncateAndAppend(
         Seq(
           LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
         ),
-        LogEntryIndex(0),
       )
       assert(!nonEmpty.isGivenLogUpToDate(Term(1), LogEntryIndex(2))) // index < lastLogIndex
       assert(!nonEmpty.isGivenLogUpToDate(Term(1), LogEntryIndex(3))) // index = lastLogIndex

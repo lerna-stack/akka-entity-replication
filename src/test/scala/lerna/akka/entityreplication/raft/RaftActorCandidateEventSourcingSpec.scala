@@ -175,7 +175,7 @@ object RaftActorCandidateEventSourcingSpec {
   ): ReplicatedLog = {
     ReplicatedLog()
       .reset(Term(0), LogEntryIndex(0))
-      .merge(entries, LogEntryIndex(0))
+      .truncateAndAppend(entries)
   }
 
 }

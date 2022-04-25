@@ -42,7 +42,7 @@ class RaftActorSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
         LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "c"), term),
       )
       val data = RaftMemberData(
-        replicatedLog = ReplicatedLog().merge(logEntries, LogEntryIndex.initial()),
+        replicatedLog = ReplicatedLog().truncateAndAppend(logEntries),
         lastApplied = LogEntryIndex(3),
       )
       setState(follower, Follower, data)
