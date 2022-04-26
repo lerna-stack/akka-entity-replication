@@ -111,19 +111,45 @@ private[entityreplication] final case class ReplicatedLog private[model] (
     *  conflict: index=3 and term =2
     * </pre>
     *
-    * Note that if there is no overlapping between exising entries and the given entries, this returns [[FindConflictResult.NoConflict]].
+    * If there is no overlapping between exising entries and the given entries, this returns [[FindConflictResult.NoConflict]].
     *
-    * Note that the index of the given entries MUST be continuously increasing (not checked on this method).
+    * @throws IllegalArgumentException
+    *   - if the given entries contains the already compacted entries, excluding the last one.
+    *   - if the given entries conflict with the last compacted entry.
+    *
+    * @note
+    *  - The index of the given entries MUST be continuously increasing (not checked on this method).
+    *  - Returned conflict index should always meet all of the following conditions:
+    *     - greater than [[ancestorLastIndex]]
+    *     - less than or equal to [[lastLogIndex]]
     */
   def findConflict(thatEntries: Seq[LogEntry]): FindConflictResult = {
     if (thatEntries.isEmpty) {
       FindConflictResult.NoConflict
     } else {
+      require(
+        thatEntries.head.index >= ancestorLastIndex,
+        s"Could not find conflict with already compacted entries excluding the last one " +
+        s"(ancestorLastIndex: [$ancestorLastIndex], ancestorLastTerm: [${ancestorLastTerm.term}]), " +
+        s"but got entries (indices: [${thatEntries.head.index}..${thatEntries.last.index}]).",
+      )
+      require(
+        thatEntries.head.index != ancestorLastIndex || thatEntries.head.term == ancestorLastTerm,
+        s"The last compacted entry (ancestorLastIndex: [$ancestorLastIndex], ancestorLastTerm: [${ancestorLastTerm.term}]) " +
+        s"should not conflict with the given first entry (index: [${thatEntries.head.index}], term: [${thatEntries.head.term.term}]).",
+      )
       val conflictEntryOption = thatEntries.find(entry => {
         termAt(entry.index).exists(_ != entry.term)
       })
       conflictEntryOption match {
         case Some(conflictEntry) =>
+          assert(
+            conflictEntry.index > ancestorLastIndex && conflictEntry.index <= lastLogIndex,
+            "The given entries should always conflict with the existing entries " +
+            s"(ancestorLastIndex: [$ancestorLastIndex], lastLogIndex: [$lastLogIndex]). " +
+            s"conflict index: [${conflictEntry.index}], conflict term: [${conflictEntry.term.term}], " +
+            s"given entries with indices [${thatEntries.head.index}..${thatEntries.last.index}])",
+          )
           FindConflictResult.ConflictFound(conflictEntry.index, conflictEntry.term)
         case None =>
           FindConflictResult.NoConflict

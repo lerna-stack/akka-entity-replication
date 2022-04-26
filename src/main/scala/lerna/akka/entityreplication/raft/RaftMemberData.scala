@@ -146,14 +146,6 @@ private[entityreplication] trait FollowerData { self: RaftMemberData =>
           conflictIndex > commitIndex,
           s"The entry with index [$conflictIndex] should not conflict with the committed entry (commitIndex [$commitIndex])",
         )
-        assert(
-          conflictIndex > replicatedLog.ancestorLastIndex,
-          s"The entry with index [$conflictIndex] should not conflict with the compacted entry (ancestorLastIndex [${replicatedLog.ancestorLastIndex}])",
-        )
-        assert(
-          conflictIndex <= replicatedLog.lastLogIndex,
-          s"The entry with index [$conflictIndex] should conflict with an exising entry, but didn't (lastLogIndex [${replicatedLog.lastLogIndex}])",
-        )
         val newEntries = logEntries
           .dropWhile(_.index < conflictIndex)
         assert(
