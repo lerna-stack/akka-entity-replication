@@ -176,7 +176,7 @@ private[entityreplication] final case class ReplicatedLog private[model] (
         headIndex >= ancestorLastIndex.plus(1) && headIndex <= lastLogIndex.plus(1),
         "Replicated log should not contain a missing entry." +
         s" The head index [$headIndex] of the given entries with indices [${thatEntries.head.index}..${thatEntries.last.index}]" +
-        s" should be between ($ancestorLastIndex + 1) and ($lastLogIndex + 1).",
+        s" should be between ancestorLastIndex([$ancestorLastIndex])+1 and lastLogIndex([$lastLogIndex])+1.",
       )
       val truncatedEntries = this.entries.takeWhile(_.index < headIndex)
       val newEntries       = truncatedEntries ++ thatEntries
