@@ -468,4 +468,136 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
   }
 
+  "ReplicatedLog.findConflict" should {
+    import ReplicatedLog.FindConflictResult
+
+    "return NoConflict if the given entries are empty" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      replicatedLog.findConflict(Seq.empty) should be(FindConflictResult.NoConflict)
+    }
+
+    "return NoConflict if the given entries don't overlap with existing entries" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(3)),
+          LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("3")), "event-1"), Term(3)),
+        ),
+      ) should be(FindConflictResult.NoConflict)
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("3")), "event-1"), Term(3)),
+          LogEntry(LogEntryIndex(8), EntityEvent(None, NoOp), Term(4)),
+        ),
+      ) should be(FindConflictResult.NoConflict)
+    }
+
+    "return NoConflict if the given entries conflict with no existing entries" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+        ),
+      ) should be(FindConflictResult.NoConflict)
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+        ),
+      ) should be(FindConflictResult.NoConflict)
+    }
+
+    "return ConflictFound with the first conflict index and term if the given entries conflict with an existing entry" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(6)),
+        ),
+      ) should be(FindConflictResult.ConflictFound(LogEntryIndex(5), Term(6)))
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(5)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(5)),
+        ),
+      ) should be(FindConflictResult.ConflictFound(LogEntryIndex(4), Term(5)))
+    }
+
+    "throw an IllegalArgumentException if the given entries contain a compacted entry (not the last one)" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(3))
+
+      val exception = intercept[IllegalArgumentException] {
+        replicatedLog.findConflict(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(1)),
+          ),
+        )
+      }
+      exception.getMessage should be(
+        "requirement failed: Could not find conflict with already compacted entries excluding the last one " +
+        "(ancestorLastIndex: [3], ancestorLastTerm: [1]), but got entries (indices: [1..2]).",
+      )
+    }
+
+    "throw an IllegalArgumentException if the given entries conflict the last compacted entry" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      val exception = intercept[IllegalArgumentException] {
+        replicatedLog.findConflict(
+          Seq(
+            LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1000)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+          ),
+        )
+      }
+      exception.getMessage should be(
+        "requirement failed: The last compacted entry (ancestorLastIndex: [2], ancestorLastTerm: [1]) should not conflict " +
+        "with the given first entry (index: [2], term: [1000]).",
+      )
+    }
+
+  }
+
 }
