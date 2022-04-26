@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.ActorSystem
+import akka.persistence.testkit.scaladsl.PersistenceTestKit
 import akka.testkit.{ TestKit, TestProbe }
 import lerna.akka.entityreplication.ReplicationRegion
 import lerna.akka.entityreplication.model.NormalizedEntityId
@@ -8,12 +9,23 @@ import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.testkit.KryoSerializable
+import org.scalatest.Inside
 
-class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBase {
+class RaftActorFollowerSpec
+    extends TestKit(ActorSystem("RaftActorFollowerSpec", RaftActorSpecBase.configWithPersistenceTestKits))
+    with RaftActorSpecBase
+    with Inside {
 
   import RaftActor._
 
   private[this] val entityId = NormalizedEntityId.from("test-entity")
+
+  private val persistenceTestKit = PersistenceTestKit(system)
+
+  override def beforeEach(): Unit = {
+    super.beforeEach()
+    persistenceTestKit.clearAll()
+  }
 
   "Follower" should {
 
@@ -614,6 +626,246 @@ class RaftActorFollowerSpec extends TestKit(ActorSystem()) with RaftActorSpecBas
       val state = getState(follower)
       state.stateName should be(Follower)
       state.stateData.leaderMember should contain(leaderMemberIndex)
+    }
+
+    "persist the whole new entries starting with the lastLogIndex + 1 " +
+    "if the received AppendEntries message contains no existing entries" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val followerPersistenceId = raftActorPersistenceId(shardId = shardId, selfMemberIndex = followerMemberIndex)
+      val replicatedLog = {
+        val logEntries = Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+        )
+        ReplicatedLog().truncateAndAppend(logEntries)
+      }
+      setState(follower, Follower, createFollowerData(Term(2), replicatedLog))
+
+      val leaderMemberIndex = createUniqueMemberIndex()
+      follower ! createAppendEntries(
+        shardId,
+        Term(2),
+        leaderMemberIndex,
+        prevLogIndex = LogEntryIndex(3),
+        prevLogTerm = Term(2),
+        entries = Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(2)),
+        ),
+      )
+
+      expectMsg(AppendEntriesSucceeded(Term(2), LogEntryIndex(5), followerMemberIndex))
+      inside(persistenceTestKit.expectNextPersistedType[AppendedEntries](followerPersistenceId)) {
+        case appendedEntries =>
+          appendedEntries.term should be(Term(2))
+          val expectedEntries = Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(2)),
+          )
+          appendedEntries.logEntries should contain theSameElementsInOrderAs expectedEntries
+          appendedEntries.logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+      }
+      inside(getState(follower)) { followerState =>
+        followerState.stateName should be(Follower)
+        inside(followerState.stateData.replicatedLog.entries) {
+          case logEntries =>
+            val expectedEntries = Seq(
+              LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+              LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+              LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+              LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+              LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(2)),
+            )
+            logEntries should contain theSameElementsInOrderAs expectedEntries
+            logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+        }
+      }
+    }
+
+    "persist only new entries starting with the lastLogIndex + 1 " +
+    "if the received AppendEntries message contains some existing entries" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val followerPersistenceId = raftActorPersistenceId(shardId = shardId, selfMemberIndex = followerMemberIndex)
+      val replicatedLog = {
+        val logEntries = Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+        )
+        ReplicatedLog().truncateAndAppend(logEntries)
+      }
+      setState(follower, Follower, createFollowerData(Term(2), replicatedLog))
+
+      val leaderMemberIndex = createUniqueMemberIndex()
+      follower ! createAppendEntries(
+        shardId,
+        Term(2),
+        leaderMemberIndex,
+        prevLogIndex = LogEntryIndex(2),
+        prevLogTerm = Term(1),
+        entries = Seq(
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(2)),
+        ),
+      )
+
+      expectMsg(AppendEntriesSucceeded(Term(2), LogEntryIndex(5), followerMemberIndex))
+      inside(persistenceTestKit.expectNextPersistedType[AppendedEntries](followerPersistenceId)) {
+        case appendedEntries =>
+          appendedEntries.term should be(Term(2))
+          val expectedEntries = Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(2)),
+          )
+          appendedEntries.logEntries should contain theSameElementsInOrderAs expectedEntries
+          appendedEntries.logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+      }
+      inside(getState(follower)) { followerState =>
+        followerState.stateName should be(Follower)
+        inside(followerState.stateData.replicatedLog.entries) {
+          case logEntries =>
+            val expectedEntries = Seq(
+              LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+              LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+              LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+              LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+              LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(2)),
+            )
+            logEntries should be(expectedEntries)
+            logEntries.map(_.event) should be(expectedEntries.map(_.event))
+        }
+      }
+    }
+
+    "persist only new entries (beginning with the first conflict) " +
+    "if the received AppendEntries message contains conflict entries" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val followerPersistenceId = raftActorPersistenceId(shardId = shardId, selfMemberIndex = followerMemberIndex)
+      val replicatedLog = {
+        val logEntries = Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+        )
+        ReplicatedLog().truncateAndAppend(logEntries)
+      }
+      setState(follower, Follower, createFollowerData(Term(2), replicatedLog, commitIndex = LogEntryIndex(2)))
+
+      val leaderMemberIndex = createUniqueMemberIndex()
+      follower ! createAppendEntries(
+        shardId,
+        Term(3),
+        leaderMemberIndex,
+        prevLogIndex = LogEntryIndex(2),
+        prevLogTerm = Term(1),
+        entries = Seq(
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(3)),
+          LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(3)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(3)),
+        ),
+      )
+
+      expectMsg(AppendEntriesSucceeded(Term(3), LogEntryIndex(5), followerMemberIndex))
+      inside(persistenceTestKit.expectNextPersistedType[AppendedEntries](followerPersistenceId)) {
+        case appendedEntries =>
+          appendedEntries.term should be(Term(3))
+          val expectedEntries = Seq(
+            LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(3)),
+            LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(3)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(3)),
+          )
+          appendedEntries.logEntries should contain theSameElementsInOrderAs expectedEntries
+          appendedEntries.logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+      }
+      inside(getState(follower)) { followerState =>
+        followerState.stateName should be(Follower)
+        inside(followerState.stateData.replicatedLog.entries) {
+          case logEntries =>
+            val expectedEntries = Seq(
+              LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+              LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+              LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(3)),
+              LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(3)),
+              LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(3)),
+            )
+            logEntries should contain theSameElementsInOrderAs expectedEntries
+            logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+        }
+      }
+    }
+
+    "truncate no entries even if the received AppendEntries message contains all existing entries (not including the last entry)" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val followerPersistenceId = raftActorPersistenceId(shardId = shardId, selfMemberIndex = followerMemberIndex)
+      val replicatedLog = {
+        val logEntries = Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(2)),
+        )
+        ReplicatedLog().truncateAndAppend(logEntries)
+      }
+      setState(follower, Follower, createFollowerData(Term(2), replicatedLog))
+
+      val leaderMemberIndex = createUniqueMemberIndex()
+      follower ! createAppendEntries(
+        shardId,
+        Term(2),
+        leaderMemberIndex,
+        prevLogIndex = LogEntryIndex(3),
+        prevLogTerm = Term(2),
+        entries = Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+          // The following entries will be sent in another AppendEntries batch.
+          // LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(2)),
+        ),
+      )
+
+      expectMsg(AppendEntriesSucceeded(Term(2), LogEntryIndex(5), followerMemberIndex))
+      inside(persistenceTestKit.expectNextPersistedType[AppendedEntries](followerPersistenceId)) {
+        case appendedEntries =>
+          appendedEntries.term should be(Term(2))
+          appendedEntries.logEntries should be(empty)
+      }
+      inside(getState(follower)) { followerState =>
+        followerState.stateName should be(Follower)
+        inside(followerState.stateData.replicatedLog.entries) {
+          case logEntries =>
+            val expectedEntries = Seq(
+              LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+              LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+              LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+              LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+              LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(2)),
+            )
+            logEntries should be(expectedEntries)
+            logEntries.map(_.event) should be(expectedEntries.map(_.event))
+        }
+      }
     }
 
   }
