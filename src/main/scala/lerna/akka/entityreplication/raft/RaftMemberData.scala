@@ -136,7 +136,8 @@ private[entityreplication] trait FollowerData { self: RaftMemberData =>
       case FindConflictResult.ConflictFound(conflictIndex, conflictTerm) =>
         if (log.isInfoEnabled) {
           log.info(
-            "found conflict at index [{}] (existing term: [{}], conflicting term: [{}]).",
+            "Found conflict at index [{}] (existing term: [{}], conflicting term: [{}]). " +
+            "Raft Protocol is resolving this conflict safely. No action is required.",
             conflictIndex,
             replicatedLog.termAt(conflictIndex),
             conflictTerm,
