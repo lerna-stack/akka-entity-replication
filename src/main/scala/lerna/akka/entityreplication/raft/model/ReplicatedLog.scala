@@ -178,7 +178,7 @@ private[entityreplication] final case class ReplicatedLog private[model] (
         s" The head index [$headIndex] of the given entries with indices [${thatEntries.head.index}..${thatEntries.last.index}]" +
         s" should be between ancestorLastIndex([$ancestorLastIndex])+1 and lastLogIndex([$lastLogIndex])+1.",
       )
-      val truncatedEntries = this.entries.takeWhile(_.index < headIndex)
+      val truncatedEntries = sliceEntriesFromHead(headIndex.prev())
       val newEntries       = truncatedEntries ++ thatEntries
       copy(newEntries)
     }
