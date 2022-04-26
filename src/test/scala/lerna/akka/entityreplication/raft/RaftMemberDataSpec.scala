@@ -549,6 +549,172 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
     }
   }
 
+  behavior of "RaftMemberData.resolveNewLogEntries"
+
+  it should "throws an IllegalArgumentException if the given entries start with an index greater than lastLogIndex + 1" in {
+    val data = RaftMemberData(replicatedLog =
+      ReplicatedLog()
+        .reset(Term(2), LogEntryIndex(3))
+        .truncateAndAppend(
+          Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+          ),
+        ),
+    )
+
+    val exception = intercept[IllegalArgumentException] {
+      data.resolveNewLogEntries(
+        Seq(
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(5)),
+          LogEntry(LogEntryIndex(8), EntityEvent(None, NoOp), Term(6)),
+        ),
+      )
+    }
+    exception.getMessage should be(
+      "requirement failed: The given non-empty log entries (indices: [7..8]) should start with an index less than or equal to lastLogIndex[5] + 1. " +
+      "If this requirement breaks, the raft log will miss some entries.",
+    )
+  }
+
+  it should "return empty entries if the given entries are empty" in {
+    val data = RaftMemberData(replicatedLog =
+      ReplicatedLog()
+        .reset(Term(2), LogEntryIndex(3))
+        .truncateAndAppend(
+          Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+          ),
+        ),
+    )
+
+    val newEntries = data.resolveNewLogEntries(Seq.empty)
+    newEntries should be(empty)
+  }
+
+  it should "return the whole new entries starting with lastLogIndex + 1 if the given entries contain no existing ones" in {
+    val data = RaftMemberData(replicatedLog =
+      ReplicatedLog()
+        .reset(Term(2), LogEntryIndex(3))
+        .truncateAndAppend(
+          Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+          ),
+        ),
+    )
+
+    val entries = Seq(
+      LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(4)),
+      LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(4)),
+      LogEntry(LogEntryIndex(8), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(4)),
+    )
+    val newEntries = data.resolveNewLogEntries(entries)
+    newEntries should contain theSameElementsInOrderAs entries
+  }
+
+  it should "return only new entries starting with lastLogIndex + 1 if the given entries contain some existing ones" in {
+    val data = RaftMemberData(replicatedLog =
+      ReplicatedLog()
+        .reset(Term(2), LogEntryIndex(3))
+        .truncateAndAppend(
+          Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+            LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(3)),
+          ),
+        ),
+    )
+
+    inside(
+      data.resolveNewLogEntries(
+        Seq(
+          LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(3)),
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(8), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
+        ),
+      ),
+    ) {
+      case newEntries =>
+        newEntries should contain theSameElementsInOrderAs Seq(
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(8), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
+        )
+    }
+
+    inside(
+      data.resolveNewLogEntries(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(3)),
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(8), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
+        ),
+      ),
+    ) {
+      case newEntries =>
+        newEntries should contain theSameElementsInOrderAs Seq(
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(8), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
+        )
+    }
+  }
+
+  it should "return only new entries (beginning with the first conflict) if the given entries conflict with existing entries" in {
+    val data = RaftMemberData(
+      replicatedLog = ReplicatedLog()
+        .reset(Term(2), LogEntryIndex(3))
+        .truncateAndAppend(
+          Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+            LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(3)),
+          ),
+        ),
+      commitIndex = LogEntryIndex(5),
+    )
+
+    val newEntries = data.resolveNewLogEntries(
+      Seq(
+        LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+        LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(4)),
+        LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
+      ),
+    )
+    newEntries should contain theSameElementsInOrderAs Seq(
+      LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(4)),
+      LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
+    )
+  }
+
+  it should "throw an AssertionError if the given entries conflict with a committed entry" in {
+    val data = RaftMemberData(
+      replicatedLog = ReplicatedLog()
+        .reset(Term(2), LogEntryIndex(3))
+        .truncateAndAppend(
+          Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+            LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(3)),
+          ),
+        ),
+      commitIndex = LogEntryIndex(6),
+    )
+
+    val exception = intercept[IllegalArgumentException] {
+      data.resolveNewLogEntries(
+        Seq(
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
+        ),
+      )
+    }
+    exception.getMessage should be(
+      "requirement failed: The entry with index [6] should not conflict with the committed entry (commitIndex [6])",
+    )
+  }
+
   private def generateEntityId() = {
     NormalizedEntityId.from(UUID.randomUUID().toString)
   }
