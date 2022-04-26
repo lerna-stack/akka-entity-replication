@@ -142,7 +142,7 @@ private[entityreplication] trait FollowerData { self: RaftMemberData =>
             conflictTerm,
           )
         }
-        assert(
+        require(
           conflictIndex > commitIndex,
           s"The entry with index [$conflictIndex] should not conflict with the committed entry (commitIndex [$commitIndex])",
         )
