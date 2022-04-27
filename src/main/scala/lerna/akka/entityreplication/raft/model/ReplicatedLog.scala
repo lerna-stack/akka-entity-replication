@@ -130,14 +130,14 @@ private[entityreplication] final case class ReplicatedLog private[model] (
     } else {
       require(
         thatEntries.head.index >= ancestorLastIndex,
-        s"Could not find conflict with already compacted entries excluding the last one " +
+        s"The given entries shouldn't contain compacted entries, excluding the last one " +
         s"(ancestorLastIndex: [$ancestorLastIndex], ancestorLastTerm: [${ancestorLastTerm.term}]), " +
         s"but got entries (indices: [${thatEntries.head.index}..${thatEntries.last.index}]).",
       )
       require(
         thatEntries.head.index != ancestorLastIndex || thatEntries.head.term == ancestorLastTerm,
-        s"The last compacted entry (ancestorLastIndex: [$ancestorLastIndex], ancestorLastTerm: [${ancestorLastTerm.term}]) " +
-        s"should not conflict with the given first entry (index: [${thatEntries.head.index}], term: [${thatEntries.head.term.term}]).",
+        s"The given first entry (index: [${thatEntries.head.index}], term: [${thatEntries.head.term.term}]) " +
+        s"shouldn't conflict with the last compacted entry (ancestorLastIndex: [$ancestorLastIndex], ancestorLastTerm: [${ancestorLastTerm.term}]).",
       )
       val conflictEntryOption = thatEntries.find(entry => {
         termAt(entry.index).exists(_ != entry.term)

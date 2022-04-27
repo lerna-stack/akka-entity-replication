@@ -570,7 +570,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
         )
       }
       exception.getMessage should be(
-        "requirement failed: Could not find conflict with already compacted entries excluding the last one " +
+        "requirement failed: The given entries shouldn't contain compacted entries, excluding the last one " +
         "(ancestorLastIndex: [3], ancestorLastTerm: [1]), but got entries (indices: [1..2]).",
       )
     }
@@ -593,8 +593,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
         )
       }
       exception.getMessage should be(
-        "requirement failed: The last compacted entry (ancestorLastIndex: [2], ancestorLastTerm: [1]) should not conflict " +
-        "with the given first entry (index: [2], term: [1000]).",
+        "requirement failed: The given first entry (index: [2], term: [1000]) shouldn't conflict with the last compacted entry (ancestorLastIndex: [2], ancestorLastTerm: [1]).",
       )
     }
 
