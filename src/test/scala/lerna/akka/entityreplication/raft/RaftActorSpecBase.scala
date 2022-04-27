@@ -1,8 +1,8 @@
 package lerna.akka.entityreplication.raft
 
 import java.util.concurrent.atomic.AtomicInteger
-
 import akka.actor.{ Actor, ActorRef, Props }
+import akka.persistence.testkit.{ PersistenceTestKitPlugin, PersistenceTestKitSnapshotPlugin }
 import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ReplicationRegion
@@ -11,6 +11,40 @@ import lerna.akka.entityreplication.raft.RaftTestProbe._
 import lerna.akka.entityreplication.raft.model.{ LogEntry, LogEntryIndex, Term }
 import lerna.akka.entityreplication.raft.protocol.RaftCommands.AppendEntries
 import lerna.akka.entityreplication.raft.routing.MemberIndex
+import lerna.akka.entityreplication.util.ActorIds
+
+object RaftActorSpecBase {
+
+  /** Returns a config to use PersistenceTestKitPlugin and PersistenceTestKitSnapshotPlugin */
+  def configWithPersistenceTestKits: Config = {
+    PersistenceTestKitPlugin.config
+      .withFallback(PersistenceTestKitSnapshotPlugin.config)
+      .withFallback(raftPersistenceConfigWithPersistenceTestKits)
+      .withFallback(ConfigFactory.load())
+  }
+
+  private val raftPersistenceConfigWithPersistenceTestKits: Config = ConfigFactory.parseString(
+    s"""
+       |lerna.akka.entityreplication.raft.persistence {
+       |  journal.plugin = ${PersistenceTestKitPlugin.PluginId}
+       |  snapshot-store.plugin = ${PersistenceTestKitSnapshotPlugin.PluginId}
+       |  # Might be possible to use PersistenceTestKitReadJournal
+       |  // query.plugin = ""
+       |}
+       |""".stripMargin,
+  )
+
+  val defaultRaftPersistenceConfig: Config = ConfigFactory.parseString(
+    s"""
+       |lerna.akka.entityreplication.raft.persistence {
+       |  journal.plugin = "inmemory-journal"
+       |  snapshot-store.plugin = "inmemory-snapshot-store"
+       |  query.plugin = "inmemory-read-journal"
+       |}
+       |""".stripMargin,
+  )
+
+}
 
 trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
 
@@ -25,15 +59,26 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
 
   type RaftTestFSMRef = ActorRef
 
+  protected val defaultTypeName: TypeName           = TypeName.from("dummy")
+  protected val defaultShardId: NormalizedShardId   = NormalizedShardId.from("test")
+  protected val defaultSelfMemberIndex: MemberIndex = MemberIndex("test-index")
+
+  protected def raftActorPersistenceId(
+      typeName: TypeName = defaultTypeName,
+      shardId: NormalizedShardId = defaultShardId,
+      selfMemberIndex: MemberIndex,
+  ): String =
+    ActorIds.persistenceId("raft", typeName.underlying, shardId.underlying, selfMemberIndex.role)
+
   protected def createRaftActor(
-      shardId: NormalizedShardId = NormalizedShardId.from("test"),
+      shardId: NormalizedShardId = defaultShardId,
       shardSnapshotStore: ActorRef = TestProbe().ref,
       region: ActorRef = TestProbe().ref,
-      selfMemberIndex: MemberIndex = MemberIndex("test-index"),
+      selfMemberIndex: MemberIndex = defaultSelfMemberIndex,
       otherMemberIndexes: Set[MemberIndex] = Set(),
       settings: RaftSettings = RaftSettings(defaultRaftConfig),
       replicationActor: ActorRef = system.deadLetters,
-      typeName: TypeName = TypeName.from("dummy"),
+      typeName: TypeName = defaultTypeName,
       entityId: NormalizedEntityId = NormalizedEntityId.from("dummy"),
       commitLogStore: ActorRef = TestProbe().ref,
   ): RaftTestFSMRef = {

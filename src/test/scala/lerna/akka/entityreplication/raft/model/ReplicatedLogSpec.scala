@@ -3,6 +3,8 @@ package lerna.akka.entityreplication.raft.model
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import org.scalatest.{ Matchers, WordSpecLike }
 
+import scala.annotation.nowarn
+
 class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
   "ReplicatedLog" should {
@@ -193,7 +195,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
       val log = new ReplicatedLog(followerLog)
 
-      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(2))
+      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(2)): @nowarn
 
       updatedLog.entries should be(expectedLog)
       updatedLog.entries.map(_.event) should contain theSameElementsInOrderAs expectedLog.map(_.event)
@@ -220,7 +222,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
       val log = new ReplicatedLog(followerLog)
 
-      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(2))
+      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(2)): @nowarn
 
       updatedLog.entries should be(expectedLog)
       updatedLog.entries.map(_.event) should contain theSameElementsInOrderAs expectedLog.map(_.event)
@@ -245,7 +247,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
       val log = new ReplicatedLog(followerLog)
 
-      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(0))
+      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(0)): @nowarn
 
       updatedLog.entries should be(expectedLog)
       updatedLog.entries.map(_.event) should contain theSameElementsInOrderAs expectedLog.map(_.event)
@@ -275,7 +277,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
       val log = new ReplicatedLog(followerLog)
 
-      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(1))
+      val updatedLog = log.merge(appendEntries, prevLogIndex = LogEntryIndex(1)): @nowarn
 
       updatedLog.entries should be(expectedLog)
       updatedLog.entries.map(_.event) should contain theSameElementsInOrderAs expectedLog.map(_.event)
@@ -351,13 +353,12 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       assert(emptyWithAncestor.isGivenLogUpToDate(Term(4), LogEntryIndex(7))) // index = lastLogIndex
       assert(emptyWithAncestor.isGivenLogUpToDate(Term(4), LogEntryIndex(8))) // index > lastLogIndex
 
-      val nonEmpty = ReplicatedLog().merge(
+      val nonEmpty = ReplicatedLog().truncateAndAppend(
         Seq(
           LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
         ),
-        LogEntryIndex(0),
       )
       assert(nonEmpty.isGivenLogUpToDate(Term(3), LogEntryIndex(2))) // index < lastLogIndex
       assert(nonEmpty.isGivenLogUpToDate(Term(3), LogEntryIndex(3))) // index = lastLogIndex
@@ -375,13 +376,12 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       assert(emptyWithAncestor.isGivenLogUpToDate(Term(3), LogEntryIndex(7))) // index = lastLogIndex
       assert(emptyWithAncestor.isGivenLogUpToDate(Term(3), LogEntryIndex(8))) // index > lastLogIndex
 
-      val nonEmpty = ReplicatedLog().merge(
+      val nonEmpty = ReplicatedLog().truncateAndAppend(
         Seq(
           LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
         ),
-        LogEntryIndex(0),
       )
       assert(nonEmpty.isGivenLogUpToDate(Term(2), LogEntryIndex(3))) // index = lastLogIndex
       assert(nonEmpty.isGivenLogUpToDate(Term(2), LogEntryIndex(4))) // index > lastLogIndex
@@ -393,13 +393,12 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       val emptyWithAncestor = ReplicatedLog().reset(Term(3), LogEntryIndex(7))
       assert(!emptyWithAncestor.isGivenLogUpToDate(Term(3), LogEntryIndex(6))) // index < lastLogIndex
 
-      val nonEmpty = ReplicatedLog().merge(
+      val nonEmpty = ReplicatedLog().truncateAndAppend(
         Seq(
           LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
         ),
-        LogEntryIndex(0),
       )
       assert(!nonEmpty.isGivenLogUpToDate(Term(2), LogEntryIndex(2))) // index < lastLogIndex
 
@@ -412,13 +411,12 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       assert(!emptyWithAncestor.isGivenLogUpToDate(Term(2), LogEntryIndex(7))) // index = lastLogIndex
       assert(!emptyWithAncestor.isGivenLogUpToDate(Term(2), LogEntryIndex(8))) // index > lastLogIndex
 
-      val nonEmpty = ReplicatedLog().merge(
+      val nonEmpty = ReplicatedLog().truncateAndAppend(
         Seq(
           LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1)),
           LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
         ),
-        LogEntryIndex(0),
       )
       assert(!nonEmpty.isGivenLogUpToDate(Term(1), LogEntryIndex(2))) // index < lastLogIndex
       assert(!nonEmpty.isGivenLogUpToDate(Term(1), LogEntryIndex(3))) // index = lastLogIndex
@@ -466,6 +464,239 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       log.entriesAfter(index = LogEntryIndex(4)).map(_.event.event).toList shouldBe List("e")
       log.entriesAfter(index = LogEntryIndex(5)).map(_.event.event).toList shouldBe List()
       log.entriesAfter(index = LogEntryIndex(6)).map(_.event.event).toList shouldBe List()
+    }
+
+  }
+
+  "ReplicatedLog.findConflict" should {
+    import ReplicatedLog.FindConflictResult
+
+    "return NoConflict if the given entries are empty" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      replicatedLog.findConflict(Seq.empty) should be(FindConflictResult.NoConflict)
+    }
+
+    "return NoConflict if the given entries' indices don't overlap with existing ones" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(3)),
+          LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("3")), "event-1"), Term(3)),
+        ),
+      ) should be(FindConflictResult.NoConflict)
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("3")), "event-1"), Term(3)),
+          LogEntry(LogEntryIndex(8), EntityEvent(None, NoOp), Term(4)),
+        ),
+      ) should be(FindConflictResult.NoConflict)
+    }
+
+    "return NoConflict if the given entries conflict with no existing entries" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(3)),
+        ),
+      ) should be(FindConflictResult.NoConflict)
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(3)),
+        ),
+      ) should be(FindConflictResult.NoConflict)
+    }
+
+    "return ConflictFound with the first conflict index and term if the given entries conflict with an existing entry" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(6)),
+        ),
+      ) should be(FindConflictResult.ConflictFound(LogEntryIndex(5), Term(6)))
+
+      replicatedLog.findConflict(
+        Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(5)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(5)),
+        ),
+      ) should be(FindConflictResult.ConflictFound(LogEntryIndex(4), Term(5)))
+    }
+
+    "throw an IllegalArgumentException if the given entries contain a compacted entry (not the last one)" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(3))
+
+      val exception = intercept[IllegalArgumentException] {
+        replicatedLog.findConflict(
+          Seq(
+            LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(1)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+          ),
+        )
+      }
+      exception.getMessage should be(
+        "requirement failed: The given entries shouldn't contain compacted entries, excluding the last one " +
+        "(ancestorLastIndex: [3], ancestorLastTerm: [1]), but got entries (indices: [2..3]).",
+      )
+    }
+
+    "throw an IllegalArgumentException if the given entries conflict the last compacted entry" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      val exception = intercept[IllegalArgumentException] {
+        replicatedLog.findConflict(
+          Seq(
+            LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(1000)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+          ),
+        )
+      }
+      exception.getMessage should be(
+        "requirement failed: The given first entry (index: [2], term: [1000]) shouldn't conflict with the last compacted entry (ancestorLastIndex: [2], ancestorLastTerm: [1]).",
+      )
+    }
+
+  }
+
+  "ReplicatedLog.truncateAndAppend" should {
+
+    "return the current ReplicatedLog (no updates) if the given entries are empty" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      val newReplicatedLog = replicatedLog.truncateAndAppend(Seq.empty)
+      newReplicatedLog.ancestorLastIndex should be(replicatedLog.ancestorLastIndex)
+      newReplicatedLog.ancestorLastTerm should be(replicatedLog.ancestorLastTerm)
+      newReplicatedLog.entries should contain theSameElementsInOrderAs replicatedLog.entries
+      newReplicatedLog.entries.map(_.event) should contain theSameElementsInOrderAs replicatedLog.entries.map(_.event)
+    }
+
+    "throw an IllegalArgumentException if the first entry of the given entry has an index larger than lastLogIndex + 1" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      val exception = intercept[IllegalArgumentException] {
+        replicatedLog.truncateAndAppend(
+          Seq(
+            LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(4)),
+            LogEntry(LogEntryIndex(8), EntityEvent(None, NoOp), Term(5)),
+          ),
+        )
+      }
+      exception.getMessage should be(
+        "requirement failed: Replicated log should not contain a missing entry. " +
+        "The head index [7] of the given entries with indices [7..8] should be between " +
+        "ancestorLastIndex([2])+1 and lastLogIndex([5])+1.",
+      )
+    }
+
+    "return a new ReplicatedLog (no entry truncated) if the given entries contain no existing entries" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      val newReplicatedLog = replicatedLog.truncateAndAppend(
+        Seq(
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(5)),
+        ),
+      )
+      newReplicatedLog.ancestorLastIndex should be(replicatedLog.ancestorLastIndex)
+      newReplicatedLog.ancestorLastTerm should be(replicatedLog.ancestorLastTerm)
+      val expectedEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+        LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(4)),
+        LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(5)),
+      )
+      newReplicatedLog.entries should contain theSameElementsInOrderAs expectedEntries
+      newReplicatedLog.entries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+    }
+
+    "return a new ReplicatedLog (some suffix entries truncated) if the given entries start with an index less than lastLogIndex + 1" in {
+      val existingEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+      )
+      val replicatedLog =
+        ReplicatedLog(existingEntries, ancestorLastTerm = Term(1), ancestorLastIndex = LogEntryIndex(2))
+
+      val newReplicatedLog = replicatedLog.truncateAndAppend(
+        Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(5)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("2")), "event-3"), Term(5)),
+        ),
+      )
+      newReplicatedLog.ancestorLastIndex should be(replicatedLog.ancestorLastIndex)
+      newReplicatedLog.ancestorLastTerm should be(replicatedLog.ancestorLastTerm)
+      val expectedEntries = Seq(
+        LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(4)),
+        LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(5)),
+        LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("2")), "event-3"), Term(5)),
+      )
+      newReplicatedLog.entries should contain theSameElementsInOrderAs expectedEntries
+      newReplicatedLog.entries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
     }
 
   }

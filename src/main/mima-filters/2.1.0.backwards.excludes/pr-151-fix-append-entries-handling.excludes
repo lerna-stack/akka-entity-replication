@@ -1,0 +1,22 @@
+# It's OK to exclude the following since protobuf.msg.AppendedEntries is not intend to use by users.
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.<init>$default$4")
+ProblemFilters.exclude[IncompatibleSignatureProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.unapply")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.apply$default$4")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.apply")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.of")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.PREV_LOG_INDEX_FIELD_NUMBER")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.prevLogIndex")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.withPrevLogIndex")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.copy")
+ProblemFilters.exclude[IncompatibleResultTypeProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.copy$default$3")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.copy$default$4")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.protobuf.msg.AppendedEntries.this")
+
+# It's safe to exclude the following since RaftActor#AppendedEntries is package-private.
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.raft.RaftActor#AppendedEntries.prevLogIndex")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.raft.RaftActor#AppendedEntries.copy")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.raft.RaftActor#AppendedEntries.copy$default$3")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.raft.RaftActor#AppendedEntries.this")
+ProblemFilters.exclude[MissingTypesProblem]("lerna.akka.entityreplication.raft.RaftActor$AppendedEntries$")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.raft.RaftActor#AppendedEntries.apply")
+ProblemFilters.exclude[IncompatibleSignatureProblem]("lerna.akka.entityreplication.raft.RaftActor#AppendedEntries.unapply")

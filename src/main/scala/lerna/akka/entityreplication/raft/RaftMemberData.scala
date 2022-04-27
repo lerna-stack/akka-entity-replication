@@ -5,6 +5,7 @@ import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshotMetadata
+import org.slf4j.{ Logger, LoggerFactory }
 
 private[entityreplication] object PersistentStateData {
 
@@ -104,9 +105,67 @@ private[entityreplication] trait FollowerData { self: RaftMemberData =>
     updatePersistentState(currentTerm = term, votedFor = Some(candidate))
   }
 
+  /** Returns new entries that contain no existing entries
+    *
+    * While the given entries could conflict with the existing entries, this method finds such a conflict and returns entries
+    * beginning with the conflicting. [[ReplicatedLog.findConflict]] describes what conflicting means.
+    *
+    * The given entries should start with an index less than or equal to the last index of exising entries plus one.
+    * If this requirement breaks, this method throws an [[IllegalArgumentException]] since it will miss some entries.
+    *
+    * @note The index of the given entries MUST be continuously increasing (not checked on this method)
+    * @see [[ReplicatedLog.findConflict]]
+    */
+  def resolveNewLogEntries(logEntries: Seq[LogEntry]): Seq[LogEntry] = {
+    import ReplicatedLog.FindConflictResult
+    require(
+      logEntries.isEmpty || logEntries.head.index <= replicatedLog.lastLogIndex.plus(1),
+      s"The given non-empty log entries (indices: [${logEntries.head.index}..${logEntries.last.index}]) should start with an index " +
+      s"less than or equal to lastLogIndex[${replicatedLog.lastLogIndex}] + 1. " +
+      "If this requirement breaks, the raft log will miss some entries.",
+    )
+    replicatedLog.findConflict(logEntries) match {
+      case FindConflictResult.NoConflict =>
+        logEntries
+          .dropWhile(_.index <= replicatedLog.lastLogIndex)
+          .ensuring(
+            _.headOption.forall(_.index == replicatedLog.lastLogIndex.plus(1)),
+            s"The new entries (not-empty) should start with lastLogIndex ${replicatedLog.lastLogIndex} + 1.",
+          )
+      case FindConflictResult.ConflictFound(conflictIndex, conflictTerm) =>
+        if (log.isInfoEnabled) {
+          log.info(
+            "Found conflict at index [{}] (existing term: [{}], conflicting term: [{}]). " +
+            "Raft Protocol is resolving this conflict safely. No action is required.",
+            conflictIndex,
+            replicatedLog.termAt(conflictIndex),
+            conflictTerm,
+          )
+        }
+        require(
+          conflictIndex > commitIndex,
+          s"The entry with index [$conflictIndex] should not conflict with the committed entry (commitIndex [$commitIndex])",
+        )
+        val newEntries = logEntries
+          .dropWhile(_.index < conflictIndex)
+        assert(
+          newEntries.nonEmpty && newEntries.head.index == conflictIndex,
+          s"The new entries (containing conflicts, size=[${newEntries.size}]) should always be non-empty and start with the conflict Index [$conflictIndex]",
+        )
+        newEntries
+    }
+  }
+
+  @deprecated("Use RaftMemberData.truncateAndAppendEntries instead.", "2.1.1")
   def appendEntries(logEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex): RaftMemberData = {
     updatePersistentState(
       replicatedLog = replicatedLog.merge(logEntries, prevLogIndex),
+    )
+  }
+
+  def truncateAndAppendEntries(logEntries: Seq[LogEntry]): RaftMemberData = {
+    updatePersistentState(
+      replicatedLog = replicatedLog.truncateAndAppend(logEntries),
     )
   }
 
@@ -351,6 +410,8 @@ private[entityreplication] trait RaftMemberData
     with CandidateData
     with LeaderData
     with ShardData {
+
+  protected val log: Logger = LoggerFactory.getLogger(getClass)
 
   protected def selectApplicableLogEntries: Seq[LogEntry] =
     if (commitIndex > lastApplied) {

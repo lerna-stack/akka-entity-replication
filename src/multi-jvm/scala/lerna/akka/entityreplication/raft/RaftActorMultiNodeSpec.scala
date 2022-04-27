@@ -327,13 +327,12 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
         )
         awaitCond(getState(leaderMember).stateName == Leader)
         val leaderData = getState(leaderMember).stateData
-        val log = leaderData.replicatedLog.merge(
+        val log = leaderData.replicatedLog.truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "correct1"), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "correct2"), Term(1)),
             LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "correct3"), Term(1)),
           ),
-          LogEntryIndex.initial(),
         )
         setState(leaderMember, Leader, leaderData.asInstanceOf[RaftMemberDataImpl].copy(replicatedLog = log))
       }
@@ -341,12 +340,11 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
         followerMember = createRaftActor(shardId)
         awaitCond(getState(followerMember).stateName == Follower)
         val followerData = getState(followerMember).stateData
-        val conflictLog = followerData.replicatedLog.merge(
+        val conflictLog = followerData.replicatedLog.truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "conflict1"), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "conflict2"), Term(1)),
           ),
-          LogEntryIndex.initial(),
         )
         setState(
           followerMember,

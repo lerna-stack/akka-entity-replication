@@ -3,10 +3,13 @@ package lerna.akka.entityreplication.raft
 import akka.Done
 import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter._
-import akka.actor.{ ActorRef, ActorSystem }
+import akka.actor.ActorSystem
+import akka.cluster.Cluster
+import akka.persistence.testkit.scaladsl.PersistenceTestKit
 import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
-import lerna.akka.entityreplication.{ ClusterReplicationSettings, ReplicationRegion }
+import lerna.akka.entityreplication.internal.ClusterReplicationSettingsImpl
+import lerna.akka.entityreplication.ReplicationRegion
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.RaftProtocol.{
   Command,
@@ -31,13 +34,23 @@ import org.scalatest.Inside
 
 import scala.concurrent.duration.DurationInt
 
-class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase with Inside {
+class RaftActorLeaderSpec
+    extends TestKit(ActorSystem("RaftActorLeaderSpec", RaftActorSpecBase.configWithPersistenceTestKits))
+    with RaftActorSpecBase
+    with Inside {
 
   import RaftActor._
   private implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
 
   private[this] val entityId = NormalizedEntityId.from("test-entity")
   private[this] val shardId  = NormalizedShardId.from("test-shard")
+
+  private val persistenceTestKit = PersistenceTestKit(system)
+
+  override def beforeEach(): Unit = {
+    super.beforeEach()
+    persistenceTestKit.clearAll()
+  }
 
   "Leader" should {
 
@@ -82,19 +95,24 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         selfMemberIndex = leaderMemberIndex,
       )
       val newLeaderMemberIndex = createUniqueMemberIndex()
-      val term1                = Term(1)
-      val term2                = Term(2)
-      val index1               = LogEntryIndex(1)
-      val index2               = LogEntryIndex(2)
       val logEntries = Seq(
-        LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
-        LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
+        LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), Term(1)),
       )
-      val log = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
-      setState(leader, Leader, createLeaderData(term1, log))
+      val log = ReplicatedLog().truncateAndAppend(logEntries)
+      setState(leader, Leader, createLeaderData(Term(1), log))
 
-      leader ! createAppendEntries(shardId, term2, newLeaderMemberIndex, index2, term1, logEntries)
-      expectMsg(AppendEntriesSucceeded(term2, index2, leaderMemberIndex))
+      leader ! createAppendEntries(
+        shardId,
+        Term(2),
+        newLeaderMemberIndex,
+        LogEntryIndex(2),
+        Term(1),
+        Seq(
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+        ),
+      )
+      expectMsg(AppendEntriesSucceeded(Term(2), LogEntryIndex(3), leaderMemberIndex))
     }
 
     "AppendEntries が新しい Term を持っていて、prevLogIndex/prevLogTerm に一致するログエントリがない場合は AppendEntriesFailed" in {
@@ -112,7 +130,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
         LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
       )
-      val log = ReplicatedLog().merge(logEntries, LogEntryIndex.initial())
+      val log = ReplicatedLog().truncateAndAppend(logEntries)
       setState(leader, Leader, createLeaderData(term1, log))
 
       leader ! createAppendEntries(shardId, term2, newLeaderMemberIndex, index3, term1, logEntries)
@@ -143,7 +161,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val leaderLogEntries = Seq(
         LogEntry(index4, EntityEvent(Option(entityId), "e"), term1.next()),
       )
-      val log = ReplicatedLog().merge(followerLogEntries, LogEntryIndex.initial())
+      val log = ReplicatedLog().truncateAndAppend(followerLogEntries)
       setState(leader, Leader, createLeaderData(term1, log))
 
       leader ! createAppendEntries(shardId, term1, newLeaderMemberIndex, index3, term1.next(), leaderLogEntries)
@@ -165,7 +183,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "a"), term1),
         LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), term1),
       )
-      val log        = ReplicatedLog().merge(logEntries1, LogEntryIndex.initial())
+      val log        = ReplicatedLog().truncateAndAppend(logEntries1)
       val leaderData = createLeaderData(term1, log, index2)
 
       val logEntries2 = Seq(
@@ -193,7 +211,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         LogEntry(index1, EntityEvent(Option(entityId), "a"), term1),
         LogEntry(index2, EntityEvent(Option(entityId), "b"), term1),
       )
-      val log        = ReplicatedLog().merge(term1LogEntries, LogEntryIndex.initial())
+      val log        = ReplicatedLog().truncateAndAppend(term1LogEntries)
       val leaderData = createLeaderData(term1, log, commitIndex = index2)
       setState(leader, Leader, leaderData)
       // index2 already committed but new Leader doesn't know that
@@ -214,6 +232,242 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       expectMsg(AppendEntriesSucceeded(term2, index3, leaderMemberIndex))
 
       getState(leader).stateData.commitIndex should be(index2)
+    }
+
+    "persist the whole new entries starting with the lastLogIndex + 1 " +
+    "if the received AppendEntries message contains no existing entries" in {
+      val shardId           = createUniqueShardId()
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val leader = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = leaderMemberIndex,
+      )
+      val leaderPersistenceId = raftActorPersistenceId(shardId = shardId, selfMemberIndex = leaderMemberIndex)
+      val replicatedLog = {
+        val logEntries = Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+        )
+        ReplicatedLog().truncateAndAppend(logEntries)
+      }
+      setState(leader, Leader, createLeaderData(Term(2), replicatedLog, commitIndex = LogEntryIndex(3)))
+
+      val newLeaderMemberIndex = createUniqueMemberIndex()
+      leader ! createAppendEntries(
+        shardId,
+        Term(3),
+        newLeaderMemberIndex,
+        prevLogIndex = LogEntryIndex(3),
+        prevLogTerm = Term(2),
+        entries = Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-2"), Term(3)),
+        ),
+      )
+
+      expectMsg(AppendEntriesSucceeded(Term(3), LogEntryIndex(5), leaderMemberIndex))
+      inside(persistenceTestKit.expectNextPersistedType[AppendedEntries](leaderPersistenceId)) {
+        case appendedEntries =>
+          appendedEntries.term should be(Term(3))
+          val expectedEntries = Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-2"), Term(3)),
+          )
+          appendedEntries.logEntries should contain theSameElementsInOrderAs expectedEntries
+          appendedEntries.logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+      }
+      inside(getState(leader)) { leaderState =>
+        leaderState.stateName should be(Follower)
+        inside(leaderState.stateData.replicatedLog.entries) {
+          case logEntries =>
+            val expectedEntries = Seq(
+              LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+              LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+              LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+              LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+              LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-2"), Term(3)),
+            )
+            logEntries should contain theSameElementsInOrderAs expectedEntries
+            logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+        }
+      }
+    }
+
+    "persist only new entries starting with the lastLogIndex + 1 " +
+    "if the received AppendEntries message contains some existing entries" in {
+      val shardId           = createUniqueShardId()
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val leader = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = leaderMemberIndex,
+      )
+      val leaderPersistenceId = raftActorPersistenceId(shardId = shardId, selfMemberIndex = leaderMemberIndex)
+      val replicatedLog = {
+        val logEntries = Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event-1"), Term(2)),
+        )
+        ReplicatedLog().truncateAndAppend(logEntries)
+      }
+      setState(leader, Leader, createLeaderData(Term(2), replicatedLog, commitIndex = LogEntryIndex(2)))
+
+      val newLeaderMemberIndex = createUniqueMemberIndex()
+      leader ! createAppendEntries(
+        shardId,
+        Term(3),
+        newLeaderMemberIndex,
+        prevLogIndex = LogEntryIndex(2),
+        prevLogTerm = Term(2),
+        entries = Seq(
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event-1"), Term(2)),
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-2"), Term(3)),
+        ),
+      )
+
+      expectMsg(AppendEntriesSucceeded(Term(3), LogEntryIndex(5), leaderMemberIndex))
+      inside(persistenceTestKit.expectNextPersistedType[AppendedEntries](leaderPersistenceId)) {
+        case appendedEntries =>
+          appendedEntries.term should be(Term(3))
+          val expectedEntries = Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-2"), Term(3)),
+          )
+          appendedEntries.logEntries should contain theSameElementsInOrderAs expectedEntries
+          appendedEntries.logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+      }
+      inside(getState(leader)) { leaderState =>
+        leaderState.stateName should be(Follower)
+        inside(leaderState.stateData.replicatedLog.entries) {
+          case logEntries =>
+            val expectedEntries = Seq(
+              LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+              LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+              LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event-1"), Term(2)),
+              LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+              LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-2"), Term(3)),
+            )
+            logEntries should contain theSameElementsInOrderAs expectedEntries
+            logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+        }
+      }
+    }
+
+    "persist only new entries (beginning with the first conflict) " +
+    "if the received AppendEntries message contains conflict entries" in {
+      val shardId           = createUniqueShardId()
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val leader = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = leaderMemberIndex,
+      )
+      val leaderPersistenceId = raftActorPersistenceId(shardId = shardId, selfMemberIndex = leaderMemberIndex)
+      val replicatedLog = {
+        val logEntries = Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+        )
+        ReplicatedLog().truncateAndAppend(logEntries)
+      }
+      setState(leader, Leader, createLeaderData(Term(2), replicatedLog, commitIndex = LogEntryIndex(3)))
+
+      val newLeaderMemberIndex = createUniqueMemberIndex()
+      leader ! createAppendEntries(
+        shardId,
+        Term(4),
+        newLeaderMemberIndex,
+        prevLogIndex = LogEntryIndex(3),
+        prevLogTerm = Term(2),
+        entries = Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-2"), Term(4)),
+        ),
+      )
+
+      expectMsg(AppendEntriesSucceeded(Term(4), LogEntryIndex(5), leaderMemberIndex))
+      inside(persistenceTestKit.expectNextPersistedType[AppendedEntries](leaderPersistenceId)) {
+        case appendedEntries =>
+          appendedEntries.term should be(Term(4))
+          val expectedEntries = Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(4)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-2"), Term(4)),
+          )
+          appendedEntries.logEntries should contain theSameElementsInOrderAs expectedEntries
+          appendedEntries.logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+      }
+      inside(getState(leader)) { leaderState =>
+        leaderState.stateName should be(Follower)
+        inside(leaderState.stateData.replicatedLog.entries) {
+          case logEntries =>
+            val expectedEntries = Seq(
+              LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+              LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+              LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+              LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(4)),
+              LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-2"), Term(4)),
+            )
+            logEntries should contain theSameElementsInOrderAs expectedEntries
+            logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+        }
+      }
+    }
+
+    "truncate no entries even if the received AppendEntries message contains all existing entries (not including the last entry)" in {
+      val shardId           = createUniqueShardId()
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val leader = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = leaderMemberIndex,
+      )
+      val leaderPersistenceId = raftActorPersistenceId(shardId = shardId, selfMemberIndex = leaderMemberIndex)
+      val replicatedLog = {
+        val logEntries = Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event-1"), Term(2)),
+        )
+        ReplicatedLog().truncateAndAppend(logEntries)
+      }
+      setState(leader, Leader, createLeaderData(Term(2), replicatedLog, commitIndex = LogEntryIndex(2)))
+
+      val newLeaderMemberIndex = createUniqueMemberIndex()
+      leader ! createAppendEntries(
+        shardId,
+        Term(3),
+        newLeaderMemberIndex,
+        prevLogIndex = LogEntryIndex(1),
+        prevLogTerm = Term(1),
+        entries = Seq(
+          LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+          // The following entries will be sent in another AppendEntries batch.
+          // LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event-1"), Term(2)),
+          // LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+        ),
+      )
+
+      expectMsg(AppendEntriesSucceeded(Term(3), LogEntryIndex(3), leaderMemberIndex))
+      inside(persistenceTestKit.expectNextPersistedType[AppendedEntries](leaderPersistenceId)) {
+        case appendedEntries =>
+          appendedEntries.term should be(Term(3))
+          appendedEntries.logEntries should be(empty)
+      }
+      inside(getState(leader)) { leaderState =>
+        leaderState.stateName should be(Follower)
+        inside(leaderState.stateData.replicatedLog.entries) {
+          case logEntries =>
+            val expectedEntries = Seq(
+              LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+              LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+              LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event-1"), Term(2)),
+            )
+            logEntries should contain theSameElementsInOrderAs expectedEntries
+            logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
+        }
+      }
     }
 
     "handle AppendEntriesSucceeded with the current term, " +
@@ -237,12 +491,11 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       )
       assert(settings.replicationFactor > 3, "For making no new commit, replicationFactor should be greater than 3.")
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
           ),
-          LogEntryIndex(0),
         )
         val clientContext = ClientContext(
           replicationActor.ref,
@@ -295,12 +548,11 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val clientContext        = ClientContext(clientContextReplyTo.ref, None, None)
 
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(
           currentTerm = Term(2),
@@ -350,12 +602,11 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
         Some(clientActor.ref),
       )
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(
           currentTerm = Term(1),
@@ -403,13 +654,12 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val followerMemberIndex = createUniqueMemberIndex()
       val replicationActor    = TestProbe()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
             LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(2), log = log)
           // This follower doesn't have any entries yet for some reason, like network partition.
@@ -464,12 +714,11 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val leaderMemberIndex   = createUniqueMemberIndex()
       val followerMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event1"), Term(1)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(1), log = log)
           .syncLastLogIndex(followerMemberIndex, LogEntryIndex(1))
@@ -504,13 +753,12 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val leaderMemberIndex   = createUniqueMemberIndex()
       val followerMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
             LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event1"), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(2), log = log)
           .syncLastLogIndex(followerMemberIndex, LogEntryIndex(2))
@@ -534,13 +782,12 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
     "handle AppendEntriesFailed with the current term and update next index for the follower(sender)" in {
       val leaderMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
             LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event1"), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(2), log = log)
       }
@@ -565,13 +812,12 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
     "handle AppendEntriesFailed with the current term and not update next index for the follower(sender) if the next index is zero" in {
       val leaderMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
             LogEntry(LogEntryIndex(3), EntityEvent(Some(entityId), "event1"), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(2), log = log)
       }
@@ -601,11 +847,10 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
     "handle AppendEntriesFailed with a newer term, update its term, and become a follower" in {
       val leaderMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(1), log = log)
       }
@@ -629,12 +874,11 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val leaderMemberIndex   = createUniqueMemberIndex()
       val followerMemberIndex = createUniqueMemberIndex()
       val leaderData = {
-        val log = ReplicatedLog().merge(
+        val log = ReplicatedLog().truncateAndAppend(
           Seq(
             LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
           ),
-          LogEntryIndex(0),
         )
         createLeaderData(currentTerm = Term(2), log = log)
           .syncLastLogIndex(followerMemberIndex, LogEntryIndex(1))
@@ -654,6 +898,9 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
     }
 
     "become a follower and synchronize snapshots if it receives InstallSnapshot" in {
+      val config   = RaftActorSpecBase.defaultRaftPersistenceConfig.withFallback(system.settings.config)
+      val settings = ClusterReplicationSettingsImpl(config, Cluster(system).settings.Roles)
+
       val typeName       = TypeName.from("test")
       val shardId        = createUniqueShardId()
       val term1          = Term(1)
@@ -662,13 +909,30 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val srcMemberIndex = createUniqueMemberIndex()
       val dstMemberIndex = createUniqueMemberIndex()
       val region         = TestProbe()
+
+      val eventStore = system.actorOf(EventStore.props(settings), "eventStore")
+      def persistEvents(events: CompactionCompleted*): Unit = {
+        eventStore ! EventStore.PersistEvents(events)
+        expectMsg(Done)
+      }
+
       val snapshotStore = planAutoKill {
         system.actorOf(
           ShardSnapshotStore.props(typeName, settings.raftSettings, srcMemberIndex),
           "srcSnapshotStore",
         )
       }
+      def saveSnapshots(snapshots: Set[EntitySnapshot]): Unit = {
+        snapshots.foreach { snapshot =>
+          snapshotStore ! SnapshotProtocol.SaveSnapshot(snapshot, testActor)
+        }
+        receiveWhile(messages = snapshots.size) {
+          case _: SnapshotProtocol.SaveSnapshotSuccess => Done
+        }
+      }
+
       val leader = createRaftActor(
+        settings = settings.raftSettings,
         typeName = typeName,
         shardId = shardId,
         selfMemberIndex = dstMemberIndex,
@@ -690,7 +954,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       val snapshots = Set(
         EntitySnapshot(EntitySnapshotMetadata(NormalizedEntityId("entity-1"), lastLogIndex), EntityState("dummy")),
       )
-      saveSnapshots(snapshots, snapshotStore)
+      saveSnapshots(snapshots)
 
       val installSnapshotCommand     = InstallSnapshot(shardId, term2, srcMemberIndex, term2, lastLogIndex)
       val expectedSuccessfulResponse = InstallSnapshotSucceeded(shardId, term2, lastLogIndex, dstMemberIndex)
@@ -856,7 +1120,7 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
       )
       val logEntryByIndex = logEntries.map(entry => entry.index -> entry).toMap
       val leaderData = {
-        val replicatedLog = ReplicatedLog().merge(logEntries, LogEntryIndex(0))
+        val replicatedLog = ReplicatedLog().truncateAndAppend(logEntries)
         createLeaderData(currentTerm, replicatedLog, commitIndex = LogEntryIndex(1))
           .syncLastLogIndex(follower1Index, LogEntryIndex(1))
           .syncLastLogIndex(follower2Index, LogEntryIndex(5))
@@ -1148,24 +1412,6 @@ class RaftActorLeaderSpec extends TestKit(ActorSystem()) with RaftActorSpecBase 
           )
           replicationActor1.expectMsg(ReplicationFailed)
         }
-    }
-  }
-
-  private[this] val settings = ClusterReplicationSettings.create(system)
-
-  private[this] val eventStore = system.actorOf(EventStore.props(settings), "eventStore")
-
-  private[this] def persistEvents(events: CompactionCompleted*): Unit = {
-    eventStore ! EventStore.PersistEvents(events)
-    expectMsg(Done)
-  }
-
-  private[this] def saveSnapshots(snapshots: Set[EntitySnapshot], snapshotStore: ActorRef): Unit = {
-    snapshots.foreach { snapshot =>
-      snapshotStore ! SnapshotProtocol.SaveSnapshot(snapshot, testActor)
-    }
-    receiveWhile(messages = snapshots.size) {
-      case _: SnapshotProtocol.SaveSnapshotSuccess => Done
     }
   }
 

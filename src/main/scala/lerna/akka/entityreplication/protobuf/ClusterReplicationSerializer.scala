@@ -20,17 +20,18 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   // Manifests
   // make them public for testing purposes
   // raft
-  val BegunNewTermManifest          = "AA"
-  val VotedManifest                 = "AB"
-  val DetectedNewTermManifest       = "AC"
-  val AppendedEntriesManifest       = "AD"
-  val AppendedEventManifest         = "AE"
-  val CompactionCompletedManifest   = "AF"
-  val SnapshotSyncCompletedManifest = "AG"
-  val PersistentStateManifest       = "AH"
-  val CommandManifest               = "AI"
-  val ForwardedCommandManifest      = "AJ"
-  val SnapshotSyncStartedManifest   = "AK"
+  val BegunNewTermManifest           = "AA"
+  val VotedManifest                  = "AB"
+  val DetectedNewTermManifest        = "AC"
+  val AppendedEntriesManifest_V2_1_0 = "AD"
+  val AppendedEventManifest          = "AE"
+  val CompactionCompletedManifest    = "AF"
+  val SnapshotSyncCompletedManifest  = "AG"
+  val PersistentStateManifest        = "AH"
+  val CommandManifest                = "AI"
+  val ForwardedCommandManifest       = "AJ"
+  val SnapshotSyncStartedManifest    = "AK"
+  val AppendedEntriesManifest        = "AL"
   // raft.eventsourced
   val CommitLogStoreInternalEventManifest                  = "BA"
   val CommitLogStoreSaveManifest                           = "BB"
@@ -65,17 +66,18 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   // Manifest -> fromBinary
   private val fromBinaryMap = HashMap[String, Array[Byte] => ClusterReplicationSerializable](
     // raft
-    BegunNewTermManifest          -> begunNewTermFromBinary,
-    VotedManifest                 -> votedFromBinary,
-    DetectedNewTermManifest       -> detectedNewTermFromBinary,
-    AppendedEntriesManifest       -> appendedEntriesFromBinary,
-    AppendedEventManifest         -> appendedEventFromBinary,
-    CompactionCompletedManifest   -> compactionCompletedFromBinary,
-    SnapshotSyncStartedManifest   -> snapshotSyncStartedFromBinary,
-    SnapshotSyncCompletedManifest -> snapshotSyncCompletedFromBinary,
-    PersistentStateManifest       -> persistentStateFromBinary,
-    CommandManifest               -> commandFromBinary,
-    ForwardedCommandManifest      -> forwardedCommandFromBinary,
+    BegunNewTermManifest           -> begunNewTermFromBinary,
+    VotedManifest                  -> votedFromBinary,
+    DetectedNewTermManifest        -> detectedNewTermFromBinary,
+    AppendedEntriesManifest        -> appendedEntriesFromBinary,
+    AppendedEntriesManifest_V2_1_0 -> appendedEntries_V2_1_0_FromBinary,
+    AppendedEventManifest          -> appendedEventFromBinary,
+    CompactionCompletedManifest    -> compactionCompletedFromBinary,
+    SnapshotSyncStartedManifest    -> snapshotSyncStartedFromBinary,
+    SnapshotSyncCompletedManifest  -> snapshotSyncCompletedFromBinary,
+    PersistentStateManifest        -> persistentStateFromBinary,
+    CommandManifest                -> commandFromBinary,
+    ForwardedCommandManifest       -> forwardedCommandFromBinary,
     // raft.eventsourced
     CommitLogStoreInternalEventManifest                  -> commitLogStoreInternalEventFromBinary,
     CommitLogStoreSaveManifest                           -> commitLogStoreSaveFromBinary,
@@ -142,6 +144,7 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     case _: raft.RaftActor.Voted                     => VotedManifest
     case _: raft.RaftActor.DetectedNewTerm           => DetectedNewTermManifest
     case _: raft.RaftActor.AppendedEntries           => AppendedEntriesManifest
+    case _: raft.RaftActor.AppendedEntries_V2_1_0    => AppendedEntriesManifest_V2_1_0
     case _: raft.RaftActor.AppendedEvent             => AppendedEventManifest
     case _: raft.RaftActor.CompactionCompleted       => CompactionCompletedManifest
     case _: raft.RaftActor.SnapshotSyncStarted       => SnapshotSyncStartedManifest
@@ -189,6 +192,7 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     case m: raft.RaftActor.Voted                     => votedToBinary(m)
     case m: raft.RaftActor.DetectedNewTerm           => detectedNewTermToBinary(m)
     case m: raft.RaftActor.AppendedEntries           => appendedEntriesToBinary(m)
+    case m: raft.RaftActor.AppendedEntries_V2_1_0    => appendedEntries_V2_1_0_ToBinary(m)
     case m: raft.RaftActor.AppendedEvent             => appendedEventToBinary(m)
     case m: raft.RaftActor.CompactionCompleted       => compactionCompletedToBinary(m)
     case m: raft.RaftActor.SnapshotSyncStarted       => snapshotSyncStartedToBinary(m)
@@ -283,13 +287,31 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
       .of(
         term = termToProto(message.term),
         logEntries = message.logEntries.map(logEntryToProto),
-        prevLogIndex = logEntryIndexToProto(message.prevLogIndex),
       ).toByteArray
   }
 
   private def appendedEntriesFromBinary(bytes: Array[Byte]): raft.RaftActor.AppendedEntries = {
     val proto = msg.AppendedEntries.parseFrom(bytes)
     raft.RaftActor.AppendedEntries(
+      term = termFromProto(proto.term),
+      logEntries = proto.logEntries.map(logEntryFromProto),
+    )
+  }
+
+  @nowarn("msg=Use RaftActor.AppendedEntries instead.")
+  private def appendedEntries_V2_1_0_ToBinary(message: raft.RaftActor.AppendedEntries_V2_1_0): Array[Byte] = {
+    msg.AppendedEntries_V2_1_0
+      .of(
+        term = termToProto(message.term),
+        logEntries = message.logEntries.map(logEntryToProto),
+        prevLogIndex = logEntryIndexToProto(message.prevLogIndex),
+      ).toByteArray
+  }
+
+  @nowarn("msg=Use RaftActor.AppendedEntries instead.")
+  private def appendedEntries_V2_1_0_FromBinary(bytes: Array[Byte]): raft.RaftActor.AppendedEntries_V2_1_0 = {
+    val proto = msg.AppendedEntries_V2_1_0.parseFrom(bytes)
+    raft.RaftActor.AppendedEntries_V2_1_0(
       term = termFromProto(proto.term),
       logEntries = proto.logEntries.map(logEntryFromProto),
       prevLogIndex = logEntryIndexFromProto(proto.prevLogIndex),

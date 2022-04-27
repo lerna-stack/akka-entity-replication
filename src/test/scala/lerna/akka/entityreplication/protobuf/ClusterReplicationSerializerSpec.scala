@@ -61,6 +61,7 @@ object ClusterReplicationSerializerSpec {
   object MyStopMessage                                  extends KryoSerializable
 }
 
+@nowarn("msg=Use RaftActor.AppendedEntries instead.")
 @nowarn("msg=Use CommitLogStoreActor.AppendCommittedEntries instead.")
 final class ClusterReplicationSerializerSpec
     extends SerializerSpecBase(ActorSystem("ClusterReplicationSerializerSpec")) {
@@ -80,17 +81,34 @@ final class ClusterReplicationSerializerSpec
     checkSerialization(DetectedNewTerm(Term(8417)))
     checkSerialization(
       AppendedEntries(
-        Term(12851),
+        Term(2),
         Seq(
           LogEntry(
             LogEntryIndex(2),
             EntityEvent(None, MyEvent(2141, "message&hello")),
-            Term(9841),
+            Term(1),
           ),
           LogEntry(
-            LogEntryIndex(2),
+            LogEntryIndex(3),
             EntityEvent(Some(NormalizedEntityId.from("shard:1248")), MyEvent(5891, "message?world")),
-            Term(9841),
+            Term(2),
+          ),
+        ),
+      ),
+    )
+    checkSerialization(
+      AppendedEntries_V2_1_0(
+        Term(2),
+        Seq(
+          LogEntry(
+            LogEntryIndex(2),
+            EntityEvent(None, MyEvent(2141, "message&hello")),
+            Term(1),
+          ),
+          LogEntry(
+            LogEntryIndex(3),
+            EntityEvent(Some(NormalizedEntityId.from("shard:1248")), MyEvent(5891, "message?world")),
+            Term(2),
           ),
         ),
         LogEntryIndex(1),

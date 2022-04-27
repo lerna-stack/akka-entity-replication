@@ -18,6 +18,8 @@ import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 import lerna.akka.entityreplication.util.ActorIds
 import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ReplicationActorContext, ReplicationRegion }
 
+import scala.annotation.nowarn
+
 private[entityreplication] object RaftActor {
 
   def props(
@@ -79,9 +81,24 @@ private[entityreplication] object RaftActor {
   final case class BegunNewTerm(term: Term)                  extends PersistEvent with ClusterReplicationSerializable
   final case class Voted(term: Term, candidate: MemberIndex) extends PersistEvent with ClusterReplicationSerializable
   final case class DetectedNewTerm(term: Term)               extends PersistEvent with ClusterReplicationSerializable
-  final case class AppendedEntries(term: Term, logEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex)
+
+  /** AppendedEntries event contains a term (possibly a new term) and log entries
+    *
+    * The log entries include no existing entries.
+    * RaftActor should truncate its log if the entries conflict with its log,and then append the entries.
+    *
+    * @note The index of the entries MUST be continuously increasing (not checked at instantiating an instance of this class)
+    */
+  final case class AppendedEntries(term: Term, logEntries: Seq[LogEntry])
       extends PersistEvent
       with ClusterReplicationSerializable
+
+  @deprecated("Use RaftActor.AppendedEntries instead.", "2.1.1")
+  /** This class is for backward compatibility */
+  final case class AppendedEntries_V2_1_0(term: Term, logEntries: Seq[LogEntry], prevLogIndex: LogEntryIndex)
+      extends PersistEvent
+      with ClusterReplicationSerializable
+
   final case class AppendedEvent(event: EntityEvent) extends PersistEvent with ClusterReplicationSerializable
   final case class CompactionCompleted(
       memberIndex: MemberIndex,
@@ -199,6 +216,7 @@ private[raft] class RaftActor(
 
   val numberOfMembers: Int = settings.replicationFactor
 
+  @nowarn("msg=Use RaftMemberData.truncateAndAppendEntries instead.")
   protected def updateState(domainEvent: DomainEvent): RaftMemberData =
     domainEvent match {
       case BegunNewTerm(term) =>
@@ -207,7 +225,11 @@ private[raft] class RaftActor(
         currentData.vote(candidate, term)
       case DetectedNewTerm(term) =>
         currentData.syncTerm(term)
-      case AppendedEntries(term, logEntries, prevLogIndex) =>
+      case AppendedEntries(term, logEntries) =>
+        currentData
+          .syncTerm(term)
+          .truncateAndAppendEntries(logEntries)
+      case AppendedEntries_V2_1_0(term, logEntries, prevLogIndex) =>
         currentData
           .syncTerm(term)
           .appendEntries(logEntries, prevLogIndex)
