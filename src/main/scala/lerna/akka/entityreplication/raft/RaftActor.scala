@@ -84,10 +84,10 @@ private[entityreplication] object RaftActor {
 
   /** AppendedEntries event contains a term (possibly a new term) and log entries
     *
-    * The log entries include no existing entries on this RaftActor's raft log. RaftActor should truncate
-    * its log entries if the entries conflict with its log, and then append the entries.
+    * The log entries include no existing entries.
+    * RaftActor should truncate its log if the entries conflict with its log,and then append the entries.
     *
-    * Note that the index of the entries MUST be continuously increasing (not checked at instantiating an instance of this class)
+    * @note The index of the entries MUST be continuously increasing (not checked at instantiating an instance of this class)
     */
   final case class AppendedEntries(term: Term, logEntries: Seq[LogEntry])
       extends PersistEvent

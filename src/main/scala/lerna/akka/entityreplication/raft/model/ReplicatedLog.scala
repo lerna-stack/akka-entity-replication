@@ -100,7 +100,7 @@ private[entityreplication] final case class ReplicatedLog private[model] (
 
   /** Finds the index of the conflict
     *
-    * This returns the first index of conflicting entries between existing entries and the given entries.
+    * This method returns the first index of conflicting entries between existing entries and the given entries.
     * If there is no conflict, this returns [[FindConflictResult.NoConflict]].
     * An entry is considered to be conflicting if it has the same index but a different term.
     *
@@ -111,7 +111,8 @@ private[entityreplication] final case class ReplicatedLog private[model] (
     *  conflict: index=3 and term =2
     * </pre>
     *
-    * If there is no overlapping between exising entries and the given entries, this returns [[FindConflictResult.NoConflict]].
+    * If there is no overlapping index between exising entries and the given entries,
+    * this method returns [[FindConflictResult.NoConflict]].
     *
     * @throws IllegalArgumentException
     *   - if the given entries contains the already compacted entries, excluding the last one.
@@ -160,12 +161,12 @@ private[entityreplication] final case class ReplicatedLog private[model] (
   /** Truncates the exising entries and appends the given entries
     *
     * This method truncates the existing entries with an index greater than or equal to the first index of the given entries.
-    * If the given entries are empty, this method doesn't truncate any entries.
+    * If the given entries are empty, this method truncates no entry.
     *
     * The given entries should start with an index less than or equal to the last index of exising entries plus one.
     * If this requirement breaks, this method throws an [[IllegalArgumentException]] since it will miss some entries.
     *
-    * Note that the index of the given entries MUST be continuously increasing (not checked on this method).
+    * @note The index of the given entries MUST be continuously increasing (not checked on this method).
     */
   def truncateAndAppend(thatEntries: Seq[LogEntry]): ReplicatedLog = {
     if (thatEntries.isEmpty) {

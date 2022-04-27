@@ -113,8 +113,7 @@ private[entityreplication] trait FollowerData { self: RaftMemberData =>
     * The given entries should start with an index less than or equal to the last index of exising entries plus one.
     * If this requirement breaks, this method throws an [[IllegalArgumentException]] since it will miss some entries.
     *
-    * Note that the index of the given entries MUST be continuously increasing (not checked on this method)
-    *
+    * @note The index of the given entries MUST be continuously increasing (not checked on this method)
     * @see [[ReplicatedLog.findConflict]]
     */
   def resolveNewLogEntries(logEntries: Seq[LogEntry]): Seq[LogEntry] = {
