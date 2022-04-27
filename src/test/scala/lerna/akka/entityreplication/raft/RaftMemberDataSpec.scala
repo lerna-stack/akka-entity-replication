@@ -649,15 +649,37 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
           LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
           LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(3)),
           LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(4)),
-          LogEntry(LogEntryIndex(8), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
         ),
       ),
     ) {
       case newEntries =>
         newEntries should contain theSameElementsInOrderAs Seq(
           LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(4)),
-          LogEntry(LogEntryIndex(8), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
         )
+    }
+
+    inside(
+      data.resolveNewLogEntries(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(3)),
+        ),
+      ),
+    ) {
+      case newEntries =>
+        newEntries should be(empty)
+    }
+
+    inside(
+      data.resolveNewLogEntries(
+        Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+        ),
+      ),
+    ) {
+      case newEntries =>
+        newEntries should be(empty)
     }
   }
 
@@ -669,26 +691,62 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
           Seq(
             LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(3)),
             LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
-            LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(3)),
+            LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("2")), "event-2"), Term(3)),
           ),
         ),
-      commitIndex = LogEntryIndex(5),
+      commitIndex = LogEntryIndex(4),
     )
 
-    val newEntries = data.resolveNewLogEntries(
-      Seq(
-        LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
-        LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(4)),
-        LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
+    inside(
+      data.resolveNewLogEntries(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId.from("2")), "event-2"), Term(3)),
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(4)),
+        ),
       ),
-    )
-    newEntries should contain theSameElementsInOrderAs Seq(
-      LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(4)),
-      LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
-    )
+    ) {
+      case newEntries =>
+        newEntries should contain theSameElementsInOrderAs Seq(
+          LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
+        )
+    }
+
+    inside(
+      data.resolveNewLogEntries(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(3)),
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
+        ),
+      ),
+    ) {
+      case newEntries =>
+        newEntries should contain theSameElementsInOrderAs Seq(
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(4)),
+        )
+    }
+
+    inside(
+      data.resolveNewLogEntries(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(5)),
+          LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(5)),
+        ),
+      ),
+    ) {
+      case newEntries =>
+        newEntries should contain theSameElementsInOrderAs Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(4)),
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(5)),
+          LogEntry(LogEntryIndex(7), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(5)),
+        )
+    }
   }
 
-  it should "throw an AssertionError if the given entries conflict with a committed entry" in {
+  it should "throw an IllegalArgumentException if the given entries conflict with a committed entry" in {
     val data = RaftMemberData(
       replicatedLog = ReplicatedLog()
         .reset(Term(2), LogEntryIndex(3))
