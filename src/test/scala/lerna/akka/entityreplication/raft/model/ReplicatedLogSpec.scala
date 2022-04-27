@@ -483,7 +483,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       replicatedLog.findConflict(Seq.empty) should be(FindConflictResult.NoConflict)
     }
 
-    "return NoConflict if the given entries don't overlap with existing entries" in {
+    "return NoConflict if the given entries' indices don't overlap with existing ones" in {
       val existingEntries = Seq(
         LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
         LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
@@ -519,6 +519,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       replicatedLog.findConflict(
         Seq(
           LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(3)),
         ),
       ) should be(FindConflictResult.NoConflict)
 
@@ -526,6 +527,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
         Seq(
           LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
           LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId.from("2")), "event-1"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(None, NoOp), Term(3)),
         ),
       ) should be(FindConflictResult.NoConflict)
     }
@@ -564,14 +566,14 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       val exception = intercept[IllegalArgumentException] {
         replicatedLog.findConflict(
           Seq(
-            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
             LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId.from("1")), "event-1"), Term(1)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
           ),
         )
       }
       exception.getMessage should be(
         "requirement failed: The given entries shouldn't contain compacted entries, excluding the last one " +
-        "(ancestorLastIndex: [3], ancestorLastTerm: [1]), but got entries (indices: [1..2]).",
+        "(ancestorLastIndex: [3], ancestorLastTerm: [1]), but got entries (indices: [2..3]).",
       )
     }
 
@@ -669,7 +671,7 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
       newReplicatedLog.entries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
     }
 
-    "return a new ReplicatedLog (some entries truncated) if the given entries contain existing entries" in {
+    "return a new ReplicatedLog (some suffix entries truncated) if the given entries start with an index less than lastLogIndex + 1" in {
       val existingEntries = Seq(
         LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId.from("1")), "event-2"), Term(1)),
         LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
