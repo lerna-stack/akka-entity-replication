@@ -38,6 +38,7 @@ private[raft] trait Candidate { this: RaftActor =>
     case response: SnapshotSyncManager.Response          => receiveSyncSnapshotResponse(response)
     case command: Command                                => handleCommand(command)
     case _: ForwardedCommand                             => // ignore, because I'm not a leader
+    case replicate: Replicate                            => receiveReplicate(replicate)
     case TryCreateEntity(_, entityId)                    => createEntityIfNotExists(entityId)
     case request: FetchEntityEvents                      => receiveFetchEntityEvents(request)
     case EntityTerminated(id)                            => receiveEntityTerminated(id)
@@ -186,4 +187,17 @@ private[raft] trait Candidate { this: RaftActor =>
       case _ =>
         stash()
     }
+
+  private def receiveReplicate(replicate: Replicate): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "[Candidate] cannot replicate the event: type=[{}], entityId=[{}], instanceId=[{}]",
+        replicate.event.getClass.getName,
+        replicate.entityId.map(_.raw),
+        replicate.instanceId.map(_.underlying),
+      )
+    }
+    replicate.replyTo ! ReplicationFailed
+  }
+
 }

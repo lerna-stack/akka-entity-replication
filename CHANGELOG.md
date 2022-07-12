@@ -10,7 +10,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 - RaftActor might delete committed entries [#152](https://github.com/lerna-stack/akka-entity-replication/issues/152)  
   ⚠️ This fix adds a new persistent event type. It doesn't allow downgrading after being updated.
-
+- An entity on a follower could stick at `WaitForReplication` if the entity has a `ProcessCommand` in its mailbox
+  [#157](https://github.com/lerna-stack/akka-entity-replication/issues/157),
+  [PR#158](https://github.com/lerna-stack/akka-entity-replication/pull/158)
 
 ## [v2.1.0] - 2022-03-24
 [v2.1.0]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.0.0...v2.1.0

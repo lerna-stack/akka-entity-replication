@@ -1,10 +1,12 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.ActorSystem
+import akka.actor.testkit.typed.scaladsl.LoggingTestKit
+import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
 import akka.persistence.testkit.scaladsl.PersistenceTestKit
 import akka.testkit.{ TestKit, TestProbe }
 import lerna.akka.entityreplication.ReplicationRegion
-import lerna.akka.entityreplication.model.NormalizedEntityId
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
@@ -20,7 +22,8 @@ class RaftActorFollowerSpec
 
   private[this] val entityId = NormalizedEntityId.from("test-entity")
 
-  private val persistenceTestKit = PersistenceTestKit(system)
+  private implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
+  private val persistenceTestKit                                          = PersistenceTestKit(system)
 
   override def beforeEach(): Unit = {
     super.beforeEach()
@@ -866,6 +869,30 @@ class RaftActorFollowerSpec
             logEntries.map(_.event) should be(expectedEntries.map(_.event))
         }
       }
+    }
+
+    "reply with a ReplicationFailed message to a Replicate message and log a warning" in {
+      val replicationActor = TestProbe()
+      val entityId         = NormalizedEntityId("entity-1")
+      val entityInstanceId = EntityInstanceId(1)
+
+      val follower     = createRaftActor()
+      val followerData = createFollowerData(Term(1), ReplicatedLog())
+      setState(follower, Follower, followerData)
+
+      LoggingTestKit
+        .warn(
+          "[Follower] cannot replicate the event: type=[java.lang.String], entityId=[Some(entity-1)], instanceId=[Some(1)]",
+        ).expect {
+          follower ! Replicate(
+            event = "event-1",
+            replicationActor.ref,
+            entityId,
+            entityInstanceId,
+            originSender = system.deadLetters,
+          )
+          replicationActor.expectMsg(ReplicationFailed)
+        }
     }
 
   }

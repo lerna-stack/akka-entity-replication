@@ -1,11 +1,19 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.ActorSystem
+import akka.actor.testkit.typed.scaladsl.LoggingTestKit
+import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
 import akka.persistence.testkit.scaladsl.PersistenceTestKit
 import akka.testkit.{ TestKit, TestProbe }
 import lerna.akka.entityreplication.ReplicationRegion
-import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId }
-import lerna.akka.entityreplication.raft.RaftProtocol.{ Command, ForwardedCommand, ProcessCommand }
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId }
+import lerna.akka.entityreplication.raft.RaftProtocol.{
+  Command,
+  ForwardedCommand,
+  ProcessCommand,
+  Replicate,
+  ReplicationFailed,
+}
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -21,7 +29,8 @@ class RaftActorCandidateSpec
   private[this] val shardId  = NormalizedShardId.from("test-shard")
   private[this] val entityId = NormalizedEntityId.from("test-entity")
 
-  private val persistenceTestKit = PersistenceTestKit(system)
+  private implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
+  private val persistenceTestKit                                          = PersistenceTestKit(system)
 
   override def beforeEach(): Unit = {
     super.beforeEach()
@@ -786,6 +795,30 @@ class RaftActorCandidateSpec
             logEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntries.map(_.event)
         }
       }
+    }
+
+    "reply with a ReplicationFailed message to a Replicate message and log a warning" in {
+      val replicationActor = TestProbe()
+      val entityId         = NormalizedEntityId("entity-1")
+      val entityInstanceId = EntityInstanceId(1)
+
+      val candidate     = createRaftActor()
+      val candidateData = createCandidateData(Term(1))
+      setState(candidate, Candidate, candidateData)
+
+      LoggingTestKit
+        .warn(
+          "[Candidate] cannot replicate the event: type=[java.lang.String], entityId=[Some(entity-1)], instanceId=[Some(1)]",
+        ).expect {
+          candidate ! Replicate(
+            event = "event-1",
+            replicationActor.ref,
+            entityId,
+            entityInstanceId,
+            originSender = system.deadLetters,
+          )
+          replicationActor.expectMsg(ReplicationFailed)
+        }
     }
 
   }
