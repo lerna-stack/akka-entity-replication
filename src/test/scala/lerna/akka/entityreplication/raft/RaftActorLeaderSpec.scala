@@ -1413,6 +1413,33 @@ class RaftActorLeaderSpec
           replicationActor1.expectMsg(ReplicationFailed)
         }
     }
+
+    "log a warning if it receives a ReplicationSucceeded message containing an event other than NoOp" in {
+      val leader     = createRaftActor()
+      val leaderData = createLeaderData(Term(1))
+      setState(leader, Leader, leaderData)
+
+      LoggingTestKit
+        .warn(
+          "[Leader] received the unexpected ReplicationSucceeded message: event type=[java.lang.String], index=[3], instanceId=[Some(1)]",
+        ).expect {
+          leader ! ReplicationSucceeded("event-1", LogEntryIndex(3), Option(EntityInstanceId(1)))
+        }
+    }
+
+    "log a warning if it receives a ReplicationFailed message" in {
+      val leader     = createRaftActor()
+      val leaderData = createLeaderData(Term(1))
+      setState(leader, Leader, leaderData)
+
+      LoggingTestKit
+        .warn(
+          "[Leader] received the unexpected ReplicationFailed message",
+        ).expect {
+          leader ! ReplicationFailed
+        }
+    }
+
   }
 
   private[this] def createLeaderData(
