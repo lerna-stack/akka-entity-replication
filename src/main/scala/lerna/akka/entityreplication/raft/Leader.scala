@@ -219,8 +219,8 @@ private[raft] trait Leader { this: RaftActor =>
 
   }
 
-  private[this] def receiveReplicationResponse(event: ReplicationResponse): Unit =
-    event match {
+  private[this] def receiveReplicationResponse(replicationResponse: ReplicationResponse): Unit =
+    replicationResponse match {
 
       case ReplicationSucceeded(NoOp, _, _) =>
       // ignore: no-op replication when become leader
