@@ -52,13 +52,13 @@ private[entityreplication] object RaftProtocol {
   final case class Replica(logEntry: LogEntry)                                            extends EntityCommand
   final case class TakeSnapshot(metadata: EntitySnapshotMetadata, replyTo: ActorRef)      extends EntityCommand
   final case object RecoveryTimeout                                                       extends EntityCommand
-  final case object ReplicationFailed                                                     extends EntityCommand
 
   sealed trait ReplicationResponse
 
   final case class ReplicationSucceeded(event: Any, logEntryIndex: LogEntryIndex, instanceId: Option[EntityInstanceId])
       extends ReplicationResponse
       with EntityCommand
+  final case object ReplicationFailed extends ReplicationResponse with EntityCommand
 
   final case class EntityRecoveryTimeoutException(entityPath: ActorPath) extends RuntimeException
 }
