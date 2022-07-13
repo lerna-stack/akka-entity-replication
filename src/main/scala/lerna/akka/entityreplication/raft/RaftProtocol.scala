@@ -79,13 +79,6 @@ private[entityreplication] object RaftProtocol {
       ReplicateForInternal(event, replyTo)
     }
 
-    /** Extracts field values from the given `replicate` message */
-    def unapply(
-        replicate: Replicate,
-    ): Option[(Any, ActorRef, Option[NormalizedEntityId], Option[EntityInstanceId], Option[ActorRef])] = {
-      Some((replicate.event, replicate.replyTo, replicate.entityId, replicate.instanceId, replicate.originSender))
-    }
-
   }
 
   sealed trait EntityCommand

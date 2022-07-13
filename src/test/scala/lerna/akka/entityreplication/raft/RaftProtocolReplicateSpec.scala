@@ -85,34 +85,4 @@ final class RaftProtocolReplicateSpec
     )
   }
 
-  "Replicate.unapply should extract values from a ReplicateForInternal instance" in {
-    val replicate = Replicate.ReplicateForInternal("event-1", TestProbe().ref)
-    inside(replicate) {
-      case Replicate(event, replyTo, entityId, instanceId, originSender) =>
-        event should be(replicate.event)
-        replyTo should be(replicate.replyTo)
-        entityId should be(replicate.entityId)
-        instanceId should be(replicate.instanceId)
-        originSender should be(replicate.originSender)
-    }
-  }
-
-  "Replicate.unapply should extract values from a ReplicateForEntity instance" in {
-    val replicate = Replicate.ReplicateForEntity(
-      "event-1",
-      TestProbe().ref,
-      NormalizedEntityId("entity-1"),
-      EntityInstanceId(1),
-      TestProbe().ref,
-    )
-    inside(replicate) {
-      case Replicate(event, replyTo, entityId, instanceId, originSender) =>
-        event should be(replicate.event)
-        replyTo should be(replicate.replyTo)
-        entityId should be(replicate.entityId)
-        instanceId should be(replicate.instanceId)
-        originSender should be(replicate.originSender)
-    }
-  }
-
 }
