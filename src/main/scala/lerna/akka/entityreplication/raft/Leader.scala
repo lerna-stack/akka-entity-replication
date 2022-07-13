@@ -194,12 +194,12 @@ private[raft] trait Leader { this: RaftActor =>
     }
 
   private[this] def replicate(replicate: Replicate): Unit = {
-    replicate.entityId match {
-      case Some(normalizedEntityId) // from entity(ReplicationActor)
-          if currentData.hasUncommittedLogEntryOf(normalizedEntityId) =>
+    replicate match {
+      case replicateForEntity: Replicate.ReplicateForEntity
+          if currentData.hasUncommittedLogEntryOf(replicateForEntity._entityId) =>
         if (log.isWarningEnabled)
           log.warning(
-            s"Failed to replicate the event (${replicate.event.getClass.getName}) since an uncommitted event exists for the entity (entityId: ${normalizedEntityId.raw}). Replicating new events is allowed after the event is committed",
+            s"Failed to replicate the event (${replicate.event.getClass.getName}) since an uncommitted event exists for the entity (entityId: ${replicateForEntity._entityId.raw}). Replicating new events is allowed after the event is committed",
           )
         replicate.replyTo ! ReplicationFailed
 
