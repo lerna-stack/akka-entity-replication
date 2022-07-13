@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 [Unreleased]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.1.0...master
 
+### Changed
+- Enhance leader's replication response handling [PR#160](https://github.com/lerna-stack/akka-entity-replication/pull/160)
+
 ### Fixed
 - RaftActor might delete committed entries [#152](https://github.com/lerna-stack/akka-entity-replication/issues/152)  
   ⚠️ This fix adds a new persistent event type. It doesn't allow downgrading after being updated.
