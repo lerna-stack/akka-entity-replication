@@ -51,9 +51,6 @@ private[entityreplication] final case class ReplicatedLog private[model] (
     entries.slice(toSeqIndex(from), until = toSeqIndex(to.next()))
   }
 
-  def entriesAfter(index: LogEntryIndex): Iterator[LogEntry] =
-    entries.iterator.drop(n = toSeqIndex(index) + 1)
-
   /** Returns the entity's entries with an index greater than or equal to `from` index
     *
     * If `from` index is greater than [[lastLogIndex]], this method returns empty. If `from` index is less than or equal
