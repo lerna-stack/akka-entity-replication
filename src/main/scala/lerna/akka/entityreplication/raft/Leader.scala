@@ -194,27 +194,32 @@ private[raft] trait Leader { this: RaftActor =>
     }
 
   private[this] def replicate(replicate: Replicate): Unit = {
-    replicate match {
-      case replicateForEntity: Replicate.ReplicateForEntity
-          if currentData.hasUncommittedLogEntryOf(replicateForEntity._entityId) =>
-        if (log.isWarningEnabled)
-          log.warning(
-            s"Failed to replicate the event (${replicate.event.getClass.getName}) since an uncommitted event exists for the entity (entityId: ${replicateForEntity._entityId.raw}). Replicating new events is allowed after the event is committed",
-          )
-        replicate.replyTo ! ReplicationFailed
-
-      case _ =>
-        cancelHeartbeatTimeoutTimer()
-        applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
-          applyDomainEvent(
-            StartedReplication(
-              ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
-              currentData.replicatedLog.lastLogIndex,
-            ),
-          ) { _ =>
-            publishAppendEntries()
-          }
+    def startReplication(): Unit = {
+      cancelHeartbeatTimeoutTimer()
+      applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
+        applyDomainEvent(
+          StartedReplication(
+            ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
+            currentData.replicatedLog.lastLogIndex,
+          ),
+        ) { _ =>
+          publishAppendEntries()
         }
+      }
+    }
+    replicate match {
+      case replicate: Replicate.ReplicateForEntity =>
+        if (currentData.hasUncommittedLogEntryOf(replicate._entityId)) {
+          if (log.isWarningEnabled)
+            log.warning(
+              s"Failed to replicate the event (${replicate.event.getClass.getName}) since an uncommitted event exists for the entity (entityId: ${replicate._entityId.raw}). Replicating new events is allowed after the event is committed",
+            )
+          replicate.replyTo ! ReplicationFailed
+        } else {
+          startReplication()
+        }
+      case _: Replicate.ReplicateForInternal =>
+        startReplication()
     }
 
   }
