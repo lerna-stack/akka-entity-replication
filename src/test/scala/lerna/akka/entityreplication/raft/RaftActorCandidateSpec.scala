@@ -808,7 +808,7 @@ class RaftActorCandidateSpec
 
       LoggingTestKit
         .warn(
-          "[Candidate] cannot replicate the event: type=[java.lang.String], entityId=[Some(entity-1)], instanceId=[Some(1)]",
+          "[Candidate] cannot replicate the event: type=[java.lang.String], entityId=[Some(entity-1)], instanceId=[Some(1)], entityLastAppliedIndex=[Some(2)]",
         ).expect {
           candidate ! Replicate(
             event = "event-1",
