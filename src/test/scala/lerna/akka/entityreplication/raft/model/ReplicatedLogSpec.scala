@@ -468,6 +468,87 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
   }
 
+  "ReplicatedLog.sliceEntityEntries" should {
+
+    "return empty if the given `from` is greater than `lastLogIndex`" in {
+      val log = {
+        val entries = Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+        )
+        ReplicatedLog().reset(Term(1), LogEntryIndex(3)).truncateAndAppend(entries)
+      }
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(6)) should be(empty)
+    }
+
+    "search and return the entity's entries from all existing (not deleted) entries " +
+    "if the given `from` is less than ancestorLastLogIndex" in {
+      val log = {
+        val entries = Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(2)),
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(5)),
+        )
+        ReplicatedLog().reset(Term(2), LogEntryIndex(4)).truncateAndAppend(entries)
+      }
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(3)) should be(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+        ),
+      )
+    }
+
+    "search and return the entity's entries from all existing (not deleted) entries " +
+    "if the given `from` is equal to ancestorLastLogIndex" in {
+      val log = {
+        val entries = Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(2)),
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(5)),
+        )
+        ReplicatedLog().reset(Term(2), LogEntryIndex(4)).truncateAndAppend(entries)
+      }
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(4)) should be(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+        ),
+      )
+    }
+
+    "return the entity's entries" in {
+
+      val log = {
+        val entries = Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(2)),
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(5)),
+          LogEntry(LogEntryIndex(8), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-c"), Term(5)),
+          LogEntry(LogEntryIndex(9), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-d"), Term(5)),
+        )
+        ReplicatedLog().reset(Term(2), LogEntryIndex(4)).truncateAndAppend(entries)
+      }
+
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(5)) should be(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+          LogEntry(LogEntryIndex(9), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-d"), Term(5)),
+        ),
+      )
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(6)) should be(
+        Seq(
+          LogEntry(LogEntryIndex(9), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-d"), Term(5)),
+        ),
+      )
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(9)) should be(
+        Seq(
+          LogEntry(LogEntryIndex(9), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-d"), Term(5)),
+        ),
+      )
+
+    }
+
+  }
+
   "ReplicatedLog.findConflict" should {
     import ReplicatedLog.FindConflictResult
 

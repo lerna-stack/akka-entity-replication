@@ -209,11 +209,24 @@ private[raft] trait Leader { this: RaftActor =>
     }
     replicate match {
       case replicate: Replicate.ReplicateForEntity =>
-        if (currentData.hasUncommittedLogEntryOf(replicate._entityId)) {
-          if (log.isWarningEnabled)
+        val nonAppliedEntityEntries =
+          currentData.replicatedLog.sliceEntityEntries(
+            replicate._entityId,
+            from = replicate._entityLastAppliedIndex.next(),
+          )
+        if (nonAppliedEntityEntries.nonEmpty) {
+          if (log.isWarningEnabled) {
+            val eventClassName   = replicate.event.getClass.getName
+            val entityId         = replicate._entityId
+            val entityInstanceId = replicate._instanceId
+            val lastAppliedIndex = replicate._entityLastAppliedIndex
             log.warning(
-              s"Failed to replicate the event (${replicate.event.getClass.getName}) since an uncommitted event exists for the entity (entityId: ${replicate._entityId.raw}). Replicating new events is allowed after the event is committed",
+              s"[Leader] failed to replicate the event (type=[${eventClassName}]) " +
+              s"since the entity (entityId=[${entityId.raw}], instanceId=[${entityInstanceId.underlying}], lastAppliedIndex=[${lastAppliedIndex.underlying}]) " +
+              s"must apply [${nonAppliedEntityEntries.size}] entries to itself. " +
+              s"The leader will replicate a new event after the entity applies these [${nonAppliedEntityEntries.size}] non-applied entries to itself.",
             )
+          }
           replicate.replyTo ! ReplicationFailed
         } else {
           startReplication()
