@@ -179,6 +179,7 @@ trait ReplicationActor[StateData] extends Actor with Stash with akka.lerna.Stash
       replyTo = self,
       entityId,
       instanceId,
+      lastAppliedLogEntryIndex,
       originSender = sender(),
     )
   }

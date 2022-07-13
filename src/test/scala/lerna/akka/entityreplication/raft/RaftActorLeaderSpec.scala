@@ -1033,7 +1033,7 @@ class RaftActorLeaderSpec
       } should contain theSameElementsAs (Set(follower1Index, follower2Index))
 
       val event1 = "a"
-      leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
+      leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, LogEntryIndex(1), system.deadLetters)
 
       region.fishForMessageN(messages = 2) {
 
@@ -1307,7 +1307,7 @@ class RaftActorLeaderSpec
       } should contain theSameElementsAs (Set(follower1Index, follower2Index))
 
       val event1 = "a"
-      leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
+      leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, LogEntryIndex(1), system.deadLetters)
 
       region.fishForMessageN(messages = 2) {
 
@@ -1345,7 +1345,7 @@ class RaftActorLeaderSpec
       }
 
       val event2 = "b"
-      leader ! Replicate(event2, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
+      leader ! Replicate(event2, replicationActor.ref, entityId, entityInstanceId, LogEntryIndex(2), system.deadLetters)
 
       region.fishForMessageN(messages = 2) {
 
@@ -1386,6 +1386,7 @@ class RaftActorLeaderSpec
         replyTo = replicationActor1.ref,
         entityId1,
         entityInstanceId,
+        LogEntryIndex(3),
         originSender = system.deadLetters,
       )
       replicationActor1.expectNoMessage()
@@ -1395,6 +1396,7 @@ class RaftActorLeaderSpec
         replicationActor2.ref,
         entityId2,
         entityInstanceId,
+        LogEntryIndex(4),
         originSender = system.deadLetters,
       )
       replicationActor2.expectNoMessage()
@@ -1408,6 +1410,7 @@ class RaftActorLeaderSpec
             replicationActor1.ref,
             entityId1,
             entityInstanceId,
+            LogEntryIndex(2),
             originSender = system.deadLetters,
           )
           replicationActor1.expectMsg(ReplicationFailed)

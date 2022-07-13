@@ -121,6 +121,7 @@ private[entityreplication] class Ready[Command, Event, State](
       replyTo = context.self.toClassic,
       entityId = setup.replicationId.entityId,
       instanceId = setup.instanceId,
+      entityLastAppliedIndex = state.lastAppliedLogEntryIndex,
       originSender = context.system.deadLetters.toClassic, // typed API can not use sender
     )
     WaitForReplication.behavior(

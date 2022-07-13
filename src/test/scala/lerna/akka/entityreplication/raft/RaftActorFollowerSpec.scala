@@ -889,6 +889,7 @@ class RaftActorFollowerSpec
             replicationActor.ref,
             entityId,
             entityInstanceId,
+            entityLastAppliedIndex = LogEntryIndex(2),
             originSender = system.deadLetters,
           )
           replicationActor.expectMsg(ReplicationFailed)

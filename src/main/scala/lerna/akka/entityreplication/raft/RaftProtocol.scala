@@ -36,6 +36,7 @@ private[entityreplication] object RaftProtocol {
     def replyTo: ActorRef
     def entityId: Option[NormalizedEntityId]
     def instanceId: Option[EntityInstanceId]
+    def entityLastAppliedIndex: Option[LogEntryIndex]
     def originSender: Option[ActorRef]
   }
   object Replicate {
@@ -45,9 +46,10 @@ private[entityreplication] object RaftProtocol {
         event: Any,
         replyTo: ActorRef,
     ) extends Replicate {
-      override def entityId: Option[NormalizedEntityId] = None
-      override def instanceId: Option[EntityInstanceId] = None
-      override def originSender: Option[ActorRef]       = None
+      override def entityId: Option[NormalizedEntityId]          = None
+      override def instanceId: Option[EntityInstanceId]          = None
+      override def entityLastAppliedIndex: Option[LogEntryIndex] = None
+      override def originSender: Option[ActorRef]                = None
     }
 
     /** used for an entity (An entity sends this message to its RaftActor) */
@@ -56,11 +58,13 @@ private[entityreplication] object RaftProtocol {
         replyTo: ActorRef,
         _entityId: NormalizedEntityId,
         _instanceId: EntityInstanceId,
+        _entityLastAppliedIndex: LogEntryIndex,
         _originSender: ActorRef,
     ) extends Replicate {
-      override def entityId: Option[NormalizedEntityId] = Option(_entityId)
-      override def instanceId: Option[EntityInstanceId] = Option(_instanceId)
-      override def originSender: Option[ActorRef]       = Option(_originSender)
+      override def entityId: Option[NormalizedEntityId]          = Option(_entityId)
+      override def instanceId: Option[EntityInstanceId]          = Option(_instanceId)
+      override def entityLastAppliedIndex: Option[LogEntryIndex] = Option(_entityLastAppliedIndex)
+      override def originSender: Option[ActorRef]                = Option(_originSender)
     }
 
     /** Creates a [[Replicate]] message for an entity */
@@ -69,9 +73,10 @@ private[entityreplication] object RaftProtocol {
         replyTo: ActorRef,
         entityId: NormalizedEntityId,
         instanceId: EntityInstanceId,
+        entityLastAppliedIndex: LogEntryIndex,
         originSender: ActorRef,
     ): Replicate = {
-      ReplicateForEntity(event, replyTo, entityId, instanceId, originSender)
+      ReplicateForEntity(event, replyTo, entityId, instanceId, entityLastAppliedIndex, originSender)
     }
 
     /** Creates a [[Replicate]] message for internal use */
