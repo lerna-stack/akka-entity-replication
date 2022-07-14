@@ -148,7 +148,10 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
       log.info("Loaded snapshot [{}] with metadata [{}]", snapshot, metadata)
       state = snapshot
     case RecoveryCompleted =>
-    case _                 => updateState()
+      if (log.isInfoEnabled) {
+        log.info("Recovery completed with state: [{}]", state)
+      }
+    case _ => updateState()
   }
 
   override def receiveCommand: Receive = {
@@ -200,6 +203,14 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
   private def receiveAppendCommittedEntries(command: AppendCommittedEntries): Unit = {
     val AppendCommittedEntries(_, entries) = command
     if (entries.isEmpty) {
+      if (log.isDebugEnabled) {
+        log.debug(
+          "Received AppendCommittedEntries with empty entries. " +
+          "Sending AppendCommittedEntries with the current index [{}] to [{}].",
+          state.currentIndex.underlying,
+          sender(),
+        )
+      }
       sender() ! AppendCommittedEntriesResponse(state.currentIndex)
     } else {
       val hasNoNextEntry      = state.nextIndex < entries.head.index
@@ -271,6 +282,9 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
               numOfPersistedEvents += 1
               updateState()
               if (shouldSaveSnapshot()) {
+                if (log.isInfoEnabled) {
+                  log.info("Saving snapshot [{}].", state)
+                }
                 saveSnapshot(state)
               }
             }
