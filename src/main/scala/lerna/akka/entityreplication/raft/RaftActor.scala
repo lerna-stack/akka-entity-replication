@@ -276,10 +276,7 @@ private[raft] class RaftActor(
               case (logEntry, Some(client)) =>
                 if (log.isDebugEnabled)
                   log.debug("=== [Leader] committed {} and will notify it to {} ===", logEntry, client)
-                client.ref.tell(
-                  ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId),
-                  client.originSender.getOrElse(ActorRef.noSender),
-                )
+                client.forward(ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId))
               case (logEntry, None) =>
                 // 復旧中の commit or リーダー昇格時に未コミットのログがあった場合の commit
                 applyToReplicationActor(logEntry)
