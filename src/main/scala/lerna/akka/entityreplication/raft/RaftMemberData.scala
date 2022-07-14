@@ -289,6 +289,56 @@ private[entityreplication] trait LeaderData { self: RaftMemberData =>
       .updateLeaderVolatileState(clients = clients -- applicableLogEntries.map(_.index)) // 通知したクライアントは削除してメモリを節約
   }
 
+  /** Discards conflict clients and calls the given `onDiscard` handler with each conflict client
+    *
+    * A client is considered a conflict if an index associated with the client is conflict one.
+    * [[ReplicatedLog.findConflict]] describes what a conflict index means.
+    * Since this method doesn't find a conflict index, the caller of this method has to find a conflict index using
+    * [[RaftMemberData.resolveNewLogEntries]] or [[ReplicatedLog.findConflict]].
+    *
+    * If `possiblyConflictIndex` is None, this method considers no conflict.
+    *
+    * While `possiblyConflictIndex` should always be less than or equal to [[ReplicatedLog.lastLogIndex]] + 1, this method
+    * considers no conflict if `possiblyConflictIndex` is greater than [[ReplicatedLog.lastLogIndex]].
+    *
+    * @see
+    *  - [[RaftMemberData.resolveNewLogEntries]]
+    *  - [[ReplicatedLog.findConflict]]
+    */
+  def discardConflictClients(
+      possiblyConflictIndex: Option[LogEntryIndex],
+      onDiscard: ClientContext => Unit,
+  ): RaftMemberData = {
+    val conflictIndices = possiblyConflictIndex match {
+      case None => Seq.empty
+      case Some(possiblyConflictIndex) =>
+        if (possiblyConflictIndex >= replicatedLog.lastLogIndex.plus(1)) {
+          // No conflict log entries
+          Seq.empty
+        } else {
+          replicatedLog
+            .sliceEntries(
+              from = possiblyConflictIndex,
+              to = replicatedLog.lastLogIndex,
+            )
+            .map(_.index)
+        }
+    }
+    val conflictClientIndices = conflictIndices.filter(clients.contains)
+    if (conflictClientIndices.isEmpty) {
+      // No conflict clients
+      this
+    } else {
+      if (log.isInfoEnabled) {
+        log.info("Found [{}] conflict clients, discarding these clients", conflictClientIndices.size)
+      }
+      conflictClientIndices.foreach { conflictIndex =>
+        onDiscard(clients(conflictIndex))
+      }
+      updateLeaderVolatileState(clients = clients.removedAll(conflictClientIndices))
+    }
+  }
+
   protected def updateLeaderVolatileState(
       nextIndex: Option[NextIndex] = nextIndex,
       matchIndex: MatchIndex = matchIndex,
