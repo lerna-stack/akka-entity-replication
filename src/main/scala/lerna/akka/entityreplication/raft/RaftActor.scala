@@ -767,16 +767,16 @@ private[raft] class RaftActor(
       case None =>
         val newEventSourcingIndex = appendCommittedEntriesResponse.currentIndex
         applyDomainEvent(DetectedNewEventSourcingIndex(newEventSourcingIndex)) { _ =>
-          if (log.isInfoEnabled) {
-            log.info("[{}] detected new event sourcing index [{}].", currentState, newEventSourcingIndex)
+          if (log.isDebugEnabled) {
+            log.debug("[{}] detected new event sourcing index [{}].", currentState, newEventSourcingIndex)
           }
         }
       case Some(currentEventSourcingIndex) =>
         if (currentEventSourcingIndex < appendCommittedEntriesResponse.currentIndex) {
           val newEventSourcingIndex = appendCommittedEntriesResponse.currentIndex
           applyDomainEvent(DetectedNewEventSourcingIndex(newEventSourcingIndex)) { _ =>
-            if (log.isInfoEnabled) {
-              log.info(
+            if (log.isDebugEnabled) {
+              log.debug(
                 "[{}] detected new event sourcing index [{}]. The old index was [{}].",
                 currentState,
                 newEventSourcingIndex,

@@ -299,8 +299,8 @@ private[raft] trait Leader { this: RaftActor =>
     val newCommittedEntriesOrError = currentData.resolveCommittedEntriesForEventSourcing
     newCommittedEntriesOrError match {
       case Left(UnknownCurrentEventSourcingIndex) =>
-        if (log.isInfoEnabled) {
-          log.info(
+        if (log.isDebugEnabled) {
+          log.debug(
             "[Leader] doesn't know eventSourcingIndex yet. " +
             "sending AppendCommittedEntries(shardId=[{}], entries=empty) to CommitLogStore [{}] to fetch such an index.",
             shardId,
@@ -343,8 +343,8 @@ private[raft] trait Leader { this: RaftActor =>
                 settings.eventSourcedMaxAppendCommittedEntriesSize,
                 settings.eventSourcedMaxAppendCommittedEntriesSize,
               ).toSeq
-          if (log.isInfoEnabled) {
-            log.info(
+          if (log.isDebugEnabled) {
+            log.debug(
               s"[Leader] sending [{}] batched AppendCommittedEntries(shardId=[$shardId]). [{}] entries with indices [{}..{}] will be sent in multiple batches.",
               batches.size,
               limitedNewCommittedEntries.size,
