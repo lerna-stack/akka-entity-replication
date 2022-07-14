@@ -77,10 +77,20 @@ trait ActorSpec extends WordSpecLike with Matchers with BeforeAndAfterEach with 
   override def beforeEach(): Unit = {
     super.beforeEach()
     (autoKillManager ? Identify("to wait for start-up")).await
+
+    // Ignoring all messages sent in the previous unit test case
+    ignoreAllMessagesSentBefore()
   }
 
   override def afterEach(): Unit = {
     (autoKillManager ? TestActorAutoKillManager.KillAll).await
     super.afterEach()
   }
+
+  private def ignoreAllMessagesSentBefore(): Unit = {
+    case object SentinelMessage
+    testActor.tell(SentinelMessage, ActorRef.noSender)
+    fishForMessage(hint = "ignoring all messages sent before")(_ == SentinelMessage)
+  }
+
 }
