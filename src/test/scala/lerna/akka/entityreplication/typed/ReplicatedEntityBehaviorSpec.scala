@@ -215,12 +215,19 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       val replyProbe = bankAccount.askWithTestProbe(BankAccountBehavior.Deposit(100, _))
       val replicate =
         inside(shardProbe.expectMessageType[RaftProtocol.Replicate]) {
-          case cmd @ RaftProtocol.Replicate(event, replyTo, entityId, instanceId, originSender) =>
+          case cmd @ RaftProtocol.Replicate.ReplicateForEntity(
+                event,
+                replyTo,
+                entityId,
+                _,
+                entityLastAppliedIndex,
+                originSender,
+              ) =>
             event shouldBe a[BankAccountBehavior.Deposited]
             replyTo should be(bankAccount.toClassic)
-            entityId should contain(normalizedEntityId)
-            instanceId should not be empty
-            originSender should contain(testkit.system.deadLetters.toClassic)
+            entityId should be(normalizedEntityId)
+            entityLastAppliedIndex should be(LogEntryIndex(0))
+            originSender should be(testkit.system.deadLetters.toClassic)
             cmd
         }
       replicate.replyTo ! RaftProtocol.ReplicationSucceeded(replicate.event, nextLogEntryIndex(), replicate.instanceId)
@@ -255,12 +262,19 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       val replyProbe = bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
       val replicate =
         inside(shardProbe.expectMessageType[RaftProtocol.Replicate]) {
-          case cmd @ RaftProtocol.Replicate(event, replyTo, entityId, instanceId, originSender) =>
+          case cmd @ RaftProtocol.Replicate.ReplicateForEntity(
+                event,
+                replyTo,
+                entityId,
+                _,
+                entityLastAppliedIndex,
+                originSender,
+              ) =>
             event should be(NoOp)
             replyTo should be(bankAccount.toClassic)
-            entityId should contain(normalizedEntityId)
-            instanceId should not be empty
-            originSender should contain(testkit.system.deadLetters.toClassic)
+            entityId should be(normalizedEntityId)
+            entityLastAppliedIndex should be(metadata.logEntryIndex)
+            originSender should be(testkit.system.deadLetters.toClassic)
             cmd
         }
       replicate.replyTo ! RaftProtocol.ReplicationSucceeded(replicate.event, nextLogEntryIndex(), replicate.instanceId)

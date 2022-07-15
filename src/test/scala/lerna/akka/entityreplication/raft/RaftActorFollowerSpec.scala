@@ -882,13 +882,14 @@ class RaftActorFollowerSpec
 
       LoggingTestKit
         .warn(
-          "[Follower] cannot replicate the event: type=[java.lang.String], entityId=[Some(entity-1)], instanceId=[Some(1)]",
+          "[Follower] cannot replicate the event: type=[java.lang.String], entityId=[Some(entity-1)], instanceId=[Some(1)], entityLastAppliedIndex=[Some(2)]",
         ).expect {
           follower ! Replicate(
             event = "event-1",
             replicationActor.ref,
             entityId,
             entityInstanceId,
+            entityLastAppliedIndex = LogEntryIndex(2),
             originSender = system.deadLetters,
           )
           replicationActor.expectMsg(ReplicationFailed)

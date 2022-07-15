@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An entity on a follower could stick at `WaitForReplication` if the entity has a `ProcessCommand` in its mailbox
   [#157](https://github.com/lerna-stack/akka-entity-replication/issues/157),
   [PR#158](https://github.com/lerna-stack/akka-entity-replication/pull/158)
+- Leader cannot reply to an entity with a `ReplicationFailed` message in some cases
+  [#153](https://github.com/lerna-stack/akka-entity-replication/issues/153),
+  [PR#161](https://github.com/lerna-stack/akka-entity-replication/pull/161)
 - An entity could stick at WaitForReplication when a Raft log entry is truncated by conflict
   [#155](https://github.com/lerna-stack/akka-entity-replication/issues/155),
   [#PR162](https://github.com/lerna-stack/akka-entity-replication/pull/162)

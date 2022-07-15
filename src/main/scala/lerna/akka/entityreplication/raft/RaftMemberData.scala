@@ -488,12 +488,6 @@ private[entityreplication] trait RaftMemberData
     replicatedLog.sliceEntries(from, to).filter(_.event.entityId.contains(entityId))
   }
 
-  def hasUncommittedLogEntryOf(entityId: NormalizedEntityId): Boolean = {
-    replicatedLog
-      .entriesAfter(index = commitIndex) // uncommitted entries
-      .exists(_.event.entityId.contains(entityId))
-  }
-
   def alreadyVotedOthers(candidate: MemberIndex): Boolean = votedFor.exists(candidate != _)
 
   def hasMatchLogEntry(prevLogIndex: LogEntryIndex, prevLogTerm: Term): Boolean = {

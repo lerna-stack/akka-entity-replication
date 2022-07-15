@@ -1,0 +1,2 @@
+# It's safe to exclude the following since RaftProtocol is package-private.
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.raft.RaftProtocol#Replicate.unapply")
