@@ -194,27 +194,45 @@ private[raft] trait Leader { this: RaftActor =>
     }
 
   private[this] def replicate(replicate: Replicate): Unit = {
-    replicate.entityId match {
-      case Some(normalizedEntityId) // from entity(ReplicationActor)
-          if currentData.hasUncommittedLogEntryOf(normalizedEntityId) =>
-        if (log.isWarningEnabled)
-          log.warning(
-            s"Failed to replicate the event (${replicate.event.getClass.getName}) since an uncommitted event exists for the entity (entityId: ${normalizedEntityId.raw}). Replicating new events is allowed after the event is committed",
-          )
-        replicate.replyTo ! ReplicationFailed
-
-      case _ =>
-        cancelHeartbeatTimeoutTimer()
-        applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
-          applyDomainEvent(
-            StartedReplication(
-              ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
-              currentData.replicatedLog.lastLogIndex,
-            ),
-          ) { _ =>
-            publishAppendEntries()
-          }
+    def startReplication(): Unit = {
+      cancelHeartbeatTimeoutTimer()
+      applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
+        applyDomainEvent(
+          StartedReplication(
+            ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
+            currentData.replicatedLog.lastLogIndex,
+          ),
+        ) { _ =>
+          publishAppendEntries()
         }
+      }
+    }
+    replicate match {
+      case replicate: Replicate.ReplicateForEntity =>
+        val nonAppliedEntityEntries =
+          currentData.replicatedLog.sliceEntityEntries(
+            replicate._entityId,
+            from = replicate._entityLastAppliedIndex.next(),
+          )
+        if (nonAppliedEntityEntries.nonEmpty) {
+          if (log.isWarningEnabled) {
+            val eventClassName   = replicate.event.getClass.getName
+            val entityId         = replicate._entityId
+            val entityInstanceId = replicate._instanceId
+            val lastAppliedIndex = replicate._entityLastAppliedIndex
+            log.warning(
+              s"[Leader] failed to replicate the event (type=[${eventClassName}]) " +
+              s"since the entity (entityId=[${entityId.raw}], instanceId=[${entityInstanceId.underlying}], lastAppliedIndex=[${lastAppliedIndex.underlying}]) " +
+              s"must apply [${nonAppliedEntityEntries.size}] entries to itself. " +
+              s"The leader will replicate a new event after the entity applies these [${nonAppliedEntityEntries.size}] non-applied entries to itself.",
+            )
+          }
+          replicate.replyTo ! ReplicationFailed
+        } else {
+          startReplication()
+        }
+      case _: Replicate.ReplicateForInternal =>
+        startReplication()
     }
 
   }

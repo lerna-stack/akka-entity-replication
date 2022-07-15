@@ -1,0 +1,4 @@
+# It's safe to exclude the following since RaftProtocol is package-private.
+ProblemFilters.exclude[IncompatibleTemplateDefProblem]("lerna.akka.entityreplication.raft.RaftProtocol$Replicate")
+ProblemFilters.exclude[MissingTypesProblem]("lerna.akka.entityreplication.raft.RaftProtocol$Replicate$")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.raft.RaftProtocol#Replicate.apply")

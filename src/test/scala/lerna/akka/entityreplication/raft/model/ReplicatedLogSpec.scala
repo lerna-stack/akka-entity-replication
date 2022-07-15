@@ -426,44 +426,83 @@ class ReplicatedLogSpec extends WordSpecLike with Matchers {
 
   }
 
-  "ReplicatedLog.entriesAfter" should {
+  "ReplicatedLog.sliceEntityEntries" should {
 
-    "returns entries with deleted up to the specified LogEntryIndex" in {
-      val logEntries = Seq(
-        LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),
-        LogEntry(LogEntryIndex(2), EntityEvent(None, "b"), Term(1)),
-        LogEntry(LogEntryIndex(3), EntityEvent(None, "c"), Term(1)),
-      )
-
-      val log = new ReplicatedLog(logEntries)
-
-      log.entriesAfter(index = LogEntryIndex.initial()).map(_.event.event).toList shouldBe List("a", "b", "c")
-      log.entriesAfter(index = LogEntryIndex(1)).map(_.event.event).toList shouldBe List("b", "c")
-      log.entriesAfter(index = LogEntryIndex(2)).map(_.event.event).toList shouldBe List("c")
-      log.entriesAfter(index = LogEntryIndex(3)).map(_.event.event).toList shouldBe List()
-      log.entriesAfter(index = LogEntryIndex(4)).map(_.event.event).toList shouldBe List()
+    "return empty if the given `from` is greater than `lastLogIndex`" in {
+      val log = {
+        val entries = Seq(
+          LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+        )
+        ReplicatedLog().reset(Term(1), LogEntryIndex(3)).truncateAndAppend(entries)
+      }
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(6)) should be(empty)
     }
 
-    "returns entries with deleted up to the specified LogEntryIndex when the log is compressed" in {
-      val logEntries = Seq(
-        LogEntry(LogEntryIndex(1), EntityEvent(None, "a"), Term(1)),
-        LogEntry(LogEntryIndex(2), EntityEvent(None, "b"), Term(1)),
-        LogEntry(LogEntryIndex(3), EntityEvent(None, "c"), Term(1)),
-        LogEntry(LogEntryIndex(4), EntityEvent(None, "d"), Term(1)),
-        LogEntry(LogEntryIndex(5), EntityEvent(None, "e"), Term(1)),
+    "search and return the entity's entries from all existing (not deleted) entries " +
+    "if the given `from` is less than ancestorLastLogIndex" in {
+      val log = {
+        val entries = Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(2)),
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(5)),
+        )
+        ReplicatedLog().reset(Term(2), LogEntryIndex(4)).truncateAndAppend(entries)
+      }
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(3)) should be(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+        ),
+      )
+    }
+
+    "search and return the entity's entries from all existing (not deleted) entries " +
+    "if the given `from` is equal to ancestorLastLogIndex" in {
+      val log = {
+        val entries = Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(2)),
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(5)),
+        )
+        ReplicatedLog().reset(Term(2), LogEntryIndex(4)).truncateAndAppend(entries)
+      }
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(4)) should be(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+        ),
+      )
+    }
+
+    "return the entity's entries" in {
+
+      val log = {
+        val entries = Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(2)),
+          LogEntry(LogEntryIndex(7), EntityEvent(None, NoOp), Term(5)),
+          LogEntry(LogEntryIndex(8), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-c"), Term(5)),
+          LogEntry(LogEntryIndex(9), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-d"), Term(5)),
+        )
+        ReplicatedLog().reset(Term(2), LogEntryIndex(4)).truncateAndAppend(entries)
+      }
+
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(5)) should be(
+        Seq(
+          LogEntry(LogEntryIndex(5), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(2)),
+          LogEntry(LogEntryIndex(9), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-d"), Term(5)),
+        ),
+      )
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(6)) should be(
+        Seq(
+          LogEntry(LogEntryIndex(9), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-d"), Term(5)),
+        ),
+      )
+      log.sliceEntityEntries(NormalizedEntityId("entity-1"), LogEntryIndex(9)) should be(
+        Seq(
+          LogEntry(LogEntryIndex(9), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-d"), Term(5)),
+        ),
       )
 
-      val log = new ReplicatedLog(logEntries).deleteOldEntries(to = LogEntryIndex(2), preserveLogSize = 3)
-      require(log.entries.map(_.index.underlying) == List(3, 4, 5))
-      require(log.entries.map(_.event.event) == List("c", "d", "e"))
-
-      log.entriesAfter(index = LogEntryIndex.initial()).map(_.event.event).toList shouldBe List("c", "d", "e")
-      log.entriesAfter(index = LogEntryIndex(1)).map(_.event.event).toList shouldBe List("c", "d", "e")
-      log.entriesAfter(index = LogEntryIndex(2)).map(_.event.event).toList shouldBe List("c", "d", "e")
-      log.entriesAfter(index = LogEntryIndex(3)).map(_.event.event).toList shouldBe List("d", "e")
-      log.entriesAfter(index = LogEntryIndex(4)).map(_.event.event).toList shouldBe List("e")
-      log.entriesAfter(index = LogEntryIndex(5)).map(_.event.event).toList shouldBe List()
-      log.entriesAfter(index = LogEntryIndex(6)).map(_.event.event).toList shouldBe List()
     }
 
   }

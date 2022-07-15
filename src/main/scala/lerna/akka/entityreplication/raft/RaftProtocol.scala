@@ -19,29 +19,72 @@ private[entityreplication] object RaftProtocol {
   final case class Snapshot(metadata: EntitySnapshotMetadata, state: EntityState) extends RaftActorCommand
   final case class EntityTerminated(entityId: NormalizedEntityId)                 extends RaftActorCommand
 
+  /** [[RaftActor]] (especially [[Leader]]) will replicate the given `event` when it receives this message.
+    *
+    * This message is used for two purposes:
+    *  - Used for internal (by RaftActor itself):
+    *    - [[Replicate.ReplicateForInternal]] is for this use case.
+    *    - RaftActor sends this message to itself when it becomes the leader.
+    *  - Used for an entity:
+    *    - [[Replicate.ReplicateForEntity]] is for this use case.
+    *    - An entity sends this message to its RaftActor.
+    *
+    * RaftActor will reply with [[ReplicationResponse]] to this message.
+    */
+  sealed trait Replicate extends RaftActorCommand {
+    def event: Any
+    def replyTo: ActorRef
+    def entityId: Option[NormalizedEntityId]
+    def instanceId: Option[EntityInstanceId]
+    def entityLastAppliedIndex: Option[LogEntryIndex]
+    def originSender: Option[ActorRef]
+  }
   object Replicate {
+
+    /** used for internal use (RaftActor sends this message to itself) */
+    final case class ReplicateForInternal(
+        event: Any,
+        replyTo: ActorRef,
+    ) extends Replicate {
+      override def entityId: Option[NormalizedEntityId]          = None
+      override def instanceId: Option[EntityInstanceId]          = None
+      override def entityLastAppliedIndex: Option[LogEntryIndex] = None
+      override def originSender: Option[ActorRef]                = None
+    }
+
+    /** used for an entity (An entity sends this message to its RaftActor) */
+    final case class ReplicateForEntity(
+        event: Any,
+        replyTo: ActorRef,
+        _entityId: NormalizedEntityId,
+        _instanceId: EntityInstanceId,
+        _entityLastAppliedIndex: LogEntryIndex,
+        _originSender: ActorRef,
+    ) extends Replicate {
+      override def entityId: Option[NormalizedEntityId]          = Option(_entityId)
+      override def instanceId: Option[EntityInstanceId]          = Option(_instanceId)
+      override def entityLastAppliedIndex: Option[LogEntryIndex] = Option(_entityLastAppliedIndex)
+      override def originSender: Option[ActorRef]                = Option(_originSender)
+    }
+
+    /** Creates a [[Replicate]] message for an entity */
     def apply(
         event: Any,
         replyTo: ActorRef,
         entityId: NormalizedEntityId,
         instanceId: EntityInstanceId,
+        entityLastAppliedIndex: LogEntryIndex,
         originSender: ActorRef,
     ): Replicate = {
-      Replicate(event, replyTo, Option(entityId), Option(instanceId), Option(originSender))
+      ReplicateForEntity(event, replyTo, entityId, instanceId, entityLastAppliedIndex, originSender)
     }
 
+    /** Creates a [[Replicate]] message for internal use */
     def internal(event: Any, replyTo: ActorRef): Replicate = {
-      Replicate(event, replyTo, None, None, None)
+      ReplicateForInternal(event, replyTo)
     }
-  }
 
-  final case class Replicate(
-      event: Any,
-      replyTo: ActorRef,
-      entityId: Option[NormalizedEntityId],
-      instanceId: Option[EntityInstanceId],
-      originSender: Option[ActorRef],
-  ) extends RaftActorCommand
+  }
 
   sealed trait EntityCommand
 

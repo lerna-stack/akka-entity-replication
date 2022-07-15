@@ -1,5 +1,7 @@
 package lerna.akka.entityreplication.raft.model
 
+import lerna.akka.entityreplication.model.NormalizedEntityId
+
 private[entityreplication] object ReplicatedLog {
 
   def apply(): ReplicatedLog = ReplicatedLog(Seq.empty)
@@ -49,8 +51,15 @@ private[entityreplication] final case class ReplicatedLog private[model] (
     entries.slice(toSeqIndex(from), until = toSeqIndex(to.next()))
   }
 
-  def entriesAfter(index: LogEntryIndex): Iterator[LogEntry] =
-    entries.iterator.drop(n = toSeqIndex(index) + 1)
+  /** Returns the entity's entries with an index greater than or equal to `from` index
+    *
+    * If `from` index is greater than [[lastLogIndex]], this method returns empty. If `from` index is less than or equal
+    * to [[ancestorLastIndex]], this method searches and returns the entity's entries from all existing (not deleted) entries.
+    */
+  def sliceEntityEntries(entityId: NormalizedEntityId, from: LogEntryIndex): Seq[LogEntry] = {
+    sliceEntries(from = from, to = lastLogIndex)
+      .filter(_.event.entityId.contains(entityId))
+  }
 
   def nonEmpty: Boolean = entries.nonEmpty
 
