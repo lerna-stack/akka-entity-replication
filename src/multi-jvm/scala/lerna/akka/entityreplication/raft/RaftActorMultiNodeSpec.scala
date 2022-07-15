@@ -239,8 +239,9 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       val dummyEvent = "dummyEvent"
 
       runOn(node1) {
-        val instanceId = EntityInstanceId(1)
-        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
+        val instanceId             = EntityInstanceId(1)
+        val entityLastAppliedIndex = LogEntryIndex(0)
+        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, entityLastAppliedIndex, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
           case ReplicationSucceeded(event, _, responseInstanceId) =>
             event should be(dummyEvent)
@@ -290,8 +291,9 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       val expectedCommitIndex = LogEntryIndex(2)
 
       runOn(node1) {
-        val instanceId = EntityInstanceId(1)
-        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
+        val instanceId             = EntityInstanceId(1)
+        val entityLastAppliedIndex = LogEntryIndex(0)
+        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, entityLastAppliedIndex, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
           case ReplicationSucceeded(event, _, responseInstanceId) =>
             event should be(dummyEvent)
@@ -369,8 +371,9 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
 
       runOn(node1) {
         awaitCond(getState(leaderMember).stateData.commitIndex == LogEntryIndex(3)) // event = "correct3"
-        val instanceId = EntityInstanceId(1)
-        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
+        val instanceId             = EntityInstanceId(1)
+        val entityLastAppliedIndex = LogEntryIndex(3)
+        leaderMember ! Replicate(dummyEvent, testActor, entityId, instanceId, entityLastAppliedIndex, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
           case ReplicationSucceeded(event, _, responseInstanceId) =>
             event should be(dummyEvent)
@@ -455,7 +458,15 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       // to prevent events are replicated
       isolate(node1, excludes = Set(controller))
       runOn(node1) {
-        nodeMember ! Replicate("event1", testActor, entityId, EntityInstanceId(1), ActorRef.noSender)
+        val entityLastAppliedIndex = LogEntryIndex(0)
+        nodeMember ! Replicate(
+          "event1",
+          testActor,
+          entityId,
+          EntityInstanceId(1),
+          entityLastAppliedIndex,
+          ActorRef.noSender,
+        )
         awaitCond(getState(nodeMember).stateData.replicatedLog.entries.exists(_.event.event == "event1"))
       }
       enterBarrier("complete scenario (1)")
@@ -479,7 +490,8 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       // replicates event2 to only node3
       isolate(node3, excludes = Set(controller))
       runOn(node3) {
-        nodeMember ! Replicate("event2", testActor, entityId, instanceId, ActorRef.noSender)
+        val entityLastAppliedIndex = LogEntryIndex(0)
+        nodeMember ! Replicate("event2", testActor, entityId, instanceId, entityLastAppliedIndex, ActorRef.noSender)
         awaitCond(getState(nodeMember).stateData.replicatedLog.entries.exists(_.event.event == "event2"))
       }
       enterBarrier("complete scenario (2)")
@@ -542,8 +554,9 @@ class RaftActorMultiNodeSpec extends MultiNodeSpec(RaftActorSpecConfig) with STM
       val dummyEvent = "dummyEvent"
 
       runOn(node1) {
-        val instanceId = EntityInstanceId(1)
-        raftMember ! Replicate(dummyEvent, testActor, entityId, instanceId, ActorRef.noSender)
+        val instanceId             = EntityInstanceId(1)
+        val entityLastAppliedIndex = LogEntryIndex(0)
+        raftMember ! Replicate(dummyEvent, testActor, entityId, instanceId, entityLastAppliedIndex, ActorRef.noSender)
         inside(expectMsgType[ReplicationSucceeded]) {
           case ReplicationSucceeded(event, _, responseInstanceId) =>
             event should be(dummyEvent)
