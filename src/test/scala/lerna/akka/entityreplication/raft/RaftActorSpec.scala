@@ -6,14 +6,15 @@ import akka.actor.{ typed, ActorSystem }
 import akka.persistence.testkit.scaladsl.PersistenceTestKit
 import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
-import lerna.akka.entityreplication.model.NormalizedEntityId
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.RaftActor.{ AppendedEntries_V2_1_0, Follower }
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.raft.model._
-import lerna.akka.entityreplication.raft.protocol.RaftCommands.InstallSnapshot
+import lerna.akka.entityreplication.raft.protocol.RaftCommands.{ AppendEntriesSucceeded, InstallSnapshot }
 import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
+import org.scalatest.Inside
 
 import scala.annotation.nowarn
 
@@ -23,7 +24,8 @@ object RaftActorSpec {
 
 class RaftActorSpec
     extends TestKit(ActorSystem("RaftActorSpec", RaftActorSpecBase.configWithPersistenceTestKits))
-    with RaftActorSpecBase {
+    with RaftActorSpecBase
+    with Inside {
   import RaftActorSpec._
 
   private implicit val typedSystem: typed.ActorSystem[Nothing] = system.toTyped
@@ -615,6 +617,62 @@ class RaftActorSpec
       val recoveredLogEntries = getState(follower).stateData.replicatedLog.entries
       recoveredLogEntries should contain theSameElementsInOrderAs expectedEntriesAfterRecover
       recoveredLogEntries.map(_.event) should contain theSameElementsInOrderAs expectedEntriesAfterRecover.map(_.event)
+    }
+
+    "send ReplicationFailed messages to conflict clients and discard the clients " +
+    "if the received AppendEntries message contains conflict entries" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val clientProbe1 = TestProbe()
+      val clientProbe2 = TestProbe()
+      val client1      = ClientContext(clientProbe1.ref, Some(EntityInstanceId(1)), Some(TestProbe().ref))
+      val client2      = ClientContext(clientProbe2.ref, Some(EntityInstanceId(2)), None)
+      val followerData = {
+        val replicatedLog = ReplicatedLog().truncateAndAppend(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(1)),
+            LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(1)),
+            LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+          ),
+        )
+        RaftMemberData(currentTerm = Term(2), replicatedLog = replicatedLog, commitIndex = LogEntryIndex(1))
+          .registerClient(client1, LogEntryIndex(2))
+          .registerClient(client2, LogEntryIndex(3))
+      }
+      setState(follower, Follower, followerData)
+
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val appendEntries = createAppendEntries(
+        shardId,
+        Term(3),
+        leaderMemberIndex,
+        prevLogIndex = LogEntryIndex(1),
+        prevLogTerm = Term(1),
+        entries = Seq(
+          LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(3)),
+        ),
+      )
+      val regionProbe = TestProbe()
+      follower.tell(appendEntries, regionProbe.ref)
+      regionProbe.expectMsg(AppendEntriesSucceeded(Term(3), LogEntryIndex(2), followerMemberIndex))
+
+      // Verifies that the RaftActor discards conflict clients.
+      inside(getState(follower).stateData) { newFollowerData =>
+        assert(!newFollowerData.clients.contains(LogEntryIndex(2)))
+        assert(!newFollowerData.clients.contains(LogEntryIndex(3)))
+      }
+
+      // Verifies that each conflict client receives a ReplicationFailed message
+      clientProbe1.expectMsg(ReplicationFailed)
+      assert(clientProbe1.sender() == client1.originSender.get) // including the original sender
+      clientProbe2.expectMsg(ReplicationFailed)
+      assert(clientProbe2.sender() == system.deadLetters) // including no original sender
+
     }
 
   }
