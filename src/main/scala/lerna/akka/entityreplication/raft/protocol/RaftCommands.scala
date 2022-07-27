@@ -41,7 +41,22 @@ private[entityreplication] object RaftCommands {
       entries: Seq[LogEntry],
       leaderCommit: LogEntryIndex,
   ) extends RaftRequest
-      with ClusterReplicationSerializable
+      with ClusterReplicationSerializable {
+
+    /** Returns a committable index, which `RaftActor` can commit
+      *
+      * Except for empty `entries`, if `leaderCommit` is greater than the last index of the received `entries`, a receiver
+      * of this `AppendEntries` cannot commit `leaderCommit`. Other succeeding `AppendEntries` can conflict with an existing
+      * entry with an index less than or equal to `the leaderCommit` but greater than the last index of the received `entries`.
+      * Instead, the receiver can commit the last index of the received `entries`.
+      */
+    def committableIndex: LogEntryIndex = {
+      entries.lastOption.fold(leaderCommit) { lastEntry =>
+        LogEntryIndex.min(lastEntry.index, leaderCommit)
+      }
+    }
+
+  }
 
   sealed trait AppendEntriesResponse extends RaftResponse
 
