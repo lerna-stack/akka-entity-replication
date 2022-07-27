@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.raft
 
-import lerna.akka.entityreplication.model.NormalizedEntityId
+import akka.actor.ActorRef
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.model._
 import org.scalatest.{ FlatSpec, Inside, Matchers }
 
@@ -771,6 +772,97 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
     exception.getMessage should be(
       "requirement failed: The entry with index [6] should not conflict with the committed entry (commitIndex [6])",
     )
+  }
+
+  behavior of "RaftMemberData.discardConflictClients"
+
+  it should "discard no existing clients and call no onDiscard handler if the given index is None" in {
+    val data = RaftMemberData()
+      .truncateAndAppendEntries(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(1)),
+        ),
+      )
+      .registerClient(ClientContext(ActorRef.noSender, Some(EntityInstanceId(1)), None), LogEntryIndex(2))
+      .registerClient(ClientContext(ActorRef.noSender, Some(EntityInstanceId(2)), None), LogEntryIndex(3))
+
+    var discardedClients = Set.empty[ClientContext]
+    val newData          = data.discardConflictClients(None, conflictClient => discardedClients += conflictClient)
+
+    newData.clients should be(data.clients)
+    discardedClients should be(empty)
+  }
+
+  it should "discard no existing clients and call no onDiscard handler if the given index is greater than the last log index plus one" in {
+    val data = RaftMemberData()
+      .truncateAndAppendEntries(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(1)),
+        ),
+      )
+      .registerClient(ClientContext(ActorRef.noSender, Some(EntityInstanceId(1)), None), LogEntryIndex(2))
+      .registerClient(ClientContext(ActorRef.noSender, Some(EntityInstanceId(2)), None), LogEntryIndex(3))
+
+    var discardedClients = Set.empty[ClientContext]
+    val newData = data.discardConflictClients(
+      Some(LogEntryIndex(5)),
+      conflictClient => discardedClients += conflictClient,
+    )
+
+    newData.clients should be(data.clients)
+    discardedClients should be(empty)
+  }
+
+  it should "discard no existing clients and call no onDiscard handler if the given index is equal to the last log index plus one" in {
+    val data = RaftMemberData()
+      .truncateAndAppendEntries(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(1)),
+        ),
+      )
+      .registerClient(ClientContext(ActorRef.noSender, Some(EntityInstanceId(1)), None), LogEntryIndex(2))
+      .registerClient(ClientContext(ActorRef.noSender, Some(EntityInstanceId(2)), None), LogEntryIndex(3))
+
+    var discardedClients = Set.empty[ClientContext]
+    val newData = data.discardConflictClients(
+      Some(LogEntryIndex(4)),
+      conflictClient => discardedClients += conflictClient,
+    )
+
+    newData.clients should be(data.clients)
+    discardedClients should be(empty)
+  }
+
+  it should "discard conflict clients and call onDiscard handler with each conflict clients if conflict clients exist" in {
+    val client1 = ClientContext(ActorRef.noSender, Some(EntityInstanceId(1)), None)
+    val client2 = ClientContext(ActorRef.noSender, Some(EntityInstanceId(2)), None)
+    val data = RaftMemberData()
+      .truncateAndAppendEntries(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(1)),
+        ),
+      )
+      .registerClient(client1, LogEntryIndex(2))
+      .registerClient(client2, LogEntryIndex(3))
+
+    var discardedClients = Set.empty[ClientContext]
+    val newData = data.discardConflictClients(
+      Some(LogEntryIndex(2)),
+      conflictClient => discardedClients += conflictClient,
+    )
+
+    assert(!newData.clients.contains(LogEntryIndex(2)))
+    assert(!newData.clients.contains(LogEntryIndex(3)))
+    assert(discardedClients.contains(client1))
+    assert(discardedClients.contains(client2))
   }
 
   private def generateEntityId() = {
