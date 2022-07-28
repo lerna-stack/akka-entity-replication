@@ -901,16 +901,6 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
     newData.commitIndex should be(LogEntryIndex(3))
   }
 
-  it should "not update commitIndex if replicatedLog is empty" in {
-    val replicatedLog = ReplicatedLog().reset(Term(3), LogEntryIndex(10))
-    val data = RaftMemberData(
-      commitIndex = LogEntryIndex(10),
-      replicatedLog = replicatedLog,
-    )
-    val newData = data.followLeaderCommit(LogEntryIndex(11))
-    newData.commitIndex should be(LogEntryIndex(10))
-  }
-
   it should "update commitIndex to leaderCommit if leaderCommit is greater than commitIndex and less than the last index of replicatedLog" in {
     val replicatedLog = ReplicatedLog().truncateAndAppend(
       Seq(
@@ -945,7 +935,7 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
     newData.commitIndex should be(LogEntryIndex(4))
   }
 
-  it should "update commitIndex to the last index of replicatedLog if leaderCommit is greater than commitIndex and the last index" in {
+  it should "throw an IllegalArgumentException if leaderCommit is greater than the last index of replicatedLog" in {
     val replicatedLog = ReplicatedLog().truncateAndAppend(
       Seq(
         LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
@@ -958,8 +948,13 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
       commitIndex = LogEntryIndex(3),
       replicatedLog = replicatedLog,
     )
-    val newData = data.followLeaderCommit(LogEntryIndex(5))
-    newData.commitIndex should be(LogEntryIndex(4))
+    val exception = intercept[IllegalArgumentException] {
+      data.followLeaderCommit(LogEntryIndex(5))
+    }
+    exception.getMessage should be(
+      "requirement failed: The given leaderCommit [5] should be less than or equal to ReplicatedLog.lastLogIndex [4]. " +
+      "The caller should append entries with indices (from=[4], to=[5]) into ReplicatedLog before committing the given leaderCommit.",
+    )
   }
 
   private def generateEntityId() = {

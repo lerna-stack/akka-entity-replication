@@ -174,6 +174,11 @@ private[entityreplication] trait FollowerData { self: RaftMemberData =>
   }
 
   def followLeaderCommit(leaderCommit: LogEntryIndex): RaftMemberData = {
+    require(
+      leaderCommit <= replicatedLog.lastLogIndex,
+      s"The given leaderCommit [$leaderCommit] should be less than or equal to ReplicatedLog.lastLogIndex [${replicatedLog.lastLogIndex}]. " +
+      s"The caller should append entries with indices (from=[${replicatedLog.lastLogIndex}], to=[${leaderCommit}]) into ReplicatedLog before committing the given leaderCommit.",
+    )
     if (leaderCommit >= commitIndex) {
       import LogEntryIndex.min
       val newCommitIndex = replicatedLog.lastIndexOption
