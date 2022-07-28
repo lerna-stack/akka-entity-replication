@@ -162,10 +162,11 @@ private[raft] trait Follower { this: RaftActor =>
   private def receiveReplicate(replicate: Replicate): Unit = {
     if (log.isWarningEnabled) {
       log.warning(
-        "[Follower] cannot replicate the event: type=[{}], entityId=[{}], instanceId=[{}]",
+        "[Follower] cannot replicate the event: type=[{}], entityId=[{}], instanceId=[{}], entityLastAppliedIndex=[{}]",
         replicate.event.getClass.getName,
         replicate.entityId.map(_.raw),
         replicate.instanceId.map(_.underlying),
+        replicate.entityLastAppliedIndex.map(_.underlying),
       )
     }
     replicate.replyTo ! ReplicationFailed

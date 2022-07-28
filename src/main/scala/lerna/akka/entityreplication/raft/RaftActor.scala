@@ -225,10 +225,24 @@ private[raft] class RaftActor(
         currentData.vote(candidate, term)
       case DetectedNewTerm(term) =>
         currentData.syncTerm(term)
-      case AppendedEntries(term, logEntries) =>
+      case AppendedEntries(term, newLogEntries) =>
         currentData
           .syncTerm(term)
-          .truncateAndAppendEntries(logEntries)
+          .discardConflictClients(
+            possiblyConflictIndex = newLogEntries.headOption.map(_.index),
+            conflictClient => {
+              if (log.isDebugEnabled) {
+                log.debug(
+                  "[{}] sending ReplicationFailed to [{}], including sender [{}]",
+                  currentState,
+                  conflictClient.ref,
+                  conflictClient.originSender,
+                )
+              }
+              conflictClient.forward(ReplicationFailed)
+            },
+          )
+          .truncateAndAppendEntries(newLogEntries)
       case AppendedEntries_V2_1_0(term, logEntries, prevLogIndex) =>
         currentData
           .syncTerm(term)
@@ -276,10 +290,7 @@ private[raft] class RaftActor(
               case (logEntry, Some(client)) =>
                 if (log.isDebugEnabled)
                   log.debug("=== [Leader] committed {} and will notify it to {} ===", logEntry, client)
-                client.ref.tell(
-                  ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId),
-                  client.originSender.getOrElse(ActorRef.noSender),
-                )
+                client.forward(ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId))
               case (logEntry, None) =>
                 // 復旧中の commit or リーダー昇格時に未コミットのログがあった場合の commit
                 applyToReplicationActor(logEntry)
@@ -475,8 +486,8 @@ private[raft] class RaftActor(
     }
 
   def handleSnapshotTick(): Unit = {
-    if (log.isInfoEnabled) {
-      log.info(
+    if (log.isDebugEnabled) {
+      log.debug(
         "[{}] sending AppendCommittedEntries(shardId=[{}], entries=empty) to CommitLogStore [{}] to fetch the latest eventSourcingIndex at SnapshotTick. " +
         "The current eventSourcingIndex is [{}].",
         currentState,
@@ -767,16 +778,16 @@ private[raft] class RaftActor(
       case None =>
         val newEventSourcingIndex = appendCommittedEntriesResponse.currentIndex
         applyDomainEvent(DetectedNewEventSourcingIndex(newEventSourcingIndex)) { _ =>
-          if (log.isInfoEnabled) {
-            log.info("[{}] detected new event sourcing index [{}].", currentState, newEventSourcingIndex)
+          if (log.isDebugEnabled) {
+            log.debug("[{}] detected new event sourcing index [{}].", currentState, newEventSourcingIndex)
           }
         }
       case Some(currentEventSourcingIndex) =>
         if (currentEventSourcingIndex < appendCommittedEntriesResponse.currentIndex) {
           val newEventSourcingIndex = appendCommittedEntriesResponse.currentIndex
           applyDomainEvent(DetectedNewEventSourcingIndex(newEventSourcingIndex)) { _ =>
-            if (log.isInfoEnabled) {
-              log.info(
+            if (log.isDebugEnabled) {
+              log.debug(
                 "[{}] detected new event sourcing index [{}]. The old index was [{}].",
                 currentState,
                 newEventSourcingIndex,

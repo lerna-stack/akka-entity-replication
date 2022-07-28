@@ -194,39 +194,70 @@ private[raft] trait Leader { this: RaftActor =>
     }
 
   private[this] def replicate(replicate: Replicate): Unit = {
-    replicate match {
-      case replicateForEntity: Replicate.ReplicateForEntity
-          if currentData.hasUncommittedLogEntryOf(replicateForEntity._entityId) =>
-        if (log.isWarningEnabled)
-          log.warning(
-            s"Failed to replicate the event (${replicate.event.getClass.getName}) since an uncommitted event exists for the entity (entityId: ${replicateForEntity._entityId.raw}). Replicating new events is allowed after the event is committed",
-          )
-        replicate.replyTo ! ReplicationFailed
-
-      case _ =>
-        cancelHeartbeatTimeoutTimer()
-        applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
-          applyDomainEvent(
-            StartedReplication(
-              ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
-              currentData.replicatedLog.lastLogIndex,
-            ),
-          ) { _ =>
-            publishAppendEntries()
-          }
+    def startReplication(): Unit = {
+      cancelHeartbeatTimeoutTimer()
+      applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
+        applyDomainEvent(
+          StartedReplication(
+            ClientContext(replicate.replyTo, replicate.instanceId, replicate.originSender),
+            currentData.replicatedLog.lastLogIndex,
+          ),
+        ) { _ =>
+          publishAppendEntries()
         }
+      }
+    }
+    replicate match {
+      case replicate: Replicate.ReplicateForEntity =>
+        val nonAppliedEntityEntries =
+          currentData.replicatedLog.sliceEntityEntries(
+            replicate._entityId,
+            from = replicate._entityLastAppliedIndex.next(),
+          )
+        if (nonAppliedEntityEntries.nonEmpty) {
+          if (log.isWarningEnabled) {
+            val eventClassName   = replicate.event.getClass.getName
+            val entityId         = replicate._entityId
+            val entityInstanceId = replicate._instanceId
+            val lastAppliedIndex = replicate._entityLastAppliedIndex
+            log.warning(
+              s"[Leader] failed to replicate the event (type=[${eventClassName}]) " +
+              s"since the entity (entityId=[${entityId.raw}], instanceId=[${entityInstanceId.underlying}], lastAppliedIndex=[${lastAppliedIndex.underlying}]) " +
+              s"must apply [${nonAppliedEntityEntries.size}] entries to itself. " +
+              s"The leader will replicate a new event after the entity applies these [${nonAppliedEntityEntries.size}] non-applied entries to itself.",
+            )
+          }
+          replicate.replyTo ! ReplicationFailed
+        } else {
+          startReplication()
+        }
+      case _: Replicate.ReplicateForInternal =>
+        startReplication()
     }
 
   }
 
-  private[this] def receiveReplicationResponse(event: ReplicationResponse): Unit =
-    event match {
+  private[this] def receiveReplicationResponse(replicationResponse: ReplicationResponse): Unit =
+    replicationResponse match {
 
       case ReplicationSucceeded(NoOp, _, _) =>
       // ignore: no-op replication when become leader
 
-      case ReplicationSucceeded(unknownEvent, _, _) =>
-        if (log.isWarningEnabled) log.warning("unknown event: {}", unknownEvent)
+      case ReplicationSucceeded(unknownEvent, logEntryIndex, instanceId) =>
+        if (log.isWarningEnabled) {
+          log.warning(
+            "[Leader] received the unexpected ReplicationSucceeded message: event type=[{}], index=[{}], instanceId=[{}]",
+            unknownEvent.getClass.getName,
+            logEntryIndex,
+            instanceId.map(_.underlying),
+          )
+        }
+
+      case ReplicationFailed =>
+        if (log.isWarningEnabled) {
+          log.warning("[Leader] received the unexpected ReplicationFailed message")
+        }
+
     }
 
   private[this] def startEntityPassivationProcess(entityPath: ActorPath, stopMessage: Any): Unit = {
@@ -299,8 +330,8 @@ private[raft] trait Leader { this: RaftActor =>
     val newCommittedEntriesOrError = currentData.resolveCommittedEntriesForEventSourcing
     newCommittedEntriesOrError match {
       case Left(UnknownCurrentEventSourcingIndex) =>
-        if (log.isInfoEnabled) {
-          log.info(
+        if (log.isDebugEnabled) {
+          log.debug(
             "[Leader] doesn't know eventSourcingIndex yet. " +
             "sending AppendCommittedEntries(shardId=[{}], entries=empty) to CommitLogStore [{}] to fetch such an index.",
             shardId,
@@ -343,15 +374,6 @@ private[raft] trait Leader { this: RaftActor =>
                 settings.eventSourcedMaxAppendCommittedEntriesSize,
                 settings.eventSourcedMaxAppendCommittedEntriesSize,
               ).toSeq
-          if (log.isInfoEnabled) {
-            log.info(
-              s"[Leader] sending [{}] batched AppendCommittedEntries(shardId=[$shardId]). [{}] entries with indices [{}..{}] will be sent in multiple batches.",
-              batches.size,
-              limitedNewCommittedEntries.size,
-              limitedNewCommittedEntries.head.index,
-              limitedNewCommittedEntries.last.index,
-            )
-          }
           batches.foreach { batchedEntries =>
             assert(
               batchedEntries.sizeIs > 0,

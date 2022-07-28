@@ -1033,7 +1033,7 @@ class RaftActorLeaderSpec
       } should contain theSameElementsAs (Set(follower1Index, follower2Index))
 
       val event1 = "a"
-      leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
+      leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, LogEntryIndex(1), system.deadLetters)
 
       region.fishForMessageN(messages = 2) {
 
@@ -1307,7 +1307,7 @@ class RaftActorLeaderSpec
       } should contain theSameElementsAs (Set(follower1Index, follower2Index))
 
       val event1 = "a"
-      leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
+      leader ! Replicate(event1, replicationActor.ref, entityId, entityInstanceId, LogEntryIndex(1), system.deadLetters)
 
       region.fishForMessageN(messages = 2) {
 
@@ -1345,7 +1345,7 @@ class RaftActorLeaderSpec
       }
 
       val event2 = "b"
-      leader ! Replicate(event2, replicationActor.ref, entityId, entityInstanceId, system.deadLetters)
+      leader ! Replicate(event2, replicationActor.ref, entityId, entityInstanceId, LogEntryIndex(2), system.deadLetters)
 
       region.fishForMessageN(messages = 2) {
 
@@ -1368,51 +1368,74 @@ class RaftActorLeaderSpec
       } should contain theSameElementsAs (Set(follower1Index, follower2Index))
     }
 
-    "reply ReplicationFailed to replicationActor and log warn message if replication is in progress" in {
-      val replicationActor1 = TestProbe()
-      val replicationActor2 = TestProbe()
-      val entityId1         = NormalizedEntityId("test-1")
-      val entityId2         = NormalizedEntityId("test-2")
-      val entityInstanceId  = EntityInstanceId(1)
-
-      val leader     = createRaftActor()
-      val term       = Term(1)
-      val leaderData = createLeaderData(term)
-      setState(leader, Candidate, leaderData)
+    "reply with a ReplicationFailed message to a Replicate message sent from an entity that must apply more entries to the entity" in {
+      val entityId = NormalizedEntityId("entity-1")
+      val leader   = createRaftActor()
+      val leaderData = {
+        val replicatedLog =
+          ReplicatedLog()
+            .reset(Term(2), LogEntryIndex(4))
+            .truncateAndAppend(
+              Seq(
+                LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+                LogEntry(LogEntryIndex(6), EntityEvent(Some(entityId), "event-a"), Term(3)),
+                LogEntry(LogEntryIndex(7), EntityEvent(Some(entityId), "event-b"), Term(3)),
+              ),
+            )
+        createLeaderData(
+          currentTerm = Term(3),
+          log = replicatedLog,
+          commitIndex = LogEntryIndex(7),
+          lastApplied = LogEntryIndex(7),
+        )
+      }
       setState(leader, Leader, leaderData)
 
-      leader ! Replicate(
-        event = "a",
-        replyTo = replicationActor1.ref,
-        entityId1,
-        entityInstanceId,
-        originSender = system.deadLetters,
-      )
-      replicationActor1.expectNoMessage()
+      val replicationActor = TestProbe()
+      LoggingTestKit
+        .warn(
+          "[Leader] failed to replicate the event (type=[java.lang.String]) " +
+          "since the entity (entityId=[entity-1], instanceId=[987], lastAppliedIndex=[6]) must apply [1] entries to itself. " +
+          "The leader will replicate a new event after the entity applies these [1] non-applied entries to itself.",
+        ).expect {
+          leader ! Replicate(
+            event = "event-c",
+            replicationActor.ref,
+            entityId,
+            EntityInstanceId(987),
+            LogEntryIndex(6),
+            originSender = system.deadLetters,
+          )
+          replicationActor.expectMsg(ReplicationFailed)
+        }
+    }
 
-      leader ! Replicate(
-        event = "b",
-        replicationActor2.ref,
-        entityId2,
-        entityInstanceId,
-        originSender = system.deadLetters,
-      )
-      replicationActor2.expectNoMessage()
+    "log a warning if it receives a ReplicationSucceeded message containing an event other than NoOp" in {
+      val leader     = createRaftActor()
+      val leaderData = createLeaderData(Term(1))
+      setState(leader, Leader, leaderData)
 
       LoggingTestKit
         .warn(
-          "Failed to replicate the event (java.lang.String) since an uncommitted event exists for the entity (entityId: test-1). Replicating new events is allowed after the event is committed",
+          "[Leader] received the unexpected ReplicationSucceeded message: event type=[java.lang.String], index=[3], instanceId=[Some(1)]",
         ).expect {
-          leader ! Replicate(
-            event = "c", // java.lang.String
-            replicationActor1.ref,
-            entityId1,
-            entityInstanceId,
-            originSender = system.deadLetters,
-          )
-          replicationActor1.expectMsg(ReplicationFailed)
+          leader ! ReplicationSucceeded("event-1", LogEntryIndex(3), Option(EntityInstanceId(1)))
         }
     }
+
+    "log a warning if it receives a ReplicationFailed message" in {
+      val leader     = createRaftActor()
+      val leaderData = createLeaderData(Term(1))
+      setState(leader, Leader, leaderData)
+
+      LoggingTestKit
+        .warn(
+          "[Leader] received the unexpected ReplicationFailed message",
+        ).expect {
+          leader ! ReplicationFailed
+        }
+    }
+
   }
 
   private[this] def createLeaderData(
