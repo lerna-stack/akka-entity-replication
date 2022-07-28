@@ -343,15 +343,6 @@ private[raft] trait Leader { this: RaftActor =>
                 settings.eventSourcedMaxAppendCommittedEntriesSize,
                 settings.eventSourcedMaxAppendCommittedEntriesSize,
               ).toSeq
-          if (log.isDebugEnabled) {
-            log.debug(
-              s"[Leader] sending [{}] batched AppendCommittedEntries(shardId=[$shardId]). [{}] entries with indices [{}..{}] will be sent in multiple batches.",
-              batches.size,
-              limitedNewCommittedEntries.size,
-              limitedNewCommittedEntries.head.index,
-              limitedNewCommittedEntries.last.index,
-            )
-          }
           batches.foreach { batchedEntries =>
             assert(
               batchedEntries.sizeIs > 0,
