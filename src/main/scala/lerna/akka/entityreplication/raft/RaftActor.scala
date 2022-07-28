@@ -475,8 +475,8 @@ private[raft] class RaftActor(
     }
 
   def handleSnapshotTick(): Unit = {
-    if (log.isInfoEnabled) {
-      log.info(
+    if (log.isDebugEnabled) {
+      log.debug(
         "[{}] sending AppendCommittedEntries(shardId=[{}], entries=empty) to CommitLogStore [{}] to fetch the latest eventSourcingIndex at SnapshotTick. " +
         "The current eventSourcingIndex is [{}].",
         currentState,
