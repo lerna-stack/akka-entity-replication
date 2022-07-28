@@ -225,10 +225,24 @@ private[raft] class RaftActor(
         currentData.vote(candidate, term)
       case DetectedNewTerm(term) =>
         currentData.syncTerm(term)
-      case AppendedEntries(term, logEntries) =>
+      case AppendedEntries(term, newLogEntries) =>
         currentData
           .syncTerm(term)
-          .truncateAndAppendEntries(logEntries)
+          .discardConflictClients(
+            possiblyConflictIndex = newLogEntries.headOption.map(_.index),
+            conflictClient => {
+              if (log.isDebugEnabled) {
+                log.debug(
+                  "[{}] sending ReplicationFailed to [{}], including sender [{}]",
+                  currentState,
+                  conflictClient.ref,
+                  conflictClient.originSender,
+                )
+              }
+              conflictClient.forward(ReplicationFailed)
+            },
+          )
+          .truncateAndAppendEntries(newLogEntries)
       case AppendedEntries_V2_1_0(term, logEntries, prevLogIndex) =>
         currentData
           .syncTerm(term)
@@ -276,10 +290,7 @@ private[raft] class RaftActor(
               case (logEntry, Some(client)) =>
                 if (log.isDebugEnabled)
                   log.debug("=== [Leader] committed {} and will notify it to {} ===", logEntry, client)
-                client.ref.tell(
-                  ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId),
-                  client.originSender.getOrElse(ActorRef.noSender),
-                )
+                client.forward(ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId))
               case (logEntry, None) =>
                 // 復旧中の commit or リーダー昇格時に未コミットのログがあった場合の commit
                 applyToReplicationActor(logEntry)

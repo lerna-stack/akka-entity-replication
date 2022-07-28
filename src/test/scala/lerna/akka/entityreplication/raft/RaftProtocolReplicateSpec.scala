@@ -4,6 +4,7 @@ import akka.actor.ActorSystem
 import akka.testkit.{ TestKit, TestProbe }
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.RaftProtocol.Replicate
+import lerna.akka.entityreplication.raft.model.LogEntryIndex
 import org.scalatest.Inside
 
 final class RaftProtocolReplicateSpec
@@ -21,6 +22,11 @@ final class RaftProtocolReplicateSpec
     replicateForInternal.instanceId should be(None)
   }
 
+  "ReplicateForInternal.entityLastAppliedIndex should be None" in {
+    val replicateForInternal = Replicate.ReplicateForInternal("event-1", TestProbe().ref)
+    replicateForInternal.entityLastAppliedIndex should be(None)
+  }
+
   "ReplicateForInternal.originSender should be None" in {
     val replicateForInternal = Replicate.ReplicateForInternal("event-1", TestProbe().ref)
     replicateForInternal.originSender should be(None)
@@ -32,6 +38,7 @@ final class RaftProtocolReplicateSpec
       TestProbe().ref,
       NormalizedEntityId("entity-1"),
       EntityInstanceId(1),
+      LogEntryIndex(2),
       TestProbe().ref,
     )
     replicateForInternal.entityId should be(Option(NormalizedEntityId("entity-1")))
@@ -43,9 +50,22 @@ final class RaftProtocolReplicateSpec
       TestProbe().ref,
       NormalizedEntityId("entity-1"),
       EntityInstanceId(1),
+      LogEntryIndex(2),
       TestProbe().ref,
     )
     replicateForInternal.instanceId should be(Option(EntityInstanceId(1)))
+  }
+
+  "ReplicateForEntity.entityLastAppliedIndex should be an Option containing the given entityLastAppliedIndex" in {
+    val replicateForInternal = Replicate.ReplicateForEntity(
+      "event-1",
+      TestProbe().ref,
+      NormalizedEntityId("entity-1"),
+      EntityInstanceId(1),
+      LogEntryIndex(2),
+      TestProbe().ref,
+    )
+    replicateForInternal.entityLastAppliedIndex should be(Option(LogEntryIndex(2)))
   }
 
   "ReplicateForEntity.originSender should be an Option containing the given originSender" in {
@@ -55,6 +75,7 @@ final class RaftProtocolReplicateSpec
       TestProbe().ref,
       NormalizedEntityId("entity-1"),
       EntityInstanceId(1),
+      LogEntryIndex(2),
       originSender,
     )
     replicateForInternal.originSender should be(Option(originSender))
@@ -64,13 +85,15 @@ final class RaftProtocolReplicateSpec
 
     val replyTo      = TestProbe().ref
     val originSender = TestProbe().ref
-    val replicate    = Replicate("event-1", replyTo, NormalizedEntityId("entity-1"), EntityInstanceId(1), originSender)
+    val replicate =
+      Replicate("event-1", replyTo, NormalizedEntityId("entity-1"), EntityInstanceId(1), LogEntryIndex(2), originSender)
     replicate should be(
       Replicate.ReplicateForEntity(
         "event-1",
         replyTo,
         NormalizedEntityId("entity-1"),
         EntityInstanceId(1),
+        LogEntryIndex(2),
         originSender,
       ),
     )
@@ -83,36 +106,6 @@ final class RaftProtocolReplicateSpec
     replicate should be(
       Replicate.ReplicateForInternal("event-1", replyTo),
     )
-  }
-
-  "Replicate.unapply should extract values from a ReplicateForInternal instance" in {
-    val replicate = Replicate.ReplicateForInternal("event-1", TestProbe().ref)
-    inside(replicate) {
-      case Replicate(event, replyTo, entityId, instanceId, originSender) =>
-        event should be(replicate.event)
-        replyTo should be(replicate.replyTo)
-        entityId should be(replicate.entityId)
-        instanceId should be(replicate.instanceId)
-        originSender should be(replicate.originSender)
-    }
-  }
-
-  "Replicate.unapply should extract values from a ReplicateForEntity instance" in {
-    val replicate = Replicate.ReplicateForEntity(
-      "event-1",
-      TestProbe().ref,
-      NormalizedEntityId("entity-1"),
-      EntityInstanceId(1),
-      TestProbe().ref,
-    )
-    inside(replicate) {
-      case Replicate(event, replyTo, entityId, instanceId, originSender) =>
-        event should be(replicate.event)
-        replyTo should be(replicate.replyTo)
-        entityId should be(replicate.entityId)
-        instanceId should be(replicate.instanceId)
-        originSender should be(replicate.originSender)
-    }
   }
 
 }

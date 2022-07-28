@@ -8,6 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 [Unreleased]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.1.0...master
 
 ### Changed
+- Enhance leader's replication response handling [PR#160](https://github.com/lerna-stack/akka-entity-replication/pull/160)
 - Change event sourcing log level to debug
   [PR#163](https://github.com/lerna-stack/akka-entity-replication/pull/163)
 
@@ -17,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - An entity on a follower could stick at `WaitForReplication` if the entity has a `ProcessCommand` in its mailbox
   [#157](https://github.com/lerna-stack/akka-entity-replication/issues/157),
   [PR#158](https://github.com/lerna-stack/akka-entity-replication/pull/158)
+- Leader cannot reply to an entity with a `ReplicationFailed` message in some cases
+  [#153](https://github.com/lerna-stack/akka-entity-replication/issues/153),
+  [PR#161](https://github.com/lerna-stack/akka-entity-replication/pull/161)
+- An entity could stick at WaitForReplication when a Raft log entry is truncated by conflict
+  [#155](https://github.com/lerna-stack/akka-entity-replication/issues/155),
+  [#PR162](https://github.com/lerna-stack/akka-entity-replication/pull/162)
+- A RaftAcotor(Leader) could mis-deliver a ReplicationSucceeded message to a different entity
+  [156](https://github.com/lerna-stack/akka-entity-replication/issues/156),
+  [#PR162](https://github.com/lerna-stack/akka-entity-replication/pull/162)
 
 ## [v2.1.0] - 2022-03-24
 [v2.1.0]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.0.0...v2.1.0
