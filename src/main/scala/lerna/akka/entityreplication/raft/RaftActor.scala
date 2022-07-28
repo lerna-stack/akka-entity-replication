@@ -486,8 +486,8 @@ private[raft] class RaftActor(
     }
 
   def handleSnapshotTick(): Unit = {
-    if (log.isInfoEnabled) {
-      log.info(
+    if (log.isDebugEnabled) {
+      log.debug(
         "[{}] sending AppendCommittedEntries(shardId=[{}], entries=empty) to CommitLogStore [{}] to fetch the latest eventSourcingIndex at SnapshotTick. " +
         "The current eventSourcingIndex is [{}].",
         currentState,
@@ -778,16 +778,16 @@ private[raft] class RaftActor(
       case None =>
         val newEventSourcingIndex = appendCommittedEntriesResponse.currentIndex
         applyDomainEvent(DetectedNewEventSourcingIndex(newEventSourcingIndex)) { _ =>
-          if (log.isInfoEnabled) {
-            log.info("[{}] detected new event sourcing index [{}].", currentState, newEventSourcingIndex)
+          if (log.isDebugEnabled) {
+            log.debug("[{}] detected new event sourcing index [{}].", currentState, newEventSourcingIndex)
           }
         }
       case Some(currentEventSourcingIndex) =>
         if (currentEventSourcingIndex < appendCommittedEntriesResponse.currentIndex) {
           val newEventSourcingIndex = appendCommittedEntriesResponse.currentIndex
           applyDomainEvent(DetectedNewEventSourcingIndex(newEventSourcingIndex)) { _ =>
-            if (log.isInfoEnabled) {
-              log.info(
+            if (log.isDebugEnabled) {
+              log.debug(
                 "[{}] detected new event sourcing index [{}]. The old index was [{}].",
                 currentState,
                 newEventSourcingIndex,

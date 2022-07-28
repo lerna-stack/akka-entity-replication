@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 [Unreleased]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.1.0...master
 
+### Changed
+- Enhance leader's replication response handling [PR#160](https://github.com/lerna-stack/akka-entity-replication/pull/160)
+- Change event sourcing log level to debug
+  [PR#163](https://github.com/lerna-stack/akka-entity-replication/pull/163)
+
 ### Fixed
 - RaftActor might delete committed entries
   [#152](https://github.com/lerna-stack/akka-entity-replication/issues/152)

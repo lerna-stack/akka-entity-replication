@@ -237,14 +237,27 @@ private[raft] trait Leader { this: RaftActor =>
 
   }
 
-  private[this] def receiveReplicationResponse(event: ReplicationResponse): Unit =
-    event match {
+  private[this] def receiveReplicationResponse(replicationResponse: ReplicationResponse): Unit =
+    replicationResponse match {
 
       case ReplicationSucceeded(NoOp, _, _) =>
       // ignore: no-op replication when become leader
 
-      case ReplicationSucceeded(unknownEvent, _, _) =>
-        if (log.isWarningEnabled) log.warning("unknown event: {}", unknownEvent)
+      case ReplicationSucceeded(unknownEvent, logEntryIndex, instanceId) =>
+        if (log.isWarningEnabled) {
+          log.warning(
+            "[Leader] received the unexpected ReplicationSucceeded message: event type=[{}], index=[{}], instanceId=[{}]",
+            unknownEvent.getClass.getName,
+            logEntryIndex,
+            instanceId.map(_.underlying),
+          )
+        }
+
+      case ReplicationFailed =>
+        if (log.isWarningEnabled) {
+          log.warning("[Leader] received the unexpected ReplicationFailed message")
+        }
+
     }
 
   private[this] def startEntityPassivationProcess(entityPath: ActorPath, stopMessage: Any): Unit = {
@@ -317,8 +330,8 @@ private[raft] trait Leader { this: RaftActor =>
     val newCommittedEntriesOrError = currentData.resolveCommittedEntriesForEventSourcing
     newCommittedEntriesOrError match {
       case Left(UnknownCurrentEventSourcingIndex) =>
-        if (log.isInfoEnabled) {
-          log.info(
+        if (log.isDebugEnabled) {
+          log.debug(
             "[Leader] doesn't know eventSourcingIndex yet. " +
             "sending AppendCommittedEntries(shardId=[{}], entries=empty) to CommitLogStore [{}] to fetch such an index.",
             shardId,
@@ -361,15 +374,6 @@ private[raft] trait Leader { this: RaftActor =>
                 settings.eventSourcedMaxAppendCommittedEntriesSize,
                 settings.eventSourcedMaxAppendCommittedEntriesSize,
               ).toSeq
-          if (log.isInfoEnabled) {
-            log.info(
-              s"[Leader] sending [{}] batched AppendCommittedEntries(shardId=[$shardId]). [{}] entries with indices [{}..{}] will be sent in multiple batches.",
-              batches.size,
-              limitedNewCommittedEntries.size,
-              limitedNewCommittedEntries.head.index,
-              limitedNewCommittedEntries.last.index,
-            )
-          }
           batches.foreach { batchedEntries =>
             assert(
               batchedEntries.sizeIs > 0,
