@@ -173,6 +173,13 @@ private[entityreplication] trait FollowerData { self: RaftMemberData =>
     updateFollowerVolatileState(leaderMember = Some(leaderMember))
   }
 
+  /** Updates [[commitIndex]] to the given `leaderCommit` if needed
+    *
+    * Updates [[commitIndex]] to `leaderCommit` if `leaderCommit` is greater than [[commitIndex]].
+    * Otherwise, [[commitIndex]] doesn't change.
+    *
+    * Throws an [[IllegalArgumentException]] if `leaderCommit` is greater than the last index of [[ReplicatedLog]] ([[ReplicatedLog.lastLogIndex]]).
+    */
   def followLeaderCommit(leaderCommit: LogEntryIndex): RaftMemberData = {
     require(
       leaderCommit <= replicatedLog.lastLogIndex,
