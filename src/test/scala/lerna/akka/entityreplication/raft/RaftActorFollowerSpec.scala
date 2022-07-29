@@ -600,6 +600,50 @@ class RaftActorFollowerSpec
       getState(follower).stateData.commitIndex should be(leaderCommit)
     }
 
+    "update commitIndex to the last index of received entries (AppendEntries.entries.last.index) " +
+    "if AppendEntries.leaderCommit is greater than commitIndex and the last index of received entries" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val replicatedLog =
+        ReplicatedLog().truncateAndAppend(
+          Seq(
+            LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+            LogEntry(LogEntryIndex(2), EntityEvent(Some(entityId), "event-1"), Term(1)),
+            LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(2)),
+            LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+            LogEntry(LogEntryIndex(5), EntityEvent(Some(entityId), "event-3"), Term(2)),
+          ),
+        )
+      setState(follower, Follower, createFollowerData(Term(2), replicatedLog, commitIndex = LogEntryIndex(4)))
+
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val leader            = TestProbe()
+
+      follower.tell(
+        createAppendEntries(
+          shardId,
+          Term(3),
+          leaderMemberIndex,
+          prevLogIndex = LogEntryIndex(3),
+          prevLogTerm = Term(2),
+          entries = Seq(
+            LogEntry(LogEntryIndex(4), EntityEvent(Some(entityId), "event-2"), Term(2)),
+            // The following entries will be sent in another AppendEntries batch and will be in conflict.
+            // LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+          ),
+          leaderCommit = LogEntryIndex(5),
+        ),
+        leader.ref,
+      )
+
+      leader.expectMsgType[AppendEntriesSucceeded]
+      getState(follower).stateData.commitIndex should be(LogEntryIndex(4))
+    }
+
     "prevLogIndex の Term が prevLogTerm に一致するログエントリでない場合は AppendEntriesFailed を返す" in {
       val shardId             = createUniqueShardId()
       val term1               = Term(1)

@@ -173,14 +173,21 @@ private[entityreplication] trait FollowerData { self: RaftMemberData =>
     updateFollowerVolatileState(leaderMember = Some(leaderMember))
   }
 
+  /** Updates [[commitIndex]] to the given `leaderCommit` if needed
+    *
+    * Updates [[commitIndex]] to `leaderCommit` if `leaderCommit` is greater than [[commitIndex]].
+    * Otherwise, [[commitIndex]] doesn't change.
+    *
+    * Throws an [[IllegalArgumentException]] if `leaderCommit` is greater than the last index of [[ReplicatedLog]] ([[ReplicatedLog.lastLogIndex]]).
+    */
   def followLeaderCommit(leaderCommit: LogEntryIndex): RaftMemberData = {
-    if (leaderCommit >= commitIndex) {
-      import LogEntryIndex.min
-      val newCommitIndex = replicatedLog.lastIndexOption
-        .map { lastIndex =>
-          if (leaderCommit > commitIndex) min(leaderCommit, lastIndex) else commitIndex
-        }.getOrElse(commitIndex)
-      updateVolatileState(commitIndex = newCommitIndex)
+    require(
+      leaderCommit <= replicatedLog.lastLogIndex,
+      s"The given leaderCommit [$leaderCommit] should be less than or equal to ReplicatedLog.lastLogIndex [${replicatedLog.lastLogIndex}]. " +
+      s"The caller should append entries with indices (from=[${replicatedLog.lastLogIndex}], to=[${leaderCommit}]) into ReplicatedLog before committing the given leaderCommit.",
+    )
+    if (leaderCommit > commitIndex) {
+      updateVolatileState(commitIndex = leaderCommit)
     } else {
       // If a new leader is elected even if the leader is alive,
       // leaderCommit is less than commitIndex when the old leader didn't tell the follower the new commitIndex.

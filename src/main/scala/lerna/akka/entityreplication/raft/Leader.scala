@@ -98,7 +98,7 @@ private[raft] trait Leader { this: RaftActor =>
           if (log.isDebugEnabled) log.debug("=== [Leader] append {} ===", appendEntries)
           val newEntries = currentData.resolveNewLogEntries(appendEntries.entries)
           applyDomainEvent(AppendedEntries(appendEntries.term, newEntries)) { domainEvent =>
-            applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
+            applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.committableIndex)) { _ =>
               sender() ! AppendEntriesSucceeded(
                 domainEvent.term,
                 currentData.replicatedLog.lastLogIndex,
