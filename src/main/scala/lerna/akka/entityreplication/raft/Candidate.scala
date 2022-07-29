@@ -142,7 +142,7 @@ private[raft] trait Candidate { this: RaftActor =>
           cancelElectionTimeoutTimer()
           if (appendEntries.entries.isEmpty && appendEntries.term == currentData.currentTerm) {
             // do not persist event when no need
-            applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
+            applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.committableIndex)) { _ =>
               sender() ! AppendEntriesSucceeded(
                 appendEntries.term,
                 currentData.replicatedLog.lastLogIndex,
@@ -153,7 +153,7 @@ private[raft] trait Candidate { this: RaftActor =>
           } else {
             val newEntries = currentData.resolveNewLogEntries(appendEntries.entries)
             applyDomainEvent(AppendedEntries(appendEntries.term, newEntries)) { domainEvent =>
-              applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.leaderCommit)) { _ =>
+              applyDomainEvent(FollowedLeaderCommit(appendEntries.leader, appendEntries.committableIndex)) { _ =>
                 sender() ! AppendEntriesSucceeded(
                   domainEvent.term,
                   currentData.replicatedLog.lastLogIndex,

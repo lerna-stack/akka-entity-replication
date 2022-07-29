@@ -865,6 +865,98 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
     assert(discardedClients.contains(client2))
   }
 
+  behavior of "RaftMemberData.followLeaderCommit"
+
+  it should "not update commitIndex if the given leaderCommit is less than commitIndex" in {
+    val replicatedLog = ReplicatedLog().truncateAndAppend(
+      Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(3)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(4)),
+      ),
+    )
+    val data = RaftMemberData(
+      commitIndex = LogEntryIndex(3),
+      replicatedLog = replicatedLog,
+    )
+    val newData = data.followLeaderCommit(LogEntryIndex(2))
+    newData.commitIndex should be(LogEntryIndex(3))
+  }
+
+  it should "not update commitIndex if the given leaderCommit is equal to commitIndex" in {
+    val replicatedLog = ReplicatedLog().truncateAndAppend(
+      Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(3)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(4)),
+      ),
+    )
+    val data = RaftMemberData(
+      commitIndex = LogEntryIndex(3),
+      replicatedLog = replicatedLog,
+    )
+    val newData = data.followLeaderCommit(LogEntryIndex(3))
+    newData.commitIndex should be(LogEntryIndex(3))
+  }
+
+  it should "update commitIndex to leaderCommit if leaderCommit is greater than commitIndex and less than the last index of replicatedLog" in {
+    val replicatedLog = ReplicatedLog().truncateAndAppend(
+      Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(3)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(4)),
+      ),
+    )
+    val data = RaftMemberData(
+      commitIndex = LogEntryIndex(2),
+      replicatedLog = replicatedLog,
+    )
+    val newData = data.followLeaderCommit(LogEntryIndex(3))
+    newData.commitIndex should be(LogEntryIndex(3))
+  }
+
+  it should "update commitIndex to leaderCommit if leaderCommit is greater than commitIndex and equal to the last index of replicatedLog" in {
+    val replicatedLog = ReplicatedLog().truncateAndAppend(
+      Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(3)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(4)),
+      ),
+    )
+    val data = RaftMemberData(
+      commitIndex = LogEntryIndex(2),
+      replicatedLog = replicatedLog,
+    )
+    val newData = data.followLeaderCommit(LogEntryIndex(4))
+    newData.commitIndex should be(LogEntryIndex(4))
+  }
+
+  it should "throw an IllegalArgumentException if leaderCommit is greater than the last index of replicatedLog" in {
+    val replicatedLog = ReplicatedLog().truncateAndAppend(
+      Seq(
+        LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(None, NoOp), Term(2)),
+        LogEntry(LogEntryIndex(3), EntityEvent(None, NoOp), Term(3)),
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(4)),
+      ),
+    )
+    val data = RaftMemberData(
+      commitIndex = LogEntryIndex(3),
+      replicatedLog = replicatedLog,
+    )
+    val exception = intercept[IllegalArgumentException] {
+      data.followLeaderCommit(LogEntryIndex(5))
+    }
+    exception.getMessage should be(
+      "requirement failed: The given leaderCommit [5] should be less than or equal to ReplicatedLog.lastLogIndex [4]. " +
+      "The caller should append entries with indices (from=[4], to=[5]) into ReplicatedLog before committing the given leaderCommit.",
+    )
+  }
+
   private def generateEntityId() = {
     NormalizedEntityId.from(UUID.randomUUID().toString)
   }
