@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Enhance leader's replication response handling [PR#160](https://github.com/lerna-stack/akka-entity-replication/pull/160)
 - Change event sourcing log level to debug
   [PR#163](https://github.com/lerna-stack/akka-entity-replication/pull/163)
+- Add diagnostic logging to CommitLogStoreActor
+  [PR#164](https://github.com/lerna-stack/akka-entity-replication/pull/164)
 
 ### Fixed
 - RaftActor might delete committed entries
