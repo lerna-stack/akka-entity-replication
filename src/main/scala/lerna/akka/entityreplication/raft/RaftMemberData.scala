@@ -3,6 +3,7 @@ package lerna.akka.entityreplication.raft
 import lerna.akka.entityreplication.ClusterReplicationSerializable
 import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.model._
+import lerna.akka.entityreplication.raft.protocol.RaftCommands.InstallSnapshot
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapshotMetadata
 import org.slf4j.{ Logger, LoggerFactory }
@@ -458,6 +459,31 @@ private[entityreplication] object RaftMemberData {
     ) extends CommittedEntriesForEventSourcingResolveError
   }
 
+  /** Decision [[RaftActor]] should take about Snapshot Synchronization
+    *
+    * @see [[RaftMemberData.decideSnapshotSync]]
+    */
+  sealed trait SnapshotSynchronizationDecision
+  object SnapshotSynchronizationDecision {
+
+    /** [[RaftActor]] should start Snapshot Synchronization */
+    case object StartDecision extends SnapshotSynchronizationDecision
+
+    /** [[RaftActor]] should skip Snapshot Synchronization
+      *
+      * RaftActor already has snapshots (or log entries) that Snapshot Synchronization will install. The leader can
+      * update its match index of this RaftActor to `matchIndex`.
+      */
+    final case class SkipDecision(matchIndex: LogEntryIndex) extends SnapshotSynchronizationDecision
+
+    /** [[RaftActor]] should report an error (by such as logging)
+      *
+      * RaftActor cannot continue and recover by itself.
+      */
+    final case class ErrorDecision(reason: String) extends SnapshotSynchronizationDecision
+
+  }
+
 }
 
 private[entityreplication] trait RaftMemberData
@@ -592,6 +618,58 @@ private[entityreplication] trait RaftMemberData
     updatePersistentState(
       replicatedLog = replicatedLog.deleteOldEntries(toIndex, preserveLogSize),
     )
+  }
+
+  /** Decides what action RaftActor should take from the given InstallSnapshot
+    *
+    * Throws an [[IllegalArgumentException]] If `InstallSnapshot.term` is not equal to [[currentTerm]].
+    */
+  def decideSnapshotSync(installSnapshot: InstallSnapshot): RaftMemberData.SnapshotSynchronizationDecision = {
+    require(
+      installSnapshot.term == currentTerm,
+      s"InstallSnapshot.term [${installSnapshot.term.term}] should be equal to currentTerm [${currentTerm.term}]",
+    )
+    replicatedLog.termAt(installSnapshot.srcLatestSnapshotLastLogLogIndex) match {
+      case Some(logTerm) =>
+        assert(installSnapshot.srcLatestSnapshotLastLogLogIndex >= replicatedLog.ancestorLastIndex)
+        assert(installSnapshot.srcLatestSnapshotLastLogLogIndex <= replicatedLog.lastLogIndex)
+        if (installSnapshot.srcLatestSnapshotLastLogTerm == logTerm) {
+          val matchIndex = Ordering[LogEntryIndex].max(installSnapshot.srcLatestSnapshotLastLogLogIndex, commitIndex)
+          RaftMemberData.SnapshotSynchronizationDecision.SkipDecision(matchIndex)
+        } else {
+          // NOTE: commitIndex can be less than or equal to replicated.ancestorLastIndex
+          // (for example, immediately after RaftActor started)
+          if (installSnapshot.srcLatestSnapshotLastLogLogIndex == replicatedLog.ancestorLastIndex) {
+            RaftMemberData.SnapshotSynchronizationDecision.ErrorDecision(
+              s"[$installSnapshot] conflicted with a compacted (committed) entry of ReplicatedLog(" +
+              s"ancestorLastTerm=[${replicatedLog.ancestorLastTerm.term}], " +
+              s"ancestorLastIndex=[${replicatedLog.ancestorLastIndex}])",
+            )
+          } else if (installSnapshot.srcLatestSnapshotLastLogLogIndex <= commitIndex) {
+            RaftMemberData.SnapshotSynchronizationDecision.ErrorDecision(
+              s"[$installSnapshot] conflicted with a committed entry (term=[${logTerm.term}]). commitIndex=[${commitIndex}]",
+            )
+          } else {
+            RaftMemberData.SnapshotSynchronizationDecision.StartDecision
+          }
+        }
+      case None =>
+        if (installSnapshot.srcLatestSnapshotLastLogLogIndex > replicatedLog.lastLogIndex) {
+          RaftMemberData.SnapshotSynchronizationDecision.StartDecision
+        } else {
+          assert(installSnapshot.srcLatestSnapshotLastLogLogIndex < replicatedLog.ancestorLastIndex)
+          if (installSnapshot.srcLatestSnapshotLastLogTerm > replicatedLog.ancestorLastTerm) {
+            RaftMemberData.SnapshotSynchronizationDecision.ErrorDecision(
+              s"[$installSnapshot] conflicted with a compacted (committed) entry of ReplicatedLog(" +
+              s"ancestorLastTerm=[${replicatedLog.ancestorLastTerm.term}], ancestorLastIndex=[${replicatedLog.ancestorLastIndex}]) " +
+              "since terms only increase",
+            )
+          } else {
+            val matchIndex = Ordering[LogEntryIndex].max(replicatedLog.ancestorLastIndex, commitIndex)
+            RaftMemberData.SnapshotSynchronizationDecision.SkipDecision(matchIndex)
+          }
+        }
+    }
   }
 
   def startSnapshotSync(snapshotLastLogTerm: Term, snapshotLastLogIndex: LogEntryIndex): RaftMemberData = {
