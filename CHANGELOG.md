@@ -33,6 +33,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - A RaftAcotor(Leader) could mis-deliver a ReplicationSucceeded message to a different entity
   [156](https://github.com/lerna-stack/akka-entity-replication/issues/156),
   [#PR162](https://github.com/lerna-stack/akka-entity-replication/pull/162)
+- Snapshot synchronization could remove committed log entries that not be included in snapshots
+  [#167](https://github.com/lerna-stack/akka-entity-replication/issues/167)
+  [#PR168](https://github.com/lerna-stack/akka-entity-replication/pull/168)
 
 ## [v2.1.0] - 2022-03-24
 [v2.1.0]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.0.0...v2.1.0
