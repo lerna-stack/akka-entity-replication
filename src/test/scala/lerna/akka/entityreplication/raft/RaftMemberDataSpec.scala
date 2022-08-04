@@ -1,8 +1,11 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.ActorRef
-import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
+import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId }
+import lerna.akka.entityreplication.raft.RaftMemberData.SnapshotSynchronizationDecision
 import lerna.akka.entityreplication.raft.model._
+import lerna.akka.entityreplication.raft.protocol.RaftCommands.InstallSnapshot
+import lerna.akka.entityreplication.raft.routing.MemberIndex
 import org.scalatest.{ FlatSpec, Inside, Matchers }
 
 import java.util.UUID
@@ -429,6 +432,375 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
       data.compactReplicatedLog(-1)
     }
     exceptionWithMinusOne.getMessage should be("requirement failed: preserveLogSize(-1) should be greater than 0.")
+  }
+
+  behavior of "RaftMemberData.decideSnapshotSync"
+
+  it should "throw an IllegalArgumentException if InstallSnapshot.term is less than currentTerm" in {
+    val data = RaftMemberData(currentTerm = Term(10))
+    val exception = intercept[IllegalArgumentException] {
+      data.decideSnapshotSync(
+        InstallSnapshot(
+          NormalizedShardId.from("shard-1"),
+          Term(9),
+          MemberIndex("member-1"),
+          srcLatestSnapshotLastLogTerm = Term(4),
+          srcLatestSnapshotLastLogLogIndex = LogEntryIndex(123),
+        ),
+      )
+    }
+    exception.getMessage should be("requirement failed: InstallSnapshot.term [9] should be equal to currentTerm [10]")
+  }
+
+  it should "throw an IllegalArgumentException if InstallSnapshot.term is greater than currentTerm" in {
+    val data = RaftMemberData(currentTerm = Term(10))
+    val exception = intercept[IllegalArgumentException] {
+      data.decideSnapshotSync(
+        InstallSnapshot(
+          NormalizedShardId.from("shard-1"),
+          Term(11),
+          MemberIndex("member-1"),
+          srcLatestSnapshotLastLogTerm = Term(4),
+          srcLatestSnapshotLastLogLogIndex = LogEntryIndex(123),
+        ),
+      )
+    }
+    exception.getMessage should be("requirement failed: InstallSnapshot.term [11] should be equal to currentTerm [10]")
+  }
+
+  it should "return StartDecision " +
+  "if the given InstallSnapshot message conflicts with no existing log entries" in {
+    val data = {
+      val replicatedLog =
+        ReplicatedLog()
+          .reset(Term(7), LogEntryIndex(14))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(15), EntityEvent(Some(NormalizedEntityId.from("entity-1")), "event-a"), Term(7)),
+              LogEntry(LogEntryIndex(16), EntityEvent(None, NoOp), Term(8)),
+              LogEntry(LogEntryIndex(17), EntityEvent(Some(NormalizedEntityId.from("entity-2")), "event-b"), Term(8)),
+            ),
+          )
+      RaftMemberData(
+        currentTerm = Term(10),
+        replicatedLog = replicatedLog,
+        commitIndex = LogEntryIndex(16),
+      )
+    }
+    val decision = data.decideSnapshotSync(
+      InstallSnapshot(
+        NormalizedShardId.from("shard-1"),
+        Term(10),
+        MemberIndex("member-1"),
+        srcLatestSnapshotLastLogTerm = Term(8),
+        srcLatestSnapshotLastLogLogIndex = LogEntryIndex(18),
+      ),
+    )
+    decision should be(SnapshotSynchronizationDecision.StartDecision)
+  }
+
+  it should "return StartDecision" +
+  "if the given InstallSnapshot message conflicts with an existing uncommitted log entry" in {
+    val data = {
+      val replicatedLog =
+        ReplicatedLog()
+          .reset(Term(7), LogEntryIndex(14))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(15), EntityEvent(Some(NormalizedEntityId.from("entity-1")), "event-a"), Term(7)),
+              LogEntry(LogEntryIndex(16), EntityEvent(None, NoOp), Term(8)),
+              LogEntry(LogEntryIndex(17), EntityEvent(Some(NormalizedEntityId.from("entity-2")), "event-b"), Term(8)),
+            ),
+          )
+      RaftMemberData(
+        currentTerm = Term(10),
+        replicatedLog = replicatedLog,
+        commitIndex = LogEntryIndex(16),
+      )
+    }
+    val decision = data.decideSnapshotSync(
+      InstallSnapshot(
+        NormalizedShardId.from("shard-1"),
+        Term(10),
+        MemberIndex("member-1"),
+        srcLatestSnapshotLastLogTerm = Term(9),
+        srcLatestSnapshotLastLogLogIndex = LogEntryIndex(17),
+      ),
+    )
+    decision should be(SnapshotSynchronizationDecision.StartDecision)
+  }
+
+  it should "return SkipDecision(matchIndex=InstallSnapshot.srcLatestSnapshotLastLogLogIndex) if: " +
+  "the given InstallSnapshot message installs no new snapshots, and " +
+  "InstallSnapshot.srcLatestSnapshotLastLogLogIndex >= replicatedLog.ancestorLastIndex, and " +
+  "InstallSnapshot.srcLatestSnapshotLastLogLogIndex > commitIndex" in {
+    val data = {
+      val replicatedLog =
+        ReplicatedLog()
+          .reset(Term(7), LogEntryIndex(14))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(15), EntityEvent(Some(NormalizedEntityId.from("entity-1")), "event-a"), Term(7)),
+              LogEntry(LogEntryIndex(16), EntityEvent(None, NoOp), Term(8)),
+              LogEntry(LogEntryIndex(17), EntityEvent(Some(NormalizedEntityId.from("entity-2")), "event-b"), Term(8)),
+            ),
+          )
+      RaftMemberData(
+        currentTerm = Term(10),
+        replicatedLog = replicatedLog,
+        commitIndex = LogEntryIndex(16),
+      )
+    }
+    val decision = data.decideSnapshotSync(
+      InstallSnapshot(
+        NormalizedShardId.from("shard-1"),
+        Term(10),
+        MemberIndex("member-1"),
+        srcLatestSnapshotLastLogTerm = Term(8),
+        srcLatestSnapshotLastLogLogIndex = LogEntryIndex(17),
+      ),
+    )
+    decision should be(SnapshotSynchronizationDecision.SkipDecision(LogEntryIndex(17)))
+  }
+
+  it should "return SkipDecision(matchIndex=commitIndex) if: " +
+  "the given InstallSnapshot message installs no new snapshots, and " +
+  "InstallSnapshot.srcLatestSnapshotLastLogLogIndex >= replicatedLog.ancestorLastIndex, and " +
+  "InstallSnapshot.srcLatestSnapshotLastLogLogIndex < commitIndex" in {
+    val data = {
+      val replicatedLog =
+        ReplicatedLog()
+          .reset(Term(7), LogEntryIndex(14))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(15), EntityEvent(Some(NormalizedEntityId.from("entity-1")), "event-a"), Term(7)),
+              LogEntry(LogEntryIndex(16), EntityEvent(None, NoOp), Term(8)),
+              LogEntry(LogEntryIndex(17), EntityEvent(Some(NormalizedEntityId.from("entity-2")), "event-b"), Term(8)),
+            ),
+          )
+      RaftMemberData(
+        currentTerm = Term(10),
+        replicatedLog = replicatedLog,
+        commitIndex = LogEntryIndex(16),
+      )
+    }
+    val decision = data.decideSnapshotSync(
+      InstallSnapshot(
+        NormalizedShardId.from("shard-1"),
+        Term(10),
+        MemberIndex("member-1"),
+        srcLatestSnapshotLastLogTerm = Term(7),
+        srcLatestSnapshotLastLogLogIndex = LogEntryIndex(15),
+      ),
+    )
+    decision should be(SnapshotSynchronizationDecision.SkipDecision(LogEntryIndex(16)))
+  }
+
+  it should "return SkipDecision(matchIndex=replicatedLog.ancestorLastIndex) if: " +
+  "the given InstallSnapshot message installs no new snapshots, and " +
+  "InstallSnapshot.srcLatestSnapshotLastLogLogIndex < replicatedLog.ancestorLastIndex, and " +
+  "replicatedLog.ancestorLastIndex > commitIndex" in {
+    val data = {
+      val replicatedLog =
+        ReplicatedLog()
+          .reset(Term(7), LogEntryIndex(14))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(15), EntityEvent(Some(NormalizedEntityId.from("entity-1")), "event-a"), Term(7)),
+              LogEntry(LogEntryIndex(16), EntityEvent(None, NoOp), Term(8)),
+              LogEntry(LogEntryIndex(17), EntityEvent(Some(NormalizedEntityId.from("entity-2")), "event-b"), Term(8)),
+            ),
+          )
+      RaftMemberData(
+        currentTerm = Term(10),
+        replicatedLog = replicatedLog,
+        commitIndex = LogEntryIndex(0),
+      )
+    }
+    val decision = data.decideSnapshotSync(
+      InstallSnapshot(
+        NormalizedShardId.from("shard-1"),
+        Term(10),
+        MemberIndex("member-1"),
+        srcLatestSnapshotLastLogTerm = Term(7),
+        srcLatestSnapshotLastLogLogIndex = LogEntryIndex(13),
+      ),
+    )
+    decision should be(SnapshotSynchronizationDecision.SkipDecision(LogEntryIndex(14)))
+  }
+
+  it should "return SkipDecision(matchIndex=commitIndex) if: " +
+  "the given InstallSnapshot message installs no new snapshots, and " +
+  "InstallSnapshot.srcLatestSnapshotLastLogLogIndex < replicatedLog.ancestorLastIndex, and " +
+  "replicatedLog.ancestorLastIndex < commitIndex" in {
+    val data = {
+      val replicatedLog =
+        ReplicatedLog()
+          .reset(Term(7), LogEntryIndex(14))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(15), EntityEvent(Some(NormalizedEntityId.from("entity-1")), "event-a"), Term(7)),
+              LogEntry(LogEntryIndex(16), EntityEvent(None, NoOp), Term(8)),
+              LogEntry(LogEntryIndex(17), EntityEvent(Some(NormalizedEntityId.from("entity-2")), "event-b"), Term(8)),
+            ),
+          )
+      RaftMemberData(
+        currentTerm = Term(10),
+        replicatedLog = replicatedLog,
+        commitIndex = LogEntryIndex(16),
+      )
+    }
+    val decision = data.decideSnapshotSync(
+      InstallSnapshot(
+        NormalizedShardId.from("shard-1"),
+        Term(10),
+        MemberIndex("member-1"),
+        srcLatestSnapshotLastLogTerm = Term(7),
+        srcLatestSnapshotLastLogLogIndex = LogEntryIndex(13),
+      ),
+    )
+    decision should be(SnapshotSynchronizationDecision.SkipDecision(LogEntryIndex(16)))
+  }
+
+  it should "return ErrorDecision if the InstallSnapshot message conflicts with a compacted log entry: " +
+  "InstallSnapshot.srcLatestSnapshotLastLogLogIndex == replicatedLog.ancestorLastIndex" in {
+    val data = {
+      val replicatedLog =
+        ReplicatedLog()
+          .reset(Term(7), LogEntryIndex(14))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(15), EntityEvent(Some(NormalizedEntityId.from("entity-1")), "event-a"), Term(7)),
+              LogEntry(LogEntryIndex(16), EntityEvent(None, NoOp), Term(8)),
+              LogEntry(LogEntryIndex(17), EntityEvent(Some(NormalizedEntityId.from("entity-2")), "event-b"), Term(8)),
+            ),
+          )
+      RaftMemberData(
+        currentTerm = Term(10),
+        replicatedLog = replicatedLog,
+        commitIndex = LogEntryIndex(16),
+      )
+    }
+    val installSnapshot = InstallSnapshot(
+      NormalizedShardId.from("shard-1"),
+      Term(10),
+      MemberIndex("member-1"),
+      srcLatestSnapshotLastLogTerm = Term(6),
+      srcLatestSnapshotLastLogLogIndex = LogEntryIndex(14),
+    )
+    val decision = data.decideSnapshotSync(installSnapshot)
+    inside(decision) {
+      case SnapshotSynchronizationDecision.ErrorDecision(reason) =>
+        reason should be(
+          s"[${installSnapshot}] conflicted with a compacted (committed) entry of ReplicatedLog(ancestorLastTerm=[7], ancestorLastIndex=[14])",
+        )
+    }
+  }
+
+  it should "return ErrorDecision if the InstallSnapshot message conflicts with a compacted log entry: " +
+  "InstallSnapshot.srcLatestSnapshotLastLogLogIndex < replicatedLog.ancestorLastIndex" in {
+    val data = {
+      val replicatedLog =
+        ReplicatedLog()
+          .reset(Term(7), LogEntryIndex(14))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(15), EntityEvent(Some(NormalizedEntityId.from("entity-1")), "event-a"), Term(7)),
+              LogEntry(LogEntryIndex(16), EntityEvent(None, NoOp), Term(8)),
+              LogEntry(LogEntryIndex(17), EntityEvent(Some(NormalizedEntityId.from("entity-2")), "event-b"), Term(8)),
+            ),
+          )
+      RaftMemberData(
+        currentTerm = Term(10),
+        replicatedLog = replicatedLog,
+        commitIndex = LogEntryIndex(16),
+      )
+    }
+    val installSnapshot = InstallSnapshot(
+      NormalizedShardId.from("shard-1"),
+      Term(10),
+      MemberIndex("member-1"),
+      srcLatestSnapshotLastLogTerm = Term(8),
+      srcLatestSnapshotLastLogLogIndex = LogEntryIndex(13),
+    )
+    val decision = data.decideSnapshotSync(installSnapshot)
+    inside(decision) {
+      case SnapshotSynchronizationDecision.ErrorDecision(reason) =>
+        reason should be(
+          s"[${installSnapshot}] conflicted with a compacted (committed) entry of " +
+          "ReplicatedLog(ancestorLastTerm=[7], ancestorLastIndex=[14]) since terms only increase",
+        )
+    }
+  }
+
+  it should "return ErrorDecision if the InstallSnapshot message conflicts with a committed log entry: " +
+  "InstallSnapshot.srcLatestSnapshotLastLogLogIndex < commitIndex" in {
+    val data = {
+      val replicatedLog =
+        ReplicatedLog()
+          .reset(Term(7), LogEntryIndex(14))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(15), EntityEvent(Some(NormalizedEntityId.from("entity-1")), "event-a"), Term(7)),
+              LogEntry(LogEntryIndex(16), EntityEvent(None, NoOp), Term(8)),
+              LogEntry(LogEntryIndex(17), EntityEvent(Some(NormalizedEntityId.from("entity-2")), "event-b"), Term(8)),
+            ),
+          )
+      RaftMemberData(
+        currentTerm = Term(10),
+        replicatedLog = replicatedLog,
+        commitIndex = LogEntryIndex(16),
+      )
+    }
+    val installSnapshot = InstallSnapshot(
+      NormalizedShardId.from("shard-1"),
+      Term(10),
+      MemberIndex("member-1"),
+      srcLatestSnapshotLastLogTerm = Term(6),
+      srcLatestSnapshotLastLogLogIndex = LogEntryIndex(15),
+    )
+    val decision = data.decideSnapshotSync(installSnapshot)
+    inside(decision) {
+      case SnapshotSynchronizationDecision.ErrorDecision(reason) =>
+        reason should be(
+          s"[${installSnapshot}] conflicted with a committed entry (term=[7]). commitIndex=[16]",
+        )
+    }
+  }
+
+  it should "return ErrorDecision if the InstallSnapshot message conflicts with a committed log entry: " +
+  "InstallSnapshot.srcLatestSnapshotLastLogLogIndex == commitIndex" in {
+    val data = {
+      val replicatedLog =
+        ReplicatedLog()
+          .reset(Term(7), LogEntryIndex(14))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(15), EntityEvent(Some(NormalizedEntityId.from("entity-1")), "event-a"), Term(7)),
+              LogEntry(LogEntryIndex(16), EntityEvent(None, NoOp), Term(8)),
+              LogEntry(LogEntryIndex(17), EntityEvent(Some(NormalizedEntityId.from("entity-2")), "event-b"), Term(8)),
+            ),
+          )
+      RaftMemberData(
+        currentTerm = Term(10),
+        replicatedLog = replicatedLog,
+        commitIndex = LogEntryIndex(16),
+      )
+    }
+    val installSnapshot = InstallSnapshot(
+      NormalizedShardId.from("shard-1"),
+      Term(10),
+      MemberIndex("member-1"),
+      srcLatestSnapshotLastLogTerm = Term(7),
+      srcLatestSnapshotLastLogLogIndex = LogEntryIndex(16),
+    )
+    val decision = data.decideSnapshotSync(installSnapshot)
+    inside(decision) {
+      case SnapshotSynchronizationDecision.ErrorDecision(reason) =>
+        reason should be(
+          s"[${installSnapshot}] conflicted with a committed entry (term=[8]). commitIndex=[16]",
+        )
+    }
   }
 
   behavior of "RaftMemberData.resolveCommittedEntriesForEventSourcing"

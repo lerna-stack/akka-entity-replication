@@ -654,22 +654,22 @@ private[raft] class RaftActor(
             become(Follower)
           }
         }
-      case installSnapshot =>
+      case installSnapshot => {
         if (installSnapshot.term == currentData.currentTerm) {
           applyDomainEvent(DetectedLeaderMember(installSnapshot.srcMemberIndex)) { _ =>
-            applyDomainEvent(
-              SnapshotSyncStarted(
-                installSnapshot.srcLatestSnapshotLastLogTerm,
-                installSnapshot.srcLatestSnapshotLastLogLogIndex,
-              ),
-            ) { _ =>
-              startSyncSnapshot(installSnapshot)
-              become(Follower)
-            }
+            attemptToStartSnapshotSync()
           }
         } else {
           applyDomainEvent(DetectedNewTerm(installSnapshot.term)) { _ =>
             applyDomainEvent(DetectedLeaderMember(installSnapshot.srcMemberIndex)) { _ =>
+              attemptToStartSnapshotSync()
+            }
+          }
+        }
+        def attemptToStartSnapshotSync(): Unit = {
+          import RaftMemberData.SnapshotSynchronizationDecision
+          currentData.decideSnapshotSync(installSnapshot) match {
+            case SnapshotSynchronizationDecision.StartDecision =>
               applyDomainEvent(
                 SnapshotSyncStarted(
                   installSnapshot.srcLatestSnapshotLastLogTerm,
@@ -679,9 +679,24 @@ private[raft] class RaftActor(
                 startSyncSnapshot(installSnapshot)
                 become(Follower)
               }
-            }
+            case SnapshotSynchronizationDecision.SkipDecision(matchIndex) =>
+              val replyMessage = InstallSnapshotSucceeded(shardId, currentData.currentTerm, matchIndex, selfMemberIndex)
+              if (log.isDebugEnabled) {
+                log.debug(
+                  "=== [{}] skipped snapshot synchronization for [{}] and replying with [{}]",
+                  currentState,
+                  installSnapshot,
+                  replyMessage,
+                )
+              }
+              region ! ReplicationRegion.DeliverTo(installSnapshot.srcMemberIndex, replyMessage)
+              become(Follower)
+            case SnapshotSynchronizationDecision.ErrorDecision(reason) =>
+              log.error("[{}] ignored [{}]. reason: {}", currentState, installSnapshot, reason)
+              become(Follower)
           }
         }
+      }
     }
 
   protected def receiveSyncSnapshotResponse(response: SnapshotSyncManager.Response): Unit =
