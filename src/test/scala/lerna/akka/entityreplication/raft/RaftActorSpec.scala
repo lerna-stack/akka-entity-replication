@@ -393,29 +393,27 @@ class RaftActorSpec
       )
 
       val leaderMemberIndex = createUniqueMemberIndex()
-      val term              = Term.initial().next()
       val entityId          = NormalizedEntityId.from("test-entity")
       val logEntries = Seq(
-        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "a"), term),
-        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), term),
-        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "c"), term),
-        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "d"), term),
+        LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "b"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "c"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "d"), Term(1)),
       )
-      val applicableIndex = LogEntryIndex(3)
       val installSnapshot =
         InstallSnapshot(
           shardId,
-          term,
+          Term(3),
           leaderMemberIndex,
-          srcLatestSnapshotLastLogTerm = term,
-          srcLatestSnapshotLastLogLogIndex = applicableIndex,
+          srcLatestSnapshotLastLogTerm = Term(2),
+          srcLatestSnapshotLastLogLogIndex = LogEntryIndex(5),
         )
       follower ! createAppendEntries(
         shardId,
-        term,
+        Term(1),
         leaderMemberIndex,
         entries = logEntries,
-        leaderCommit = applicableIndex,
+        leaderCommit = LogEntryIndex(3),
       )
 
       // wait for starting compaction
@@ -432,8 +430,7 @@ class RaftActorSpec
           snapshotStore.reply(SaveSnapshotSuccess(msg.snapshot.metadata))
       } should have length 1
       // compaction completed (snapshot synchronization become available)
-      LoggingTestKit.info("Snapshot synchronization already completed").expect {
-        // the snapshots has been already saved by compaction
+      LoggingTestKit.info("Snapshot synchronization started").expect {
         follower ! installSnapshot
       }
     }

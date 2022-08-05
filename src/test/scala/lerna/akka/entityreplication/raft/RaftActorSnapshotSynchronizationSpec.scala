@@ -533,4 +533,89 @@ class RaftActorSnapshotSynchronizationSpec
       }
     }
   }
+
+  "RaftActor" should {
+
+    "skip snapshot synchronization and reply with an InstallSnapshotSucceeded message " +
+    "if it receives an InstallSnapshot message that installs no new snapshots" in {
+      val regionProbe         = TestProbe()
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        region = regionProbe.ref,
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+      )
+      val followerData = {
+        val log = ReplicatedLog()
+          .reset(Term(1), LogEntryIndex(6))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(7), EntityEvent(Option(NormalizedEntityId.from("entity-1")), "event-a"), Term(1)),
+              LogEntry(LogEntryIndex(8), EntityEvent(None, NoOp), Term(2)),
+              LogEntry(LogEntryIndex(9), EntityEvent(Option(NormalizedEntityId.from("entity-2")), "event-b"), Term(2)),
+            ),
+          )
+        RaftMemberData(currentTerm = Term(2), replicatedLog = log, commitIndex = LogEntryIndex(8))
+      }
+      setState(follower, Follower, followerData)
+
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val installSnapshot = InstallSnapshot(
+        shardId,
+        Term(2),
+        leaderMemberIndex,
+        srcLatestSnapshotLastLogTerm = Term(1),
+        srcLatestSnapshotLastLogLogIndex = LogEntryIndex(7),
+      )
+      LoggingTestKit.debug(s"skipped snapshot synchronization for [${installSnapshot}]").expect {
+        follower ! installSnapshot
+      }
+      val replyMessage = regionProbe.fishForSpecificMessage[InstallSnapshotSucceeded]() {
+        case ReplicationRegion.DeliverTo(`leaderMemberIndex`, replyMessage: InstallSnapshotSucceeded) => replyMessage
+      }
+      replyMessage.term should be(Term(2))
+      replyMessage.shardId should be(shardId)
+      replyMessage.sender should be(followerMemberIndex)
+      replyMessage.dstLatestSnapshotLastLogLogIndex should be(LogEntryIndex(8))
+    }
+
+    "log an error if it receives an InstallSnapshot message inconsistent with its state" in {
+      val regionProbe         = TestProbe()
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+        region = regionProbe.ref,
+      )
+      val followerData = {
+        val log = ReplicatedLog()
+          .reset(Term(1), LogEntryIndex(6))
+          .truncateAndAppend(
+            Seq(
+              LogEntry(LogEntryIndex(7), EntityEvent(Option(NormalizedEntityId("entity-1")), "event-a"), Term(1)),
+              LogEntry(LogEntryIndex(8), EntityEvent(None, NoOp), Term(2)),
+              LogEntry(LogEntryIndex(9), EntityEvent(Option(NormalizedEntityId("entity-2")), "event-b"), Term(2)),
+            ),
+          )
+        RaftMemberData(currentTerm = Term(2), replicatedLog = log, commitIndex = LogEntryIndex(8))
+      }
+      setState(follower, Follower, followerData)
+
+      val leaderMemberIndex = createUniqueMemberIndex()
+      val installSnapshot = InstallSnapshot(
+        shardId,
+        Term(2),
+        leaderMemberIndex,
+        srcLatestSnapshotLastLogTerm = Term(1),
+        srcLatestSnapshotLastLogLogIndex = LogEntryIndex(8),
+      )
+      LoggingTestKit.error(s"ignored [${installSnapshot}]").expect {
+        follower ! installSnapshot
+      }
+    }
+
+  }
+
 }
