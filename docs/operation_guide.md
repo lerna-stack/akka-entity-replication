@@ -2,6 +2,15 @@
 
 **Principle: Don't terminate all Raft members at the same time.**
 
+Reasons behind the principle:
+When all Raft members (who have the same ID but different roles) stop, their event-sourcing also stops. This stop
+continues until the cluster receives a request for the Raft members. If at least one of the Raft members is running,
+messages such as a heartbeat from the running member will trigger other Raft members to start.
+
+Tips: Raft members are running as entities of Akka Cluster Sharding. By the nature of re-balancing shards, adding or
+removing nodes to the cluster stops some Raft members. There is no guarantee that at least one of the Raft members is
+still running if cluster membership changes for all roles.
+
 To achieve this principle, you carefully do cluster operations.
 This document supposes that you will use three `multi-raft-roles` (`replica-group-1`, `replica-group-2`, `replica-group-3`).
 
