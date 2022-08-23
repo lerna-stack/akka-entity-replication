@@ -26,7 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [PR#158](https://github.com/lerna-stack/akka-entity-replication/pull/158)
 - Leader cannot reply to an entity with a `ReplicationFailed` message in some cases
   [#153](https://github.com/lerna-stack/akka-entity-replication/issues/153),
-  [PR#161](https://github.com/lerna-stack/akka-entity-replication/pull/161)
+  [PR#161](https://github.com/lerna-stack/akka-entity-replication/pull/161),
+  [#170](https://github.com/lerna-stack/akka-entity-replication/issues/170),
+  [PR#171](https://github.com/lerna-stack/akka-entity-replication/pull/171)
 - An entity could stick at WaitForReplication when a Raft log entry is truncated by conflict
   [#155](https://github.com/lerna-stack/akka-entity-replication/issues/155),
   [#PR162](https://github.com/lerna-stack/akka-entity-replication/pull/162)
