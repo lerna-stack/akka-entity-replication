@@ -1454,6 +1454,50 @@ class RaftActorLeaderSpec
         }
     }
 
+    "start replication if it receives a Replicate message sent from an entity whose non-applied entries contain only NoOp" in {
+      val entityId            = NormalizedEntityId("entity-1")
+      val leaderMemberIndex   = createUniqueMemberIndex()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val leader = createRaftActor(
+        selfMemberIndex = leaderMemberIndex,
+        otherMemberIndexes = Set(followerMemberIndex),
+      )
+      val leaderData = {
+        val replicatedLog =
+          ReplicatedLog()
+            .reset(Term(2), LogEntryIndex(4))
+            .truncateAndAppend(
+              Seq(
+                LogEntry(LogEntryIndex(5), EntityEvent(None, NoOp), Term(3)),
+                LogEntry(LogEntryIndex(6), EntityEvent(Some(entityId), "event-a"), Term(3)),
+                LogEntry(LogEntryIndex(7), EntityEvent(Some(entityId), NoOp), Term(3)),
+              ),
+            )
+        createLeaderData(
+          currentTerm = Term(3),
+          log = replicatedLog,
+          commitIndex = LogEntryIndex(7),
+          lastApplied = LogEntryIndex(7),
+        )
+      }
+      setState(leader, Leader, leaderData)
+
+      val replicate =
+        Replicate(
+          event = "event-b",
+          replyTo = TestProbe().ref,
+          entityId = entityId,
+          instanceId = EntityInstanceId(987),
+          entityLastAppliedIndex = LogEntryIndex(6),
+          originSender = system.deadLetters,
+        )
+      // Verify log to check replication starts.
+      LoggingTestKit
+        .debug(s"=== [Leader] starting replication for [$replicate]").expect {
+          leader ! replicate
+        }
+    }
+
     "log a warning if it receives a ReplicationSucceeded message containing an event other than NoOp" in {
       val leader     = createRaftActor()
       val leaderData = createLeaderData(Term(1))
