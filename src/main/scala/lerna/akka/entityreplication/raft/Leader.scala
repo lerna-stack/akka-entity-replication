@@ -195,6 +195,9 @@ private[raft] trait Leader { this: RaftActor =>
 
   private[this] def replicate(replicate: Replicate): Unit = {
     def startReplication(): Unit = {
+      if (log.isDebugEnabled) {
+        log.debug("=== [Leader] starting replication for [{}]", replicate)
+      }
       cancelHeartbeatTimeoutTimer()
       applyDomainEvent(AppendedEvent(EntityEvent(replicate.entityId, replicate.event))) { _ =>
         applyDomainEvent(
@@ -210,10 +213,12 @@ private[raft] trait Leader { this: RaftActor =>
     replicate match {
       case replicate: Replicate.ReplicateForEntity =>
         val nonAppliedEntityEntries =
-          currentData.replicatedLog.sliceEntityEntries(
-            replicate._entityId,
-            from = replicate._entityLastAppliedIndex.next(),
-          )
+          currentData.replicatedLog
+            .sliceEntityEntries(
+              replicate._entityId,
+              from = replicate._entityLastAppliedIndex.next(),
+            )
+            .filterNot(_.event.event == NoOp)
         if (nonAppliedEntityEntries.nonEmpty) {
           if (log.isWarningEnabled) {
             val eventClassName   = replicate.event.getClass.getName
