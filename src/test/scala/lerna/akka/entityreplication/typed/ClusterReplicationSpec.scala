@@ -51,4 +51,12 @@ class ClusterReplicationSpec extends FlatSpec with Matchers with ScalaFutures wi
 
     clusterReplication.entityRefFor(typeKey, "test") shouldBe a[ReplicatedEntityRef[_]]
   }
+
+  it should "extract shardId from given entityId" in {
+    val entityId = "entity-id"
+    val shardId  = clusterReplication.shardIdOf(entityId)
+    val settings = ClusterReplicationSettings(actorTestKit.system)
+    assert(shardId.forall(_.isDigit))
+    assert(shardId.toInt >= 0 && shardId.toInt < settings.raftSettings.numberOfShards)
+  }
 }
