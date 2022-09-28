@@ -23,5 +23,5 @@ trait ClusterReplication extends Extension {
     */
   def entityRefFor[M](typeKey: ReplicatedEntityTypeKey[M], entityId: String): ReplicatedEntityRef[M]
 
-  def shardIdOf(entityId: String): String
+  def shardIdOf[M](typeKey: ReplicatedEntityTypeKey[M], entityId: String): String
 }

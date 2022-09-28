@@ -52,11 +52,25 @@ class ClusterReplicationSpec extends FlatSpec with Matchers with ScalaFutures wi
     clusterReplication.entityRefFor(typeKey, "test") shouldBe a[ReplicatedEntityRef[_]]
   }
 
-  it should "extract shardId from given entityId" in {
+  it should "throw an exception if the typeKey has not initialized when shardIdOf is called" in {
+    val typeKey  = ReplicatedEntityTypeKey[NotUsed]("NotInitialized")
     val entityId = "entity-id"
-    val shardId  = clusterReplication.shardIdOf(entityId)
+    val exception = intercept[IllegalStateException] {
+      clusterReplication.shardIdOf(typeKey, entityId)
+    }
+    exception.getMessage should be(
+      "The type [ReplicatedEntityTypeKey[akka.NotUsed](NotInitialized)] must be init first",
+    )
+  }
+
+  it should "extract shardId from given entityId" in {
+    val typeKey = ReplicatedEntityTypeKey[NotUsed]("ExtractShardId")
+    val entity  = ReplicatedEntity(typeKey)(_ => Behaviors.empty)
+    clusterReplication.init(entity)
+
+    val entityId = "entity-id"
+    val shardId  = clusterReplication.shardIdOf(typeKey, entityId)
     val settings = ClusterReplicationSettings(actorTestKit.system)
-    assert(shardId.forall(_.isDigit))
     assert(shardId.toInt >= 0 && shardId.toInt < settings.raftSettings.numberOfShards)
   }
 }
