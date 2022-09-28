@@ -76,4 +76,9 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
         new ReplicatedEntityRefImpl[M](typeKey, entityId, region.unsafeUpcast[ReplicationEnvelope[M]], system)
       case None => throw new IllegalStateException(s"The type [${typeKey}] must be init first")
     }
+
+  override def shardIdOf(entityId: String): String = {
+    val settings = ClusterReplicationSettings(system)
+    Math.abs(entityId.hashCode % settings.raftSettings.numberOfShards).toString
+  }
 }
