@@ -32,7 +32,7 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
 
   private[this] def internalInit[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E] = {
     val classicSystem = system.toClassic
-    val settings      = entity.settings.getOrElse(untyped.ClusterReplicationSettings.create(classicSystem))
+    val settings      = entity.settings.getOrElse(ClusterReplicationSettings(system))
     val extractEntityId: untyped.ReplicationRegion.ExtractEntityId = {
       case ReplicationEnvelope(entityId, message) => (entityId, message)
     }
@@ -99,8 +99,8 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
   }
 
   private[entityreplication] def shardIdOf(
-      settings: untyped.ClusterReplicationSettings,
+      settings: ClusterReplicationSettings,
       entityId: String,
-  ): untyped.ReplicationRegion.ShardId =
+  ): String =
     Math.abs(entityId.hashCode % settings.raftSettings.numberOfShards).toString
 }
