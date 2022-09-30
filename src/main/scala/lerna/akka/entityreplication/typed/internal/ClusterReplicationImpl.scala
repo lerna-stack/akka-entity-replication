@@ -15,19 +15,20 @@ import java.util.concurrent.ConcurrentHashMap
 
 private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) extends ClusterReplication {
 
-  private[this] val regions
-      : concurrent.Map[ReplicatedEntityTypeKey[Nothing], (ClusterReplicationSettings, ActorRef[Nothing])] =
-    new ConcurrentHashMap[ReplicatedEntityTypeKey[_], (ClusterReplicationSettings, ActorRef[_])].asScala
+  private final case class ReplicationRegionEntry(settings: ClusterReplicationSettings, regionRef: ActorRef[Nothing])
+
+  private[this] val regions: concurrent.Map[ReplicatedEntityTypeKey[Nothing], ReplicationRegionEntry] =
+    new ConcurrentHashMap[ReplicatedEntityTypeKey[_], ReplicationRegionEntry].asScala
 
   override def init[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E] =
     regions
       .getOrElseUpdate(
         entity.typeKey,
-        (
+        ReplicationRegionEntry(
           entity.settings.getOrElse(ClusterReplicationSettings(system)),
           internalInit(entity),
         ),
-      )._2.unsafeUpcast[E]
+      ).regionRef.unsafeUpcast[E]
 
   private[this] def internalInit[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E] = {
     val classicSystem = system.toClassic
@@ -80,7 +81,7 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
 
   override def entityRefFor[M](typeKey: ReplicatedEntityTypeKey[M], entityId: String): ReplicatedEntityRef[M] =
     regions.get(typeKey) match {
-      case Some((_, region)) =>
+      case Some(ReplicationRegionEntry(_, region)) =>
         new ReplicatedEntityRefImpl[M](typeKey, entityId, region.unsafeUpcast[ReplicationEnvelope[M]], system)
       case None => throw new IllegalStateException(s"The type [${typeKey}] must be init first")
     }
@@ -90,7 +91,7 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
       entityId: String,
   ): untyped.ReplicationRegion.ShardId = {
     regions.get(typeKey) match {
-      case Some((settings, _)) =>
+      case Some(ReplicationRegionEntry(settings, _)) =>
         shardIdOf(settings, entityId)
       case None =>
         throw new IllegalStateException(s"The type [${typeKey}] must be init first")
