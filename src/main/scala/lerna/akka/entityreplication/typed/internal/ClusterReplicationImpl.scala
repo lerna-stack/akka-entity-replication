@@ -24,13 +24,10 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
     regions
       .getOrElseUpdate(
         entity.typeKey,
-        ReplicationRegionEntry(
-          entity.settings.getOrElse(ClusterReplicationSettings(system)),
-          internalInit(entity),
-        ),
+        internalInit(entity),
       ).regionRef.unsafeUpcast[E]
 
-  private[this] def internalInit[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E] = {
+  private[this] def internalInit[M, E](entity: ReplicatedEntity[M, E]): ReplicationRegionEntry = {
     val classicSystem = system.toClassic
     val settings      = entity.settings.getOrElse(ClusterReplicationSettings(system))
     val extractEntityId: untyped.ReplicationRegion.ExtractEntityId = {
@@ -76,7 +73,7 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
           extractShardId = extractShardId,
           possibleShardIds = possibleShardIds,
         )
-    region.toTyped
+    ReplicationRegionEntry(settings, region.toTyped)
   }
 
   override def entityRefFor[M](typeKey: ReplicatedEntityTypeKey[M], entityId: String): ReplicatedEntityRef[M] =
