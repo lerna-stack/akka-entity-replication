@@ -95,7 +95,7 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
     }
   }
 
-  private[entityreplication] def shardIdOf(
+  private def shardIdOf(
       settings: ClusterReplicationSettings,
       entityId: String,
   ): String =
