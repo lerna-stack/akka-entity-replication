@@ -52,7 +52,9 @@ class ClusterReplicationSpec extends FlatSpec with Matchers with ScalaFutures wi
     clusterReplication.entityRefFor(typeKey, "test") shouldBe a[ReplicatedEntityRef[_]]
   }
 
-  it should "throw an exception if the typeKey has not initialized when shardIdOf is called" in {
+  behavior of "ClusterReplication.shardIdOf"
+
+  it should "throw an exception if the typeKey has not initialized" in {
     val typeKey  = ReplicatedEntityTypeKey[NotUsed]("NotInitialized")
     val entityId = "entity-id"
     val exception = intercept[IllegalStateException] {
