@@ -1,0 +1,2 @@
+# New function is added in lerna.akka.entityreplication.typed.ClusterReplication.
+ProblemFilters.exclude[ReversedMissingMethodProblem]("lerna.akka.entityreplication.typed.ClusterReplication.shardIdOf")
