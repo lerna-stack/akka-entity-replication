@@ -15,7 +15,7 @@ import java.util.concurrent.ConcurrentHashMap
 
 private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) extends ClusterReplication {
 
-  private final case class ReplicationRegionEntry(settings: ClusterReplicationSettings, regionRef: ActorRef[Nothing])
+  private case class ReplicationRegionEntry(settings: ClusterReplicationSettings, regionRef: ActorRef[Nothing])
 
   private[this] val regions: concurrent.Map[ReplicatedEntityTypeKey[Nothing], ReplicationRegionEntry] =
     new ConcurrentHashMap[ReplicatedEntityTypeKey[_], ReplicationRegionEntry].asScala
