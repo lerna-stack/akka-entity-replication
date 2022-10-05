@@ -15,21 +15,27 @@ import java.util.concurrent.ConcurrentHashMap
 
 private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) extends ClusterReplication {
 
-  private[this] val regions: concurrent.Map[ReplicatedEntityTypeKey[Nothing], ActorRef[Nothing]] =
-    new ConcurrentHashMap[ReplicatedEntityTypeKey[_], ActorRef[_]].asScala
+  private case class ReplicationRegionEntry(settings: ClusterReplicationSettings, regionRef: ActorRef[Nothing])
+
+  private[this] val regions: concurrent.Map[ReplicatedEntityTypeKey[Nothing], ReplicationRegionEntry] =
+    new ConcurrentHashMap[ReplicatedEntityTypeKey[_], ReplicationRegionEntry].asScala
 
   override def init[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E] =
-    regions.getOrElseUpdate(entity.typeKey, internalInit(entity)).unsafeUpcast[E]
+    regions
+      .getOrElseUpdate(
+        entity.typeKey,
+        internalInit(entity),
+      ).regionRef.unsafeUpcast[E]
 
-  private[this] def internalInit[M, E](entity: ReplicatedEntity[M, E]): ActorRef[E] = {
+  private[this] def internalInit[M, E](entity: ReplicatedEntity[M, E]): ReplicationRegionEntry = {
     val classicSystem = system.toClassic
-    val settings      = entity.settings.getOrElse(untyped.ClusterReplicationSettings.create(classicSystem))
+    val settings      = entity.settings.getOrElse(ClusterReplicationSettings(system))
     val extractEntityId: untyped.ReplicationRegion.ExtractEntityId = {
       case ReplicationEnvelope(entityId, message) => (entityId, message)
     }
     val extractShardId: untyped.ReplicationRegion.ExtractShardId = {
       case ReplicationEnvelope(entityId, _) =>
-        Math.abs(entityId.hashCode % settings.raftSettings.numberOfShards).toString
+        shardIdOf(settings, entityId)
     }
     val possibleShardIds: Set[untyped.ReplicationRegion.ShardId] = {
       (0 until settings.raftSettings.numberOfShards).map(_.toString).toSet
@@ -67,13 +73,31 @@ private[entityreplication] class ClusterReplicationImpl(system: ActorSystem[_]) 
           extractShardId = extractShardId,
           possibleShardIds = possibleShardIds,
         )
-    region.toTyped
+    ReplicationRegionEntry(settings, region.toTyped)
   }
 
   override def entityRefFor[M](typeKey: ReplicatedEntityTypeKey[M], entityId: String): ReplicatedEntityRef[M] =
     regions.get(typeKey) match {
-      case Some(region) =>
+      case Some(ReplicationRegionEntry(_, region)) =>
         new ReplicatedEntityRefImpl[M](typeKey, entityId, region.unsafeUpcast[ReplicationEnvelope[M]], system)
       case None => throw new IllegalStateException(s"The type [${typeKey}] must be init first")
     }
+
+  override def shardIdOf[M](
+      typeKey: ReplicatedEntityTypeKey[M],
+      entityId: String,
+  ): untyped.ReplicationRegion.ShardId = {
+    regions.get(typeKey) match {
+      case Some(ReplicationRegionEntry(settings, _)) =>
+        shardIdOf(settings, entityId)
+      case None =>
+        throw new IllegalStateException(s"The type [${typeKey}] must be init first")
+    }
+  }
+
+  private def shardIdOf(
+      settings: ClusterReplicationSettings,
+      entityId: String,
+  ): String =
+    Math.abs(entityId.hashCode % settings.raftSettings.numberOfShards).toString
 }
