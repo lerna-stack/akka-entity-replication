@@ -86,5 +86,5 @@ trait RaftSettings {
 
   private[entityreplication] def withEventSourcedSnapshotStorePluginId(pluginId: String): RaftSettings
 
-  def disabledShards: List[String]
+  def disabledShards: Set[String]
 }

@@ -39,7 +39,7 @@ private[entityreplication] final case class RaftSettingsImpl(
     eventSourcedJournalPluginId: String,
     eventSourcedSnapshotStorePluginId: String,
     eventSourcedSnapshotEvery: Int,
-    disabledShards: List[String],
+    disabledShards: Set[String],
 ) extends RaftSettings {
 
   override private[raft] def randomizedElectionTimeout(): FiniteDuration =
@@ -216,7 +216,7 @@ private[entityreplication] object RaftSettingsImpl {
       s"snapshot-every ($eventSourcedSnapshotEvery) should be greater than 0.",
     )
 
-    val disabledShards: List[String] = config.getStringList("disabled-shards").asScala.toList
+    val disabledShards: Set[String] = config.getStringList("disabled-shards").asScala.toSet
 
     RaftSettingsImpl(
       config = config,
