@@ -214,6 +214,14 @@ private[raft] class RaftActor(
 
   override def snapshotPluginConfig: Config = ConfigFactory.empty()
 
+  private def isDisabled: Boolean = settings.disabledShards.contains(shardId.raw)
+
+  override def preStart(): Unit = {
+    if (isDisabled) {
+      context.stop(self)
+    }
+  }
+
   val numberOfMembers: Int = settings.replicationFactor
 
   @nowarn("msg=Use RaftMemberData.truncateAndAppendEntries instead.")
