@@ -137,6 +137,8 @@ private[entityreplication] class ReplicationRegion(
   private[this] val regions: Map[MemberIndex, mutable.Set[Member]] =
     allMemberIndexes.map(i => i -> mutable.Set.empty[Member]).toMap
 
+  private val disabledShards = settings.raftSettings.disabledShards
+
   // TODO 変数名を実態にあったものに変更
   private[this] val shardingRouters: Map[MemberIndex, ActorRef] = allMemberIndexes.map { memberIndex =>
     def clusterReplicationShardId(message: Any): String = extractNormalizedShardIdInternal(message).raw
@@ -255,11 +257,15 @@ private[entityreplication] class ReplicationRegion(
   def deliverMessage(message: Any): Unit = {
     if (extractShardId.isDefinedAt(message)) {
       val shardId = extractShardId(message)
-      shardingRouters.values.foreach(
-        // Don't forward StartEntity to prevent leaking StartEntityAck
-        _.tell(ShardRegion.StartEntity(shardId), context.system.deadLetters),
-      )
-      handleRoutingCommand(DeliverSomewhere(Command(message)))
+      if (!disabledShards.contains(shardId)) {
+        shardingRouters.values.foreach(
+          // Don't forward StartEntity to prevent leaking StartEntityAck
+          _.tell(ShardRegion.StartEntity(shardId), context.system.deadLetters),
+        )
+        handleRoutingCommand(DeliverSomewhere(Command(message)))
+      } else if (log.isWarningEnabled) {
+        log.warning(s"Following command had sent to disabled shards was dropped: ${message.getClass.getName}")
+      }
     } else {
       if (log.isWarningEnabled)
         log.warning("The message [{}] was dropped because its shard ID could not be extracted", message)
