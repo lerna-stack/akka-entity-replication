@@ -9,12 +9,12 @@ import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 import lerna.akka.entityreplication.raft.routing.MemberIndex
-import lerna.akka.entityreplication.raft.snapshot.ShardSnapshotStoreFailureSpecBase._
+import lerna.akka.entityreplication.raft.snapshot.ShardSnapshotStoreFailureSpec._
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
 import lerna.akka.entityreplication.testkit.KryoSerializable
 
-class ShardSnapshotStoreLoadingFailureSpec extends ShardSnapshotStoreFailureSpecBase() {
+class ShardSnapshotStoreLoadingFailureSpec extends ShardSnapshotStoreFailureSpec() {
 
   private val snapshotTestKit = SnapshotTestKit(system)
 
@@ -37,7 +37,7 @@ class ShardSnapshotStoreLoadingFailureSpec extends ShardSnapshotStoreFailureSpec
   }
 }
 
-class ShardSnapshotStoreSavingFailureSpec extends ShardSnapshotStoreFailureSpecBase() {
+class ShardSnapshotStoreSavingFailureSpec extends ShardSnapshotStoreFailureSpec() {
 
   private val snapshotTestKit        = SnapshotTestKit(system)
   private[this] val dummyEntityState = EntityState(DummyState)
@@ -63,7 +63,7 @@ class ShardSnapshotStoreSavingFailureSpec extends ShardSnapshotStoreFailureSpecB
   }
 }
 
-object ShardSnapshotStoreFailureSpecBase {
+object ShardSnapshotStoreFailureSpec {
   final case object DummyState extends KryoSerializable
 
   def configWithPersistenceTestKits: Config = {
@@ -86,9 +86,9 @@ object ShardSnapshotStoreFailureSpecBase {
 
 }
 
-class ShardSnapshotStoreFailureSpecBase
+class ShardSnapshotStoreFailureSpec
     extends TestKit(
-      ActorSystem("ShardSnapshotStoreFailureSpec", ShardSnapshotStoreFailureSpecBase.configWithPersistenceTestKits),
+      ActorSystem("ShardSnapshotStoreFailureSpec", ShardSnapshotStoreFailureSpec.configWithPersistenceTestKits),
     )
     with ActorSpec {
 
