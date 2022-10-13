@@ -86,7 +86,7 @@ object ShardSnapshotStoreFailureSpecBase {
 
 }
 
-abstract class ShardSnapshotStoreFailureSpecBase
+class ShardSnapshotStoreFailureSpecBase
     extends TestKit(
       ActorSystem("ShardSnapshotStoreFailureSpec", ShardSnapshotStoreFailureSpecBase.configWithPersistenceTestKits),
     )
