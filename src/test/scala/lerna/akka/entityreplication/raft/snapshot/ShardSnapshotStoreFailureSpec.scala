@@ -14,29 +14,6 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
 import lerna.akka.entityreplication.testkit.KryoSerializable
 
-class ShardSnapshotStoreLoadingFailureSpec extends ShardSnapshotStoreFailureSpec() {
-
-  private val snapshotTestKit = SnapshotTestKit(system)
-
-  override def beforeEach(): Unit = {
-    super.beforeEach()
-    snapshotTestKit.clearAll()
-    snapshotTestKit.resetPolicy()
-  }
-
-  "ShardSnapshotStore（読み込みの異常）" should {
-
-    "FetchSnapshot に失敗した場合は応答無し（クライアント側でタイムアウトの実装が必要）" in {
-      val entityId           = generateUniqueEntityId()
-      val shardSnapshotStore = createShardSnapshotStore()
-
-      snapshotTestKit.failNextRead()
-      shardSnapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
-      expectNoMessage()
-    }
-  }
-}
-
 class ShardSnapshotStoreSavingFailureSpec extends ShardSnapshotStoreFailureSpec() {
 
   private val snapshotTestKit        = SnapshotTestKit(system)
@@ -92,6 +69,14 @@ class ShardSnapshotStoreFailureSpec
     )
     with ActorSpec {
 
+  private val snapshotTestKit = SnapshotTestKit(system)
+
+  override def beforeEach(): Unit = {
+    super.beforeEach()
+    snapshotTestKit.clearAll()
+    snapshotTestKit.resetPolicy()
+  }
+
   def createShardSnapshotStore(): ActorRef =
     planAutoKill {
       childActorOf(
@@ -107,4 +92,17 @@ class ShardSnapshotStoreFailureSpec
 
   def generateUniqueEntityId(): NormalizedEntityId =
     NormalizedEntityId.from(s"test-entity-${entityIdSeq.incrementAndGet()}")
+
+  "ShardSnapshotStore（読み込みの異常）" should {
+
+    "FetchSnapshot に失敗した場合は応答無し（クライアント側でタイムアウトの実装が必要）" in {
+      val entityId           = generateUniqueEntityId()
+      val shardSnapshotStore = createShardSnapshotStore()
+
+      snapshotTestKit.failNextRead()
+      shardSnapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
+      expectNoMessage()
+    }
+  }
+
 }
