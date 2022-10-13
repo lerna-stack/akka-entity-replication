@@ -14,32 +14,6 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
 import lerna.akka.entityreplication.testkit.KryoSerializable
 
-class ShardSnapshotStoreSavingFailureSpec extends ShardSnapshotStoreFailureSpec() {
-
-  private val snapshotTestKit        = SnapshotTestKit(system)
-  private[this] val dummyEntityState = EntityState(DummyState)
-
-  override def beforeEach(): Unit = {
-    super.beforeEach()
-    snapshotTestKit.clearAll()
-    snapshotTestKit.resetPolicy()
-  }
-
-  "ShardSnapshotStore（書き込みの異常）" should {
-
-    "SaveSnapshot に失敗した場合は SaveSnapshotFailure が返信される" in {
-      val entityId           = generateUniqueEntityId()
-      val shardSnapshotStore = createShardSnapshotStore()
-      val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
-      val snapshot           = EntitySnapshot(metadata, dummyEntityState)
-
-      snapshotTestKit.failNextPersisted()
-      shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
-      expectMsg(SaveSnapshotFailure(metadata))
-    }
-  }
-}
-
 object ShardSnapshotStoreFailureSpec {
   final case object DummyState extends KryoSerializable
 
@@ -102,6 +76,21 @@ class ShardSnapshotStoreFailureSpec
       snapshotTestKit.failNextRead()
       shardSnapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
       expectNoMessage()
+    }
+  }
+
+  "ShardSnapshotStore（書き込みの異常）" should {
+
+    "SaveSnapshot に失敗した場合は SaveSnapshotFailure が返信される" in {
+      val entityId           = generateUniqueEntityId()
+      val shardSnapshotStore = createShardSnapshotStore()
+      val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val dummyEntityState   = EntityState(DummyState)
+      val snapshot           = EntitySnapshot(metadata, dummyEntityState)
+
+      snapshotTestKit.failNextPersisted()
+      shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+      expectMsg(SaveSnapshotFailure(metadata))
     }
   }
 
