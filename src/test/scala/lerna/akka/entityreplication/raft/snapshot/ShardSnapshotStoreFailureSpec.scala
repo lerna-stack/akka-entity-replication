@@ -14,10 +14,7 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
 import lerna.akka.entityreplication.testkit.KryoSerializable
 
-class ShardSnapshotStoreLoadingFailureSpec
-    extends ShardSnapshotStoreFailureSpecBase(
-      ShardSnapshotStoreFailureSpecBase.configWithPersistenceTestKits,
-    ) {
+class ShardSnapshotStoreLoadingFailureSpec extends ShardSnapshotStoreFailureSpecBase() {
 
   private val snapshotTestKit = SnapshotTestKit(system)
 
@@ -40,10 +37,7 @@ class ShardSnapshotStoreLoadingFailureSpec
   }
 }
 
-class ShardSnapshotStoreSavingFailureSpec
-    extends ShardSnapshotStoreFailureSpecBase(
-      ShardSnapshotStoreFailureSpecBase.configWithPersistenceTestKits,
-    ) {
+class ShardSnapshotStoreSavingFailureSpec extends ShardSnapshotStoreFailureSpecBase() {
 
   private val snapshotTestKit        = SnapshotTestKit(system)
   private[this] val dummyEntityState = EntityState(DummyState)
@@ -92,8 +86,10 @@ object ShardSnapshotStoreFailureSpecBase {
 
 }
 
-abstract class ShardSnapshotStoreFailureSpecBase(config: Config)
-    extends TestKit(ActorSystem("ShardSnapshotStoreFailureSpec", config))
+abstract class ShardSnapshotStoreFailureSpecBase
+    extends TestKit(
+      ActorSystem("ShardSnapshotStoreFailureSpec", ShardSnapshotStoreFailureSpecBase.configWithPersistenceTestKits),
+    )
     with ActorSpec {
 
   def createShardSnapshotStore(): ActorRef =
