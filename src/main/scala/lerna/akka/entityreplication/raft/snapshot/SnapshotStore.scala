@@ -17,6 +17,11 @@ private[entityreplication] object SnapshotStore {
       selfMemberIndex: MemberIndex,
   ): Props =
     Props(new SnapshotStore(typeName, entityId, settings, selfMemberIndex))
+
+  /** Returns a persistence ID of SnapshotStore */
+  def persistenceId(typeName: TypeName, entityId: NormalizedEntityId, selfMemberIndex: MemberIndex): String =
+    ActorIds.persistenceId("SnapshotStore", typeName.underlying, entityId.underlying, selfMemberIndex.role)
+
 }
 
 private[entityreplication] class SnapshotStore(
