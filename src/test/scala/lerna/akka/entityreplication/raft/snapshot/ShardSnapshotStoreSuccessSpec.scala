@@ -48,6 +48,24 @@ class ShardSnapshotStoreSuccessSpec
       expectMsg(SaveSnapshotSuccess(metadata))
     }
 
+    "persist nothing and reply with SaveSnapshotSuccess to SaveSnapshot if it has the same EntitySnapshot" in {
+      val entityId                   = generateUniqueEntityId()
+      val shardSnapshotStore         = createShardSnapshotStore()
+      val snapshotStorePersistenceId = SnapshotStore.persistenceId(typeName, entityId, memberIndex)
+      val metadata                   = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
+
+      // Prepare:
+      shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+      snapshotTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+      expectMsg(SaveSnapshotSuccess(metadata))
+
+      // Test:
+      shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+      snapshotTestKit.expectNothingPersisted(snapshotStorePersistenceId)
+      expectMsg(SaveSnapshotSuccess(metadata))
+    }
+
     "FetchSnapshot に成功した場合は一度停止しても SnapshotFound でスナップショットが返信される" in {
       val entityId                   = generateUniqueEntityId()
       val shardSnapshotStore         = createShardSnapshotStore()
