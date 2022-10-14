@@ -3,9 +3,7 @@ package lerna.akka.entityreplication.raft.snapshot
 import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ ActorRef, ActorSystem }
 import akka.persistence.testkit.scaladsl.SnapshotTestKit
-import akka.persistence.testkit.{ PersistenceTestKitPlugin, PersistenceTestKitSnapshotPlugin }
 import akka.testkit.TestKit
-import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -17,29 +15,11 @@ import lerna.akka.entityreplication.testkit.KryoSerializable
 object ShardSnapshotStoreFailureSpec {
   final case object DummyState extends KryoSerializable
 
-  def configWithPersistenceTestKits: Config = {
-    PersistenceTestKitPlugin.config
-      .withFallback(PersistenceTestKitSnapshotPlugin.config)
-      .withFallback(raftPersistenceConfigWithPersistenceTestKits)
-      .withFallback(ConfigFactory.load())
-  }
-
-  private val raftPersistenceConfigWithPersistenceTestKits: Config = ConfigFactory.parseString(
-    s"""
-       |lerna.akka.entityreplication.raft.persistence {
-       |  journal.plugin = ${PersistenceTestKitPlugin.PluginId}
-       |  snapshot-store.plugin = ${PersistenceTestKitSnapshotPlugin.PluginId}
-       |  # Might be possible to use PersistenceTestKitReadJournal
-       |  // query.plugin = ""
-       |}
-       |""".stripMargin,
-  )
-
 }
 
 class ShardSnapshotStoreFailureSpec
     extends TestKit(
-      ActorSystem("ShardSnapshotStoreFailureSpec", ShardSnapshotStoreFailureSpec.configWithPersistenceTestKits),
+      ActorSystem("ShardSnapshotStoreFailureSpec", ShardSnapshotStoreSpecBase.configWithPersistenceTestKits),
     )
     with ActorSpec {
 

@@ -2,6 +2,7 @@ package lerna.akka.entityreplication.raft.snapshot
 
 import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ ActorRef, ActorSystem, PoisonPill }
+import akka.persistence.testkit.scaladsl.SnapshotTestKit
 import akka.testkit.TestKit
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
@@ -14,31 +15,48 @@ object ShardSnapshotStoreSuccessSpec {
   final case object DummyState extends KryoSerializable
 }
 
-class ShardSnapshotStoreSuccessSpec extends TestKit(ActorSystem()) with ActorSpec {
+class ShardSnapshotStoreSuccessSpec
+    extends TestKit(
+      ActorSystem("ShardSnapshotStoreSuccessSpec", ShardSnapshotStoreSpecBase.configWithPersistenceTestKits),
+    )
+    with ActorSpec {
   import ShardSnapshotStoreSuccessSpec._
   import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 
+  private val snapshotTestKit        = SnapshotTestKit(system)
+  private val typeName               = TypeName.from("test")
+  private val memberIndex            = MemberIndex("test-role")
   private[this] val dummyEntityState = EntityState(DummyState)
+
+  override def beforeEach(): Unit = {
+    super.beforeEach()
+    snapshotTestKit.clearAll()
+    snapshotTestKit.resetPolicy()
+  }
 
   "ShardSnapshotStore（正常系）" should {
 
     "SaveSnapshot に成功した場合は SaveSnapshotSuccess が返信される" in {
-      val entityId           = generateUniqueEntityId()
-      val shardSnapshotStore = createShardSnapshotStore()
-      val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
-      val snapshot           = EntitySnapshot(metadata, dummyEntityState)
+      val entityId                   = generateUniqueEntityId()
+      val shardSnapshotStore         = createShardSnapshotStore()
+      val snapshotStorePersistenceId = SnapshotStore.persistenceId(typeName, entityId, memberIndex)
+      val metadata                   = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
 
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+      snapshotTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
       expectMsg(SaveSnapshotSuccess(metadata))
     }
 
     "FetchSnapshot に成功した場合は一度停止しても SnapshotFound でスナップショットが返信される" in {
-      val entityId           = generateUniqueEntityId()
-      val shardSnapshotStore = createShardSnapshotStore()
-      val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
-      val snapshot           = EntitySnapshot(metadata, dummyEntityState)
+      val entityId                   = generateUniqueEntityId()
+      val shardSnapshotStore         = createShardSnapshotStore()
+      val snapshotStorePersistenceId = SnapshotStore.persistenceId(typeName, entityId, memberIndex)
+      val metadata                   = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
 
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+      snapshotTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
       expectMsg(SaveSnapshotSuccess(metadata))
 
       // terminate SnapshotStore
@@ -84,9 +102,9 @@ class ShardSnapshotStoreSuccessSpec extends TestKit(ActorSystem()) with ActorSpe
     planAutoKill {
       childActorOf(
         ShardSnapshotStore.props(
-          TypeName.from("test"),
+          typeName,
           RaftSettings(additionalConfig.withFallback(system.settings.config)),
-          MemberIndex("test-role"),
+          memberIndex,
         ),
       )
     }
