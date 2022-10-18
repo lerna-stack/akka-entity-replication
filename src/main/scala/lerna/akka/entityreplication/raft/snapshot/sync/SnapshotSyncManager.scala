@@ -3,7 +3,7 @@ package lerna.akka.entityreplication.raft.snapshot.sync
 import akka.actor.{ ActorLogging, ActorRef, Props, Status }
 import akka.pattern.extended.ask
 import akka.pattern.pipe
-import akka.persistence.{ PersistentActor, RuntimePluginConfig, SnapshotOffer }
+import akka.persistence.{ PersistentActor, RecoveryCompleted, RuntimePluginConfig, SnapshotOffer }
 import akka.persistence.query.{ EventEnvelope, Offset, PersistenceQuery }
 import akka.persistence.query.scaladsl.CurrentEventsByTagQuery
 import akka.stream.{ KillSwitches, UniqueKillSwitch }
@@ -222,10 +222,18 @@ private[entityreplication] class SnapshotSyncManager(
 
   override def receiveRecover: Receive = {
 
-    case SnapshotOffer(_, snapshot: SyncProgress) =>
+    case SnapshotOffer(metadata, snapshot: SyncProgress) =>
+      if (log.isInfoEnabled) {
+        log.info("Loaded snapshot: metadata=[{}], snapshot=[{}]", metadata, snapshot)
+      }
       this.state = snapshot
 
     case event: Event => updateState(event)
+
+    case RecoveryCompleted =>
+      if (log.isInfoEnabled) {
+        log.info("Recovery completed: state=[{}]", this.state)
+      }
   }
 
   private[this] var state = SyncProgress(Offset.noOffset)
@@ -286,10 +294,16 @@ private[entityreplication] class SnapshotSyncManager(
           s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
         )
 
-    case _: akka.persistence.SaveSnapshotSuccess =>
+    case akka.persistence.SaveSnapshotSuccess(metadata) =>
+      if (log.isInfoEnabled) {
+        log.info("Succeeded to save snapshot synchronization progress: metadata=[{}]", metadata)
+      }
       context.stop(self)
 
-    case _: akka.persistence.SaveSnapshotFailure =>
+    case akka.persistence.SaveSnapshotFailure(metadata, cause) =>
+      if (log.isWarningEnabled) {
+        log.warning("Failed to save snapshot synchronization progress: metadata=[{}], cause=[{}]", metadata, cause)
+      }
       context.stop(self)
   }
 
@@ -300,7 +314,10 @@ private[entityreplication] class SnapshotSyncManager(
       dstLatestSnapshotLastLogIndex: LogEntryIndex,
   ): Receive = {
 
-    case _: SyncSnapshot => // ignore
+    case syncSnapshot: SyncSnapshot =>
+      if (log.isDebugEnabled) {
+        log.debug("Dropping [{}] since the snapshot synchronization is running.", syncSnapshot)
+      }
 
     case syncStatus: SyncStatus =>
       this.killSwitch = None
@@ -318,6 +335,13 @@ private[entityreplication] class SnapshotSyncManager(
             updateState(event)
             if (event.snapshotLastLogIndex < srcLatestSnapshotLastLogIndex) {
               // complete partially
+              if (log.isDebugEnabled) {
+                log.debug(
+                  "Snapshot synchronization partially completed and continues: {} -> {}",
+                  s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogIndex: ${event.snapshotLastLogIndex}/${srcLatestSnapshotLastLogIndex})",
+                  s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
+                )
+              }
               startSnapshotSynchronizationBatch(
                 srcLatestSnapshotLastLogIndex,
                 dstLatestSnapshotLastLogTerm,
@@ -374,8 +398,17 @@ private[entityreplication] class SnapshotSyncManager(
         )
       context.stop(self)
 
-    case _: akka.persistence.SaveSnapshotSuccess => // ignore: previous execution result
-    case _: akka.persistence.SaveSnapshotFailure => // ignore: previous execution result
+    case saveSnapshotSuccess: akka.persistence.SaveSnapshotSuccess =>
+      // ignore: previous execution result
+      if (log.isDebugEnabled) {
+        log.debug("Dropping [{}] of the previous synchronization.", saveSnapshotSuccess)
+      }
+
+    case saveSnapshotFailure: akka.persistence.SaveSnapshotFailure =>
+      // ignore: previous execution result
+      if (log.isDebugEnabled) {
+        log.debug("Dropping [{}] of the previous synchronization.", saveSnapshotFailure)
+      }
   }
 
   def updateState(event: Event): Unit =
