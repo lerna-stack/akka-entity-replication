@@ -350,7 +350,7 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
       runOn(node4) {
         LoggingTestKit
           .warn(
-            "Following command had sent to disabled shards was dropped: lerna.akka.entityreplication.ReplicationRegionSpec$DummyReplicationActor$Cmd",
+            "Following command had sent to disabled shards was dropped: lerna.akka.entityreplication.ReplicationRegionSpec$DummyReplicationActor$Cmd(shardId=12)",
           ).expect {
             clusterReplication ! Cmd(entityId)
           }(system.toTyped)

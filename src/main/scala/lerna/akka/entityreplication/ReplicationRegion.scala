@@ -264,7 +264,11 @@ private[entityreplication] class ReplicationRegion(
         )
         handleRoutingCommand(DeliverSomewhere(Command(message)))
       } else if (log.isWarningEnabled) {
-        log.warning(s"Following command had sent to disabled shards was dropped: ${message.getClass.getName}")
+        log.warning(
+          s"Following command had sent to disabled shards was dropped: {}(shardId={})",
+          message.getClass.getName,
+          shardId,
+        )
       }
     } else {
       if (log.isWarningEnabled)
