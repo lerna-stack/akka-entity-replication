@@ -28,6 +28,8 @@ trait RaftSettings {
 
   def numberOfShards: Int
 
+  def disabledShards: Set[String]
+
   def maxAppendEntriesSize: Int
 
   def maxAppendEntriesBatchSize: Int
@@ -86,5 +88,4 @@ trait RaftSettings {
 
   private[entityreplication] def withEventSourcedSnapshotStorePluginId(pluginId: String): RaftSettings
 
-  def disabledShards: Set[String]
 }

@@ -17,6 +17,7 @@ private[entityreplication] final case class RaftSettingsImpl(
     replicationFactor: Int,
     quorumSize: Int,
     numberOfShards: Int,
+    disabledShards: Set[String],
     maxAppendEntriesSize: Int,
     maxAppendEntriesBatchSize: Int,
     compactionSnapshotCacheTimeToLive: FiniteDuration,
@@ -39,7 +40,6 @@ private[entityreplication] final case class RaftSettingsImpl(
     eventSourcedJournalPluginId: String,
     eventSourcedSnapshotStorePluginId: String,
     eventSourcedSnapshotEvery: Int,
-    disabledShards: Set[String],
 ) extends RaftSettings {
 
   override private[raft] def randomizedElectionTimeout(): FiniteDuration =
@@ -227,6 +227,7 @@ private[entityreplication] object RaftSettingsImpl {
       replicationFactor = replicationFactor,
       quorumSize = quorumSize,
       numberOfShards = numberOfShards,
+      disabledShards = disabledShards,
       maxAppendEntriesSize = maxAppendEntriesSize,
       maxAppendEntriesBatchSize = maxAppendEntriesBatchSize,
       compactionSnapshotCacheTimeToLive = compactionSnapshotCacheTimeToLive,
@@ -249,7 +250,6 @@ private[entityreplication] object RaftSettingsImpl {
       eventSourcedJournalPluginId = eventSourcedJournalPluginId,
       eventSourcedSnapshotStorePluginId = eventSourcedSnapshotStorePluginId,
       eventSourcedSnapshotEvery = eventSourcedSnapshotEvery,
-      disabledShards = disabledShards,
     )
   }
 
