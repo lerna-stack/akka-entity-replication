@@ -137,7 +137,7 @@ private[entityreplication] class ReplicationRegion(
   private[this] val regions: Map[MemberIndex, mutable.Set[Member]] =
     allMemberIndexes.map(i => i -> mutable.Set.empty[Member]).toMap
 
-  private val disabledShards = settings.raftSettings.disabledShards
+  private val disabledShards: Set[ShardId] = settings.raftSettings.disabledShards
 
   // TODO 変数名を実態にあったものに変更
   private[this] val shardingRouters: Map[MemberIndex, ActorRef] = allMemberIndexes.map { memberIndex =>
