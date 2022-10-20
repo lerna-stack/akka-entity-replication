@@ -35,6 +35,12 @@ private[entityreplication] object ReplicationRegionRaftActorStarter {
   ): Behavior[Nothing] = {
     Behaviors
       .setup[Command] { context =>
+        val (disableIds, enableIds) = ids.partition(settings.disabledShards.contains)
+        if (disableIds.nonEmpty) {
+          context.log.info(
+            s"Following disabled shard ids are excluded from ids which is scheduled launching: ${disableIds}",
+          )
+        }
         val startEntityAckAdapter =
           context.messageAdapter[ShardRegion.StartEntityAck](ack => ClassicStartEntityAck(ack.entityId))
         Behaviors.withTimers { timers =>
@@ -46,7 +52,7 @@ private[entityreplication] object ReplicationRegionRaftActorStarter {
             startEntityAckAdapter,
             settings.raftActorAutoStartNumberOfActors,
           )
-          starter.behavior(ids, Set.empty)
+          starter.behavior(enableIds, Set.empty)
         }
       }.narrow[Nothing]
   }

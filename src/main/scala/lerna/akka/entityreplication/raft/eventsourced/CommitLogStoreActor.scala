@@ -4,7 +4,14 @@ import akka.Done
 import akka.actor.{ ActorLogging, ActorRef, ActorSystem, Props }
 import akka.cluster.sharding.ShardRegion.HashCodeMessageExtractor
 import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings }
-import akka.persistence.{ PersistentActor, RecoveryCompleted, SaveSnapshotFailure, SaveSnapshotSuccess, SnapshotOffer }
+import akka.persistence.{
+  PersistentActor,
+  Recovery,
+  RecoveryCompleted,
+  SaveSnapshotFailure,
+  SaveSnapshotSuccess,
+  SnapshotOffer,
+}
 import akka.util.ByteString
 import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ClusterReplicationSettings }
 import lerna.akka.entityreplication.model.{ NormalizedShardId, TypeName }
@@ -307,4 +314,19 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
     }
   }
 
+  private def isDisabled: Boolean = settings.raftSettings.disabledShards.contains(shardId)
+
+  override def recovery: Recovery = {
+    if (isDisabled) {
+      Recovery.none
+    } else {
+      Recovery()
+    }
+  }
+
+  override def preStart(): Unit = {
+    if (isDisabled) {
+      context.stop(self)
+    }
+  }
 }

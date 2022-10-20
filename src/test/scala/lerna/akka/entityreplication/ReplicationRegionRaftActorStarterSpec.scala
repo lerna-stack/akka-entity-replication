@@ -74,6 +74,33 @@ final class ReplicationRegionRaftActorStarterSpec
 
     }
 
+    "trigger all actor starts without disabled actor" in {
+      val shardRegionProbe = TestProbe()
+
+      val customSettings = RaftSettings(
+        ConfigFactory
+          .parseString("""
+              |lerna.akka.entityreplication.raft.disabled-shards = ["2"]
+              |""".stripMargin).withFallback(system.settings.config),
+      )
+      val raftActorStarter =
+        spawnRaftActorStarter(shardRegionProbe.ref, Set("1", "2", "3"), customSettings)
+
+      assume(customSettings.raftActorAutoStartNumberOfActors >= 3)
+
+      // The starter will stop at the end of this test.
+      watch(raftActorStarter)
+
+      // The starter should trigger all actor starts without disabled shards.
+      val startedRaftActorIds = (1 to 2).map { _ =>
+        expectStartEntityAndThenAck(shardRegionProbe)
+      }.toSet
+      startedRaftActorIds shouldBe Set("1", "3")
+
+      // The starter should stop itself.
+      expectTerminated(raftActorStarter)
+    }
+
     "retry all actor starts with no ACK" in {
 
       val shardRegionProbe = TestProbe()

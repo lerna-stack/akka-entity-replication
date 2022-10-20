@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.{ ActorRef, Cancellable, Props, Stash }
-import akka.persistence.RuntimePluginConfig
+import akka.persistence.{ Recovery, RuntimePluginConfig }
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ClusterReplication.EntityPropsProvider
 import lerna.akka.entityreplication.ReplicationRegion.Msg
@@ -213,6 +213,22 @@ private[raft] class RaftActor(
   override def snapshotPluginId: String = settings.snapshotStorePluginId
 
   override def snapshotPluginConfig: Config = ConfigFactory.empty()
+
+  private def isDisabled: Boolean = settings.disabledShards.contains(shardId.raw)
+
+  override def recovery: Recovery = {
+    if (isDisabled) {
+      Recovery.none
+    } else {
+      Recovery()
+    }
+  }
+
+  override def preStart(): Unit = {
+    if (isDisabled) {
+      context.stop(self)
+    }
+  }
 
   val numberOfMembers: Int = settings.replicationFactor
 

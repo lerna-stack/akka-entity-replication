@@ -30,6 +30,7 @@ object CommitLogStoreActorSpec {
       |  snapshot-store.plugin = ${PersistenceTestKitSnapshotPlugin.PluginId}
       |  snapshot-every = $snapshotEvery
       |}
+      |lerna.akka.entityreplication.raft.disabled-shards = ["disabled-shard-id"]
       |""".stripMargin)
 
   def config: Config = {
@@ -568,6 +569,11 @@ final class CommitLogStoreActorSpec
       snapshotTestKit.expectNothingPersisted(persistenceId)
     }
 
+    "stop itself when its shard id is defined as disabled" in {
+      val (commitLogStoreActor, _, _) = spawnCommitLogStoreActor(name = Some("disabled-shard-id"))
+      watch(commitLogStoreActor)
+      expectTerminated(commitLogStoreActor)
+    }
   }
 
 }
