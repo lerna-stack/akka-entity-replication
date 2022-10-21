@@ -304,8 +304,15 @@ private[raft] class RaftActor(
           .handleCommittedLogEntriesAndClients { entries =>
             entries.foreach {
               case (logEntry, Some(client)) =>
-                if (log.isDebugEnabled)
-                  log.debug("=== [Leader] committed {} and will notify it to {} ===", logEntry, client)
+                if (log.isDebugEnabled) {
+                  log.debug(
+                    s"=== [${currentState}] Committed event" +
+                    s" (index=[${logEntry.index}], term=[${logEntry.term.term}]," +
+                    s" entityId=[${logEntry.event.entityId.map(_.raw)}]," +
+                    s" type=[${logEntry.event.event.getClass.getName}])" +
+                    s" and sending ReplicationSucceeded to [$client] ===",
+                  )
+                }
                 client.forward(ReplicationSucceeded(logEntry.event.event, logEntry.index, client.instanceId))
               case (logEntry, None) =>
                 // 復旧中の commit or リーダー昇格時に未コミットのログがあった場合の commit
@@ -494,11 +501,27 @@ private[raft] class RaftActor(
     logEntry.event match {
       case EntityEvent(_, NoOp) => // NoOp は replicationActor には関係ないので転送しない
       case EntityEvent(Some(entityId), event) =>
-        if (log.isDebugEnabled) log.debug("=== [{}] applying {} to ReplicationActor ===", currentState, event)
-        replicationActor(entityId) ! Replica(logEntry)
+        val targetReplicationActor = replicationActor(entityId)
+        if (log.isDebugEnabled) {
+          log.debug(
+            s"=== [${currentState}] Sending Replica to apply event" +
+            s" (index=[${logEntry.index}], term=[${logEntry.term.term}]," +
+            s" entityId=[${entityId.raw}]," +
+            s" eventType=[${event.getClass.getName}])" +
+            s" to ReplicationActor [$targetReplicationActor] ===",
+          )
+        }
+        targetReplicationActor ! Replica(logEntry)
       case EntityEvent(None, event) =>
-        if (log.isWarningEnabled)
-          log.warning("=== [{}] {} was not applied, because it is not assigned any entity ===", currentState, event)
+        if (log.isWarningEnabled) {
+          log.warning(
+            "[{}] event [index=[{}], term=[{}], type={}] was not applied, because it is not assigned any entity",
+            currentState,
+            logEntry.index,
+            logEntry.term.term,
+            event.getClass.getName,
+          )
+        }
     }
 
   def handleSnapshotTick(): Unit = {
