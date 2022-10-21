@@ -1,6 +1,8 @@
 package lerna.akka.entityreplication
 
 import akka.Done
+import akka.actor.testkit.typed.scaladsl.LoggingTestKit
+import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
 
 import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ Actor, ActorRef, ActorSelection, DiagnosticActorLogging, Props, RootActorPath, Terminated }
@@ -120,6 +122,7 @@ object ReplicationRegionSpecConfig extends MultiNodeConfig {
       lerna.akka.entityreplication.raft.compaction.log-size-threshold = 2
       lerna.akka.entityreplication.raft.compaction.preserve-log-size = 1
       lerna.akka.entityreplication.raft.compaction.log-size-check-interval = 0.1s
+      lerna.akka.entityreplication.raft.disabled-shards = ["12"]
       """))
       .withValue(
         "lerna.akka.entityreplication.raft.multi-raft-roles",
@@ -332,6 +335,27 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
         clusterReplication ! GetStatusWithEnsuringConsistency(entityId)
         expectMsg(Status(3))
       }
+    }
+
+    "drop all messages sent to disabled shards" in {
+      val typeName = createSeqTypeName()
+
+      runOn(node4, node5, node6) {
+        clusterReplication = createReplication(typeName)
+      }
+      enterBarrier("ReplicationRegion created")
+
+      // "disable-id"'s shard id is "12" and the shard id have been defined as disabled id.
+      val entityId = "disabled-id"
+      runOn(node4) {
+        LoggingTestKit
+          .warn(
+            "Following command had sent to disabled shards was dropped: lerna.akka.entityreplication.ReplicationRegionSpec$DummyReplicationActor$Cmd(shardId=12)",
+          ).expect {
+            clusterReplication ! Cmd(entityId)
+          }(system.toTyped)
+      }
+      enterBarrier("Some command sent")
     }
 
     "Broadcast" when {

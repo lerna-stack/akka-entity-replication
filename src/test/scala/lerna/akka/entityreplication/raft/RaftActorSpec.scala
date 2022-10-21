@@ -2,7 +2,7 @@ package lerna.akka.entityreplication.raft
 
 import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter._
-import akka.actor.{ typed, ActorSystem }
+import akka.actor.{ typed, Actor, ActorSystem, Props }
 import akka.persistence.testkit.scaladsl.PersistenceTestKit
 import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.ConfigFactory
@@ -672,6 +672,42 @@ class RaftActorSpec
 
     }
 
+    "stop itself when its shard id is defined as disabled" in {
+      val shardId = createUniqueShardId()
+      val raftConfig = ConfigFactory
+        .parseString(s"""
+            | lerna.akka.entityreplication.raft.disabled-shards = ["${shardId.raw}"]
+            |""".stripMargin).withFallback(ConfigFactory.load())
+      val ref = system.actorOf(
+        Props(
+          new RaftActor(
+            typeName = defaultTypeName,
+            extractEntityId = {
+              case msg => (NormalizedEntityId.from("dummy"), msg)
+            },
+            replicationActorProps = _ =>
+              Props(new Actor() {
+                override def receive: Receive = {
+                  case message => system.deadLetters forward message
+                }
+              }),
+            _region = TestProbe().ref,
+            shardSnapshotStoreProps = Props(new Actor {
+              override def receive: Receive = {
+                case msg => TestProbe().ref forward msg
+              }
+            }),
+            _selfMemberIndex = createUniqueMemberIndex(),
+            _otherMemberIndexes = Set(),
+            settings = RaftSettings(raftConfig),
+            _commitLogStore = TestProbe().ref,
+          ),
+        ),
+        name = shardId.underlying,
+      )
+      watch(ref)
+      expectTerminated(ref)
+    }
   }
 
 }

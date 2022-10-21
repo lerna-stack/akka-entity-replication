@@ -28,6 +28,8 @@ trait RaftSettings {
 
   def numberOfShards: Int
 
+  def disabledShards: Set[String]
+
   def maxAppendEntriesSize: Int
 
   def maxAppendEntriesBatchSize: Int

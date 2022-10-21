@@ -25,6 +25,7 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.replicationFactor shouldBe 3
       settings.quorumSize shouldBe 2
       settings.numberOfShards shouldBe 100
+      settings.disabledShards shouldBe Set.empty
       settings.maxAppendEntriesSize shouldBe 16
       settings.maxAppendEntriesBatchSize shouldBe 10
       settings.compactionSnapshotCacheTimeToLive shouldBe 10.seconds

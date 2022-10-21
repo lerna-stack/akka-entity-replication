@@ -17,6 +17,7 @@ private[entityreplication] final case class RaftSettingsImpl(
     replicationFactor: Int,
     quorumSize: Int,
     numberOfShards: Int,
+    disabledShards: Set[String],
     maxAppendEntriesSize: Int,
     maxAppendEntriesBatchSize: Int,
     compactionSnapshotCacheTimeToLive: FiniteDuration,
@@ -215,6 +216,8 @@ private[entityreplication] object RaftSettingsImpl {
       s"snapshot-every ($eventSourcedSnapshotEvery) should be greater than 0.",
     )
 
+    val disabledShards: Set[String] = config.getStringList("disabled-shards").asScala.toSet
+
     RaftSettingsImpl(
       config = config,
       electionTimeout = electionTimeout,
@@ -224,6 +227,7 @@ private[entityreplication] object RaftSettingsImpl {
       replicationFactor = replicationFactor,
       quorumSize = quorumSize,
       numberOfShards = numberOfShards,
+      disabledShards = disabledShards,
       maxAppendEntriesSize = maxAppendEntriesSize,
       maxAppendEntriesBatchSize = maxAppendEntriesBatchSize,
       compactionSnapshotCacheTimeToLive = compactionSnapshotCacheTimeToLive,
