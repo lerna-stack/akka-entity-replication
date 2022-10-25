@@ -36,6 +36,8 @@ class ShardSnapshotStoreFailureSpec
   import ShardSnapshotStoreFailureSpec._
 
   private val snapshotTestKit = SnapshotTestKit(system)
+  private val typeName        = TypeName.from("test")
+  private val memberIndex     = MemberIndex("test-role")
 
   override def beforeEach(): Unit = {
     super.beforeEach()
@@ -47,9 +49,9 @@ class ShardSnapshotStoreFailureSpec
     planAutoKill {
       childActorOf(
         ShardSnapshotStore.props(
-          TypeName.from("test"),
+          typeName,
           RaftSettings(system.settings.config),
-          MemberIndex("test-role"),
+          memberIndex,
         ),
       )
     }
@@ -62,10 +64,11 @@ class ShardSnapshotStoreFailureSpec
   "ShardSnapshotStore（読み込みの異常）" should {
 
     "FetchSnapshot に失敗した場合は応答無し（クライアント側でタイムアウトの実装が必要）" in {
-      val entityId           = generateUniqueEntityId()
-      val shardSnapshotStore = createShardSnapshotStore()
+      val entityId                   = generateUniqueEntityId()
+      val shardSnapshotStore         = createShardSnapshotStore()
+      val snapshotStorePersistenceId = SnapshotStore.persistenceId(typeName, entityId, memberIndex)
 
-      snapshotTestKit.failNextRead()
+      snapshotTestKit.failNextRead(snapshotStorePersistenceId)
       shardSnapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
       expectNoMessage()
     }
@@ -74,13 +77,14 @@ class ShardSnapshotStoreFailureSpec
   "ShardSnapshotStore（書き込みの異常）" should {
 
     "SaveSnapshot に失敗した場合は SaveSnapshotFailure が返信される" in {
-      val entityId           = generateUniqueEntityId()
-      val shardSnapshotStore = createShardSnapshotStore()
-      val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
-      val dummyEntityState   = EntityState(DummyState)
-      val snapshot           = EntitySnapshot(metadata, dummyEntityState)
+      val entityId                   = generateUniqueEntityId()
+      val shardSnapshotStore         = createShardSnapshotStore()
+      val snapshotStorePersistenceId = SnapshotStore.persistenceId(typeName, entityId, memberIndex)
+      val metadata                   = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val dummyEntityState           = EntityState(DummyState)
+      val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
 
-      snapshotTestKit.failNextPersisted()
+      snapshotTestKit.failNextPersisted(snapshotStorePersistenceId)
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
       expectMsg(SaveSnapshotFailure(metadata))
     }
