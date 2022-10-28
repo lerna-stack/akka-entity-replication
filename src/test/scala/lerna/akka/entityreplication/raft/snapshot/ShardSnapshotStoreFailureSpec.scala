@@ -109,7 +109,6 @@ class ShardSnapshotStoreFailureSpec
     }
 
     "reply with `SnapshotNotFound` to `FetchSnapshot` if it has no EntitySnapshot and is saving an EntitySnapshot" in {
-      // TODO Change SnapshotStore.savingSnapshot such that this test passes.
       val entityId           = generateUniqueEntityId()
       val shardSnapshotStore = createShardSnapshotStore()
       val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex(1))
@@ -123,7 +122,7 @@ class ShardSnapshotStoreFailureSpec
 
         // Test:
         shardSnapshotStore ! FetchSnapshot(entityId, replyTo = testActor)
-        expectMsg(SnapshotNotFound)
+        expectMsg(SnapshotNotFound(entityId))
       } finally {
         // Cleanup:
         // The succeeding tests will fail unless the promise is fulfilled.
