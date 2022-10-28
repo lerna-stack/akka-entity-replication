@@ -96,8 +96,11 @@ private[entityreplication] class SnapshotStore(
               cmd.entityId,
             )
         case FetchSnapshot(_, replyTo) =>
-          prevSnapshot.foreach { s =>
-            replyTo ! SnapshotProtocol.SnapshotFound(s)
+          prevSnapshot match {
+            case Some(prevSnapshot) =>
+              replyTo ! SnapshotProtocol.SnapshotFound(prevSnapshot)
+            case None =>
+              replyTo ! SnapshotProtocol.SnapshotNotFound(entityId)
           }
       }
     case _: persistence.SaveSnapshotSuccess =>
