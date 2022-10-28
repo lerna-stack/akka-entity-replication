@@ -34,7 +34,7 @@ private[entityreplication] class SnapshotStore(
   import SnapshotProtocol._
 
   override def persistenceId: String =
-    ActorIds.persistenceId("SnapshotStore", typeName.underlying, entityId.underlying, selfMemberIndex.role)
+    SnapshotStore.persistenceId(typeName, entityId, selfMemberIndex)
 
   override def journalPluginId: String = settings.journalPluginId
 
