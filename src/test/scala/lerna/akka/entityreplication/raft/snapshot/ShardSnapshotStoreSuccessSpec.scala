@@ -2,7 +2,7 @@ package lerna.akka.entityreplication.raft.snapshot
 
 import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ ActorRef, ActorSystem, PoisonPill }
-import akka.persistence.testkit.scaladsl.SnapshotTestKit
+import akka.persistence.testkit.scaladsl.{ PersistenceTestKit, SnapshotTestKit }
 import akka.testkit.TestKit
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
@@ -23,6 +23,7 @@ class ShardSnapshotStoreSuccessSpec
   import ShardSnapshotStoreSuccessSpec._
   import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 
+  private val persistenceTestKit     = PersistenceTestKit(system)
   private val snapshotTestKit        = SnapshotTestKit(system)
   private val typeName               = TypeName.from("test")
   private val memberIndex            = MemberIndex("test-role")
@@ -30,6 +31,8 @@ class ShardSnapshotStoreSuccessSpec
 
   override def beforeEach(): Unit = {
     super.beforeEach()
+    persistenceTestKit.clearAll()
+    persistenceTestKit.resetPolicy()
     snapshotTestKit.clearAll()
     snapshotTestKit.resetPolicy()
   }
@@ -44,7 +47,7 @@ class ShardSnapshotStoreSuccessSpec
       val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
 
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
-      snapshotTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+      persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
       expectMsg(SaveSnapshotSuccess(metadata))
     }
 
@@ -57,12 +60,12 @@ class ShardSnapshotStoreSuccessSpec
 
       // Prepare:
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
-      snapshotTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+      persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
       expectMsg(SaveSnapshotSuccess(metadata))
 
       // Test:
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
-      snapshotTestKit.expectNothingPersisted(snapshotStorePersistenceId)
+      persistenceTestKit.expectNothingPersisted(snapshotStorePersistenceId)
       expectMsg(SaveSnapshotSuccess(metadata))
     }
 
@@ -74,7 +77,7 @@ class ShardSnapshotStoreSuccessSpec
       val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
 
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
-      snapshotTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+      persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
       expectMsg(SaveSnapshotSuccess(metadata))
 
       // terminate SnapshotStore
