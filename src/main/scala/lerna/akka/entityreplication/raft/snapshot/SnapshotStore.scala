@@ -33,7 +33,7 @@ private[entityreplication] class SnapshotStore(
     with ActorLogging {
   import SnapshotProtocol._
 
-  private var replayRefCache: Option[ActorRef] = None
+  private var replyRefCache: Option[ActorRef] = None
 
   override def persistenceId: String =
     SnapshotStore.persistenceId(typeName, entityId, selfMemberIndex)
@@ -61,7 +61,7 @@ private[entityreplication] class SnapshotStore(
       )
     }
     super.onPersistFailure(cause, event, seqNr)
-    replayRefCache.fold(
+    replyRefCache.fold(
       if (log.isWarningEnabled) log.warning("missing reply reference - {}", cause.getClass.getCanonicalName),
     )(
       _ ! SaveSnapshotFailure(event.asInstanceOf[EntitySnapshot].metadata),
@@ -93,7 +93,7 @@ private[entityreplication] class SnapshotStore(
       // reduce IO: don't save if same as cached snapshot
       command.replyTo ! SaveSnapshotSuccess(command.snapshot.metadata)
     } else {
-      replayRefCache = Some(command.replyTo)
+      replyRefCache = Some(command.replyTo)
       persistAsync(command.snapshot) { _ =>
         command.replyTo ! SaveSnapshotSuccess(command.snapshot.metadata)
         context.become(hasSnapshot(command.snapshot))
