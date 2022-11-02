@@ -1,5 +1,8 @@
 package lerna.akka.entityreplication.raft.snapshot
 
+import akka.actor.testkit.typed.scaladsl.LoggingTestKit
+import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
+
 import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ ActorRef, ActorSystem, PoisonPill }
 import akka.persistence.testkit.scaladsl.{ PersistenceTestKit, SnapshotTestKit }
@@ -116,6 +119,25 @@ class ShardSnapshotStoreSuccessSpec
       val snapshotStore = lastSender
       watch(snapshotStore)
       expectTerminated(snapshotStore)
+    }
+
+    "save EntitySnapshot as a snapshot per lerna.akka.entityreplication.raft.snapshot-store.snapshot-interval" in {
+      implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
+
+      val entityId                   = generateUniqueEntityId()
+      val shardSnapshotStore         = createShardSnapshotStore()
+      val snapshotStorePersistenceId = SnapshotStore.persistenceId(typeName, entityId, memberIndex)
+      val metadata                   = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
+
+      LoggingTestKit.debug("Saving EntitySnapshot as a snapshot succeeded.").expect {
+        // In this test, lerna.akka.entityreplication.raft.snapshot-store.snapshot-interval = 1
+        shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+        persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+        expectMsg(SaveSnapshotSuccess(metadata))
+
+        snapshotTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+      }
     }
   }
 
