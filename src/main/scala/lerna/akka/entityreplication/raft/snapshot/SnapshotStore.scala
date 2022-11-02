@@ -101,11 +101,11 @@ private[entityreplication] class SnapshotStore(
         }
         context.become(hasSnapshot(command.snapshot))
       }
-      context.become(savingSnapshot(command.replyTo, command.snapshot, prevSnapshot))
+      context.become(savingSnapshot(prevSnapshot))
     }
   }
 
-  def savingSnapshot(replyTo: ActorRef, snapshot: EntitySnapshot, prevSnapshot: Option[EntitySnapshot]): Receive = {
+  def savingSnapshot(prevSnapshot: Option[EntitySnapshot]): Receive = {
     case command: Command =>
       command match {
         case cmd: SaveSnapshot =>

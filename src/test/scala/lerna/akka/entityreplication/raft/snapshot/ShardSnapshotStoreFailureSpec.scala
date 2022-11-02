@@ -114,19 +114,6 @@ class ShardSnapshotStoreFailureSpec
     // Note:
     //   The promise (`processingResultPromise`) must be fulfilled.
     //   The succeeding tests will fail unless the promise is fulfilled.
-    class TimeConsumingWriteSnapshotPolicy extends SnapshotStorage.SnapshotPolicies.PolicyType {
-      val processingResultPromise = Promise[ProcessingResult]()
-      override def tryProcess(persistenceId: String, processingUnit: SnapshotOperation): ProcessingResult = {
-        processingUnit match {
-          case _: WriteSnapshot => processingResultPromise.future.await
-          case _                => ProcessingSuccess
-        }
-      }
-      def trySuccess(): Unit = {
-        processingResultPromise.trySuccess(ProcessingSuccess)
-      }
-    }
-
     class TimeConsumingPersistEventPolicy extends EventStorage.JournalPolicies.PolicyType {
       private val processingResultPromise = Promise[ProcessingResult]()
       override def tryProcess(persistenceId: String, processingUnit: JournalOperation): ProcessingResult = {
