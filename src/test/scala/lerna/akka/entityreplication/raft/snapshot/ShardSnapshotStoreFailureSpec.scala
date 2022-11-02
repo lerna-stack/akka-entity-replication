@@ -84,7 +84,7 @@ class ShardSnapshotStoreFailureSpec
       expectMsg(SaveSnapshotFailure(metadata))
     }
 
-    "output debug log when save EntitySnapshot as a snapshot failed" in {
+    "output warn log when save EntitySnapshot as a snapshot failed" in {
       implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
 
       val entityId                   = generateUniqueEntityId()
@@ -97,7 +97,7 @@ class ShardSnapshotStoreFailureSpec
       snapshotTestKit.failNextPersisted(snapshotStorePersistenceId)
 
       // Test:
-      LoggingTestKit.debug("Saving EntitySnapshot as a snapshot failed.").expect {
+      LoggingTestKit.warn("Saving EntitySnapshot as a snapshot failed.").expect {
         // In this test, lerna.akka.entityreplication.raft.snapshot-store.snapshot-interval = 1
         shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
         persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)

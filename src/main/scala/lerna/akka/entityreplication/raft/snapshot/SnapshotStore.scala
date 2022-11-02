@@ -133,8 +133,8 @@ private[entityreplication] class SnapshotStore(
           log.debug("Saving EntitySnapshot as a snapshot succeeded.")
         }
       case failure: persistence.SaveSnapshotFailure =>
-        if (log.isDebugEnabled) {
-          log.debug(
+        if (log.isWarningEnabled) {
+          log.warning(
             "Saving EntitySnapshot as a snapshot failed. - {}: {}",
             failure.cause.getClass.getCanonicalName,
             failure.cause.getMessage,
