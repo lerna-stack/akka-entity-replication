@@ -96,7 +96,7 @@ private[entityreplication] class SnapshotStore(
       replyRefCache = Some(command.replyTo)
       persistAsync(command.snapshot) { _ =>
         command.replyTo ! SaveSnapshotSuccess(command.snapshot.metadata)
-        if (lastSequenceNr % settings.snapshotStoreSnapshotInterval == 0 && lastSequenceNr != 0) {
+        if (lastSequenceNr % settings.snapshotStoreSnapshotEvery == 0 && lastSequenceNr != 0) {
           saveSnapshot(command.snapshot)
         }
         context.become(hasSnapshot(command.snapshot))

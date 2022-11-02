@@ -98,7 +98,7 @@ class ShardSnapshotStoreFailureSpec
 
       // Test:
       LoggingTestKit.warn("Saving EntitySnapshot as a snapshot failed.").expect {
-        // In this test, lerna.akka.entityreplication.raft.snapshot-store.snapshot-interval = 1
+        // In this test, lerna.akka.entityreplication.raft.snapshot-store.snapshot-every = 1
         shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
         persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
         expectMsg(SaveSnapshotSuccess(metadata))

@@ -50,7 +50,7 @@ trait RaftSettings {
 
   def snapshotSyncMaxSnapshotBatchSize: Int
 
-  def snapshotStoreSnapshotInterval: Int
+  def snapshotStoreSnapshotEvery: Int
 
   def clusterShardingConfig: Config
 

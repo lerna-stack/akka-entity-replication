@@ -121,7 +121,7 @@ class ShardSnapshotStoreSuccessSpec
       expectTerminated(snapshotStore)
     }
 
-    "save EntitySnapshot as a snapshot per lerna.akka.entityreplication.raft.snapshot-store.snapshot-interval" in {
+    "save EntitySnapshot as a snapshot per lerna.akka.entityreplication.raft.snapshot-store.snapshot-every" in {
       implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
 
       val entityId                   = generateUniqueEntityId()
@@ -131,7 +131,7 @@ class ShardSnapshotStoreSuccessSpec
       val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
 
       LoggingTestKit.debug("Saving EntitySnapshot as a snapshot succeeded.").expect {
-        // In this test, lerna.akka.entityreplication.raft.snapshot-store.snapshot-interval = 1
+        // In this test, lerna.akka.entityreplication.raft.snapshot-store.snapshot-every = 1
         shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
         persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
         expectMsg(SaveSnapshotSuccess(metadata))
