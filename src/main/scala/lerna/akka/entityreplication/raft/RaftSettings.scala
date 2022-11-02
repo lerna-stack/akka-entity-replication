@@ -50,6 +50,8 @@ trait RaftSettings {
 
   def snapshotSyncMaxSnapshotBatchSize: Int
 
+  def snapshotStoreSnapshotInterval: Int
+
   def clusterShardingConfig: Config
 
   def raftActorAutoStartFrequency: FiniteDuration
