@@ -96,6 +96,9 @@ private[entityreplication] class SnapshotStore(
       replyRefCache = Some(command.replyTo)
       persistAsync(command.snapshot) { _ =>
         command.replyTo ! SaveSnapshotSuccess(command.snapshot.metadata)
+        if (lastSequenceNr % settings.snapshotStoreSnapshotInterval == 0 && lastSequenceNr != 0) {
+          saveSnapshot(command.snapshot)
+        }
         context.become(hasSnapshot(command.snapshot))
       }
       context.become(savingSnapshot(command.replyTo, command.snapshot, prevSnapshot))
@@ -125,6 +128,18 @@ private[entityreplication] class SnapshotStore(
     message match {
       case ReceiveTimeout =>
         context.stop(self)
+      case _: persistence.SaveSnapshotSuccess =>
+        if (log.isDebugEnabled) {
+          log.debug("Saving EntitySnapshot as a snapshot succeeded.")
+        }
+      case failure: persistence.SaveSnapshotFailure =>
+        if (log.isDebugEnabled) {
+          log.debug(
+            "Saving EntitySnapshot as a snapshot failed. - {}: {}",
+            failure.cause.getClass.getCanonicalName,
+            failure.cause.getMessage,
+          )
+        }
       case _ =>
         super.unhandled(message)
     }
