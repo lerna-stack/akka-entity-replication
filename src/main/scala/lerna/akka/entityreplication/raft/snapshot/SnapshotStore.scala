@@ -17,6 +17,11 @@ private[entityreplication] object SnapshotStore {
       selfMemberIndex: MemberIndex,
   ): Props =
     Props(new SnapshotStore(typeName, entityId, settings, selfMemberIndex))
+
+  /** Returns a persistence ID of SnapshotStore */
+  def persistenceId(typeName: TypeName, entityId: NormalizedEntityId, selfMemberIndex: MemberIndex): String =
+    ActorIds.persistenceId("SnapshotStore", typeName.underlying, entityId.underlying, selfMemberIndex.role)
+
 }
 
 private[entityreplication] class SnapshotStore(
@@ -29,7 +34,7 @@ private[entityreplication] class SnapshotStore(
   import SnapshotProtocol._
 
   override def persistenceId: String =
-    ActorIds.persistenceId("SnapshotStore", typeName.underlying, entityId.underlying, selfMemberIndex.role)
+    SnapshotStore.persistenceId(typeName, entityId, selfMemberIndex)
 
   override def journalPluginId: String = settings.journalPluginId
 
@@ -91,8 +96,11 @@ private[entityreplication] class SnapshotStore(
               cmd.entityId,
             )
         case FetchSnapshot(_, replyTo) =>
-          prevSnapshot.foreach { s =>
-            replyTo ! SnapshotProtocol.SnapshotFound(s)
+          prevSnapshot match {
+            case Some(prevSnapshot) =>
+              replyTo ! SnapshotProtocol.SnapshotFound(prevSnapshot)
+            case None =>
+              replyTo ! SnapshotProtocol.SnapshotNotFound(entityId)
           }
       }
     case _: persistence.SaveSnapshotSuccess =>
