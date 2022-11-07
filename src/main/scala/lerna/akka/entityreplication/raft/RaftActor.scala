@@ -157,6 +157,20 @@ private[raft] class RaftActor(
   import RaftActor._
   import context.dispatcher
 
+  if (settings.stickyLeaders.nonEmpty) {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "`sticky-leaders` is configured: {}. This raft actor's shard id = {} and role = {}",
+        settings.stickyLeaders,
+        shardId.raw,
+        selfMemberIndex.role,
+      )
+      if (settings.stickyLeaders.get(shardId.raw).fold(false)(_ == selfMemberIndex.role)) {
+        log.warning("This raft actor is defined as sticky leader")
+      }
+    }
+  }
+
   protected[this] def shardId: NormalizedShardId = NormalizedShardId.from(self.path)
 
   protected[this] def region: ActorRef = _region
