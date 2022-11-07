@@ -42,17 +42,22 @@ private[raft] trait Candidate { this: RaftActor =>
       log.info("[Candidate] Election timeout at {}. Retrying leader election.", currentData.currentTerm)
     val newTerm = currentData.currentTerm.next()
     cancelElectionTimeoutTimer()
-    broadcast(
-      RequestVote(
-        shardId,
-        newTerm,
-        selfMemberIndex,
-        currentData.replicatedLog.lastLogIndex,
-        currentData.replicatedLog.lastLogTerm,
-      ),
-    ) // TODO: 永続化前に broadcast して問題ないか調べる
-    applyDomainEvent(BegunNewTerm(newTerm)) { _ =>
-      become(Candidate)
+    if (
+      settings.stickyLeaders.isEmpty || settings.stickyLeaders
+        .get(this.shardId.raw).fold(false)(_ == this.selfMemberIndex.role)
+    ) {
+      broadcast(
+        RequestVote(
+          shardId,
+          newTerm,
+          selfMemberIndex,
+          currentData.replicatedLog.lastLogIndex,
+          currentData.replicatedLog.lastLogTerm,
+        ),
+      ) // TODO: 永続化前に broadcast して問題ないか調べる
+      applyDomainEvent(BegunNewTerm(newTerm)) { _ =>
+        become(Candidate)
+      }
     }
   }
 
