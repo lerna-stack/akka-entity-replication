@@ -37,7 +37,7 @@ private[raft] trait Follower { this: RaftActor =>
 
   }
 
-  def receiveElectionTimeout(): Unit = {
+  private[this] def receiveElectionTimeout(): Unit = {
     if (currentData.leaderMember.isEmpty) {
       if (log.isDebugEnabled) log.debug("=== [Follower] election timeout ===")
     } else {
