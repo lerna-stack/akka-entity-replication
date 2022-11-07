@@ -5,6 +5,7 @@ import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
 import akka.persistence.testkit.scaladsl.PersistenceTestKit
 import akka.testkit.{ TestKit, TestProbe }
+import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.ReplicationRegion
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.RaftProtocol._
@@ -200,6 +201,80 @@ class RaftActorFollowerSpec
         assert(getState(follower).stateName == Candidate)
         val stateData = getState(follower).stateData
         assert(stateData.currentTerm == Term(3))
+        assert(stateData.votedFor.isEmpty)
+        assert(stateData.acceptedMembers.isEmpty)
+      }
+    }
+
+    "send RequestVote on ElectionTimeout if it is defined as sticky leader" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val regionProbe         = TestProbe()
+      val configStickyLeader = ConfigFactory
+        .parseString(s"""
+        lerna.akka.entityreplication.raft.sticky-leaders = {
+          "${shardId.raw}" = "${followerMemberIndex.role}"
+        }
+        // electionTimeout がテスト中に自動で発生しないようにする
+        lerna.akka.entityreplication.raft.election-timeout = 999999s""").withFallback(config)
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+        region = regionProbe.ref,
+        settings = RaftSettings(configStickyLeader),
+      )
+      val currentTerm  = Term(2)
+      val followerData = createFollowerData(currentTerm, ReplicatedLog())
+      setState(follower, Follower, followerData)
+
+      // ElectionTimeout triggers that this follower sends a RequestVote.
+      follower ! ElectionTimeout
+      val expectedRequestVote =
+        RequestVote(
+          shardId,
+          term = Term(3),
+          candidate = followerMemberIndex,
+          lastLogIndex = LogEntryIndex(0),
+          lastLogTerm = Term(0),
+        )
+      regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+      awaitAssert {
+        assert(getState(follower).stateName == Candidate)
+        val stateData = getState(follower).stateData
+        assert(stateData.currentTerm == Term(3))
+        assert(stateData.votedFor.isEmpty)
+        assert(stateData.acceptedMembers.isEmpty)
+      }
+    }
+
+    "not send RequestVote on ElectionTimeout if other raft actors are defined as a sticky leader and it's not defined as a sticky leader" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val regionProbe         = TestProbe()
+      val configStickyLeader = ConfigFactory
+        .parseString(s"""
+        lerna.akka.entityreplication.raft.sticky-leaders = {
+          "other-actors-shard-id" = "other-actors-role"
+        }
+        // electionTimeout がテスト中に自動で発生しないようにする
+        lerna.akka.entityreplication.raft.election-timeout = 999999s""").withFallback(config)
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+        region = regionProbe.ref,
+        settings = RaftSettings(configStickyLeader),
+      )
+      val currentTerm  = Term(2)
+      val followerData = createFollowerData(currentTerm, ReplicatedLog())
+      setState(follower, Follower, followerData)
+
+      // ElectionTimeout should not trigger that this follower sends a RequestVote.
+      follower ! ElectionTimeout
+      regionProbe.expectNoMessage()
+      awaitAssert {
+        assert(getState(follower).stateName == Follower)
+        val stateData = getState(follower).stateData
+        assert(stateData.currentTerm == Term(2))
         assert(stateData.votedFor.isEmpty)
         assert(stateData.acceptedMembers.isEmpty)
       }
