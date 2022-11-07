@@ -11,25 +11,7 @@ private[raft] trait Candidate { this: RaftActor =>
   import RaftActor._
 
   def candidateBehavior: Receive = {
-
-    case ElectionTimeout =>
-      if (log.isInfoEnabled)
-        log.info("[Candidate] Election timeout at {}. Retrying leader election.", currentData.currentTerm)
-      val newTerm = currentData.currentTerm.next()
-      cancelElectionTimeoutTimer()
-      broadcast(
-        RequestVote(
-          shardId,
-          newTerm,
-          selfMemberIndex,
-          currentData.replicatedLog.lastLogIndex,
-          currentData.replicatedLog.lastLogTerm,
-        ),
-      ) // TODO: 永続化前に broadcast して問題ないか調べる
-      applyDomainEvent(BegunNewTerm(newTerm)) { _ =>
-        become(Candidate)
-      }
-
+    case ElectionTimeout                                 => receiveElectionTimeout()
     case request: RequestVote                            => receiveRequestVote(request)
     case response: RequestVoteResponse                   => receiveRequestVoteResponse(response)
     case request: AppendEntries                          => receiveAppendEntries(request)
@@ -53,6 +35,25 @@ private[raft] trait Candidate { this: RaftActor =>
     case response: CommitLogStoreActor.AppendCommittedEntriesResponse =>
       receiveAppendCommittedEntriesResponse(response)
 
+  }
+
+  private def receiveElectionTimeout(): Unit = {
+    if (log.isInfoEnabled)
+      log.info("[Candidate] Election timeout at {}. Retrying leader election.", currentData.currentTerm)
+    val newTerm = currentData.currentTerm.next()
+    cancelElectionTimeoutTimer()
+    broadcast(
+      RequestVote(
+        shardId,
+        newTerm,
+        selfMemberIndex,
+        currentData.replicatedLog.lastLogIndex,
+        currentData.replicatedLog.lastLogTerm,
+      ),
+    ) // TODO: 永続化前に broadcast して問題ないか調べる
+    applyDomainEvent(BegunNewTerm(newTerm)) { _ =>
+      become(Candidate)
+    }
   }
 
   private[this] def receiveRequestVote(request: RequestVote): Unit =
