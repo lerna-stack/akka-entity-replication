@@ -11,6 +11,7 @@ import scala.util.Random
 private[entityreplication] final case class RaftSettingsImpl(
     config: Config,
     electionTimeout: FiniteDuration,
+    stickyLeaders: Map[String, String],
     heartbeatInterval: FiniteDuration,
     electionTimeoutMin: Duration,
     multiRaftRoles: Set[String],
@@ -79,6 +80,9 @@ private[entityreplication] object RaftSettingsImpl {
     val config: Config = root.getConfig("lerna.akka.entityreplication.raft")
 
     val electionTimeout: FiniteDuration = config.getDuration("election-timeout").toScala
+
+    val stickyLeaders: Map[String, String] =
+      config.getConfig("sticky-leaders").entrySet.asScala.map(e => e.getKey -> e.getValue.unwrapped().toString).toMap
 
     val heartbeatInterval: FiniteDuration = config.getDuration("heartbeat-interval").toScala
 
@@ -221,6 +225,7 @@ private[entityreplication] object RaftSettingsImpl {
     RaftSettingsImpl(
       config = config,
       electionTimeout = electionTimeout,
+      stickyLeaders = stickyLeaders,
       heartbeatInterval = heartbeatInterval,
       electionTimeoutMin = electionTimeoutMin,
       multiRaftRoles = multiRaftRoles,

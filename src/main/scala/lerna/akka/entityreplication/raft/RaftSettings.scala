@@ -14,6 +14,8 @@ trait RaftSettings {
 
   def electionTimeout: FiniteDuration
 
+  def stickyLeaders: Map[String, String]
+
   private[raft] def randomizedElectionTimeout(): FiniteDuration
 
   def heartbeatInterval: FiniteDuration
