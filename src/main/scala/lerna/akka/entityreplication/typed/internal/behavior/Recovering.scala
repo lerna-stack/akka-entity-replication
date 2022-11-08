@@ -89,6 +89,8 @@ private[entityreplication] class Recovering[Command, Event, State](
                 case Some(snapshot) => snapshot.metadata.logEntryIndex
                 case None           => LogEntryIndex.initial()
               }
+              val replyTo =
+                fetchEntityEventsResponseMapper(command.entitySnapshot)
               if (context.log.isTraceEnabled) {
                 context.log.trace(
                   "[{}] Sending FetchEntityEvents: entityId=[{}], fromIndex=[{}], toIndex=[{}], replyTo=[{}], to=[{}]",
@@ -96,7 +98,7 @@ private[entityreplication] class Recovering[Command, Event, State](
                   setup.replicationId.entityId.raw,
                   snapshotIndex.next(),
                   recoveryIndex,
-                  fetchEntityEventsResponseMapper(command.entitySnapshot),
+                  replyTo,
                   setup.shard,
                 )
               }
@@ -104,7 +106,7 @@ private[entityreplication] class Recovering[Command, Event, State](
                 setup.replicationId.entityId,
                 from = snapshotIndex.next(),
                 to = recoveryIndex,
-                fetchEntityEventsResponseMapper(command.entitySnapshot),
+                replyTo,
               )
               Behaviors.same
             case command: RaftProtocol.RecoveryState =>
