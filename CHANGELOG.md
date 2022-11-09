@@ -7,17 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 [Unreleased]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.1.0...master
 
+### Added
+- Add diagnostic logs
+  [PR#164](https://github.com/lerna-stack/akka-entity-replication/pull/164),
+  [PR#177](https://github.com/lerna-stack/akka-entity-replication/pull/177)
+- Add function extracting shard id from entity id to lerna.akka.entityreplication.typed.ClusterReplication
+  [PR#172](https://github.com/lerna-stack/akka-entity-replication/pull/172)
+- Add function of Disabling raft actor [PR#173](https://github.com/lerna-stack/akka-entity-replication/pull/173)
+
 ### Changed
 - Enhance leader's replication response handling [PR#160](https://github.com/lerna-stack/akka-entity-replication/pull/160)
 - Change event sourcing log level to debug
   [PR#163](https://github.com/lerna-stack/akka-entity-replication/pull/163)
 - ReplicationRegionRaftActorStarter uses its FQCN as its logger name
   [PR178](https://github.com/lerna-stack/akka-entity-replication/pull/178)
-- Add diagnostic logging to CommitLogStoreActor
-  [PR#164](https://github.com/lerna-stack/akka-entity-replication/pull/164)
-- Add function extracting shard id from entity id to lerna.akka.entityreplication.typed.ClusterReplication
-  [PR#172](https://github.com/lerna-stack/akka-entity-replication/pull/172)
-- Add function of Disabling raft actor [PR#173](https://github.com/lerna-stack/akka-entity-replication/pull/173)
 - Add diagnostic info to logs of sending replication results
   [PR#179](https://github.com/lerna-stack/akka-entity-replication/pull/179)
 
