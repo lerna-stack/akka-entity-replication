@@ -742,6 +742,15 @@ private[raft] class RaftActor(
     response match {
       case response: SnapshotSyncManager.SyncSnapshotSucceeded =>
         applyDomainEvent(SnapshotSyncCompleted(response.snapshotLastLogTerm, response.snapshotLastLogIndex)) { _ =>
+          if (log.isInfoEnabled) {
+            log.info(
+              "[{}] Completed snapshot synchronization: srcMemberIndex=[{}], snapshotLastLogTerm=[{}], snapshotLastLogIndex=[{}]",
+              currentState,
+              response.srcMemberIndex,
+              response.snapshotLastLogTerm.term,
+              response.snapshotLastLogIndex,
+            )
+          }
           region ! ReplicationRegion.DeliverTo(
             response.srcMemberIndex,
             InstallSnapshotSucceeded(
@@ -754,6 +763,15 @@ private[raft] class RaftActor(
         }
 
       case response: SnapshotSyncManager.SyncSnapshotAlreadySucceeded =>
+        if (log.isInfoEnabled) {
+          log.info(
+            "[{}] Completed snapshot synchronization already: srcMemberIndex=[{}], snapshotLastLogTerm=[{}], snapshotLastLogIndex=[{}]",
+            currentState,
+            response.srcMemberIndex,
+            response.snapshotLastLogTerm.term,
+            response.snapshotLastLogIndex,
+          )
+        }
         region ! ReplicationRegion.DeliverTo(
           response.srcMemberIndex,
           InstallSnapshotSucceeded(
@@ -764,7 +782,11 @@ private[raft] class RaftActor(
           ),
         )
 
-      case _: SnapshotSyncManager.SyncSnapshotFailed => // ignore
+      case _: SnapshotSyncManager.SyncSnapshotFailed =>
+        // ignore
+        if (log.isWarningEnabled) {
+          log.warning("[{}] Failed snapshot synchronization", currentState)
+        }
     }
 
   private val snapshotSyncManagerName: String = ActorIds.actorName(
@@ -777,7 +799,8 @@ private[raft] class RaftActor(
       // Snapshot updates during compaction will break consistency
       if (log.isInfoEnabled)
         log.info(
-          "Skipping snapshot synchronization because compaction is in progress (remaining: {}/{})",
+          "[{}] Skipping snapshot synchronization because compaction is in progress (remaining: {}/{})",
+          currentState,
           currentData.snapshottingProgress.inProgressEntities.size,
           currentData.snapshottingProgress.inProgressEntities.size + currentData.snapshottingProgress.completedEntities.size,
         )
@@ -796,6 +819,17 @@ private[raft] class RaftActor(
             snapshotSyncManagerName,
           )
         }
+      if (log.isDebugEnabled) {
+        log.debug(
+          s"[${currentState}] Starting snapshot synchronization " +
+          "(srcLatestSnapshotLastLogTerm=[{}], srcLatestSnapshotLastLogIndex=[{}], " +
+          "dstLatestSnapshotLastLogTerm=[{}], dstLatestSnapshotLastLogIndex=[{}])",
+          installSnapshot.srcLatestSnapshotLastLogTerm.term,
+          installSnapshot.srcLatestSnapshotLastLogLogIndex,
+          currentData.lastSnapshotStatus.snapshotLastTerm.term,
+          currentData.lastSnapshotStatus.snapshotLastLogIndex,
+        )
+      }
       snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
         srcLatestSnapshotLastLogTerm = installSnapshot.srcLatestSnapshotLastLogTerm,
         srcLatestSnapshotLastLogIndex = installSnapshot.srcLatestSnapshotLastLogLogIndex,
