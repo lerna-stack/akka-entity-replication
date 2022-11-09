@@ -32,6 +32,8 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
 
   import WaitForReplication._
 
+  override def stateName: String = "WaitForReplication"
+
   private[this] type BehaviorState = WaitForReplicationState[State]
 
   def createBehavior(state: BehaviorState): Behavior[EntityCommand] =
@@ -39,9 +41,20 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
       .receiveMessage[EntityCommand] {
         case command: RaftProtocol.Replica              => receiveReplica(command, state)
         case command: RaftProtocol.ReplicationSucceeded => receiveReplicationSucceeded(command, state)
-        case RaftProtocol.ReplicationFailed             => Ready.behavior(setup, transformReadyState(state)) // Discard side effects
-        case command: RaftProtocol.TakeSnapshot         => receiveTakeSnapshot(command, state.entityState)
+        case RaftProtocol.ReplicationFailed =>
+          if (context.log.isTraceEnabled) {
+            context.log.trace("[{}] Received ReplicationFailed", stateName)
+          }
+          Ready.behavior(setup, transformReadyState(state)) // Discard side effects
+        case command: RaftProtocol.TakeSnapshot => receiveTakeSnapshot(command, state.entityState)
         case command: RaftProtocol.ProcessCommand =>
+          if (context.log.isTraceEnabled) {
+            context.log.trace(
+              "[{}] Stashing ProcessCommand: commandType=[{}]",
+              stateName,
+              command.command.getClass.getName,
+            )
+          }
           setup.stashBuffer.stash(command)
           Behaviors.same
         case _: RaftProtocol.Activate      => Behaviors.unhandled
@@ -51,6 +64,16 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
       }.receiveSignal(setup.onSignal(state.entityState))
 
   private[this] def receiveReplica(command: RaftProtocol.Replica, state: BehaviorState): Behavior[EntityCommand] = {
+    if (context.log.isTraceEnabled) {
+      context.log.trace(
+        "[{}] Received Replica: index=[{}], term=[{}], entityId=[{}], eventType=[{}]",
+        stateName,
+        command.logEntry.index,
+        command.logEntry.term.term,
+        command.logEntry.event.entityId.map(_.raw),
+        command.logEntry.event.event.getClass.getName,
+      )
+    }
     // ReplicatedEntityBehavior can receive Replica message when RaftActor demoted to Follower while replicating an event
     Ready.behavior(
       setup,
@@ -67,6 +90,15 @@ private[entityreplication] class WaitForReplication[Command, Event, State](
       "ReplicationSucceeded received by the Entity should contain a instanceId",
       // Entity sends a Replicate command which contains the instanceId
     )
+    if (context.log.isTraceEnabled) {
+      context.log.trace(
+        "[{}] Received ReplicationSucceeded: index=[{}], instanceId=[{}], eventType=[{}]",
+        stateName,
+        command.logEntryIndex,
+        command.instanceId.map(_.underlying),
+        command.event.getClass.getName,
+      )
+    }
     if (command.instanceId.contains(setup.instanceId)) {
       val event    = EntityEvent(Option(setup.replicationId.entityId), command.event)
       val newState = transformReadyState(state).applyEvent(setup, event.event, command.logEntryIndex)

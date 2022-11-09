@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Add diagnostic logs
   [PR#164](https://github.com/lerna-stack/akka-entity-replication/pull/164),
+  [PR#176](https://github.com/lerna-stack/akka-entity-replication/pull/176),
   [PR#177](https://github.com/lerna-stack/akka-entity-replication/pull/177)
 - Add function extracting shard id from entity id to lerna.akka.entityreplication.typed.ClusterReplication
   [PR#172](https://github.com/lerna-stack/akka-entity-replication/pull/172)
