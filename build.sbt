@@ -2,7 +2,8 @@ import org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings
 
 resolvers += "dnvriend" at "https://dl.bintray.com/dnvriend/maven"
 
-lazy val akkaVersion = "2.6.17"
+lazy val akkaVersion                     = "2.6.17"
+lazy val akkaPersistenceCassandraVersion = "1.0.5"
 
 ThisBuild / scalaVersion := "2.13.4"
 ThisBuild / scalacOptions ++= Seq(
@@ -80,6 +81,30 @@ lazy val lerna = (project in file("."))
         scalapb.gen(flatPackage = true, lenses = false, grpc = false) -> (sourceManaged in Compile).value / "scalapb",
       ),
     // mima
+    mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %% moduleName.value % _).toSet,
+    mimaReportSignatureProblems := true, // check also generic parameters
+  )
+
+lazy val lernaRollbackCassandra = (project in file("rollback-cassandra"))
+  .dependsOn(lerna)
+  .settings(
+    name := "akka-entity-replication-rollback-cassandra",
+    fork in Test := true,
+    parallelExecution in Test := false,
+    javaOptions in Test ++= sbtJavaOptions,
+    libraryDependencies ++= Seq(
+        "com.typesafe.akka" %% "akka-persistence"                    % akkaVersion,
+        "com.typesafe.akka" %% "akka-persistence-query"              % akkaVersion,
+        "com.typesafe.akka" %% "akka-persistence-cassandra"          % akkaPersistenceCassandraVersion,
+        "com.typesafe.akka" %% "akka-persistence-cassandra-launcher" % akkaPersistenceCassandraVersion % Test,
+        "ch.qos.logback"     % "logback-classic"                     % "1.2.3"                         % Test,
+        "org.scalatest"     %% "scalatest"                           % "3.0.9"                         % Test,
+        "com.typesafe.akka" %% "akka-slf4j"                          % akkaVersion                     % Test,
+        "com.typesafe.akka" %% "akka-actor-testkit-typed"            % akkaVersion                     % Test,
+        "com.typesafe.akka" %% "akka-serialization-jackson"          % akkaVersion                     % Test,
+        "org.scalamock"     %% "scalamock"                           % "5.2.0"                         % Test,
+      ),
+    // MiMa
     mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %% moduleName.value % _).toSet,
     mimaReportSignatureProblems := true, // check also generic parameters
   )

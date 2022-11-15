@@ -1,0 +1,12 @@
+<configuration>
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%level\t%logger\t%X{akkaSource}\t%msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <logger name="lerna.akka.entityreplication" level="DEBUG" />
+  <root level="INFO">
+    <appender-ref ref="STDOUT"/>
+  </root>
+</configuration>
