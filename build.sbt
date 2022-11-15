@@ -4,6 +4,26 @@ resolvers += "dnvriend" at "https://dl.bintray.com/dnvriend/maven"
 
 lazy val akkaVersion = "2.6.17"
 
+ThisBuild / scalaVersion := "2.13.4"
+ThisBuild / scalacOptions ++= Seq(
+  "-feature",
+  "-unchecked",
+  "-Xlint",
+  "-Yrangepos",
+  "-Ywarn-unused:imports",
+)
+ThisBuild / scalacOptions ++= sys.props.get("lerna.enable.discipline").map(_ => "-Xfatal-warnings").toSeq
+ThisBuild / scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(scalaVersion.value)
+// https://scalacenter.github.io/scalafix/docs/users/installation.html#sbt
+ThisBuild / semanticdbEnabled := true
+ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
+// doc
+ThisBuild / Compile / doc / autoAPIMappings := true
+ThisBuild / git.remoteRepo := "git@github.com:lerna-stack/akka-entity-replication.git"
+// test coverage
+ThisBuild / coverageMinimum := 80
+ThisBuild / coverageFailOnMinimum := true
+
 lazy val lerna = (project in file("."))
   .enablePlugins(
     MultiJvmPlugin,
@@ -12,23 +32,6 @@ lazy val lerna = (project in file("."))
   )
   .configs(MultiJvm)
   .settings(
-    inThisBuild(
-      List(
-        scalaVersion := "2.13.4",
-        scalacOptions ++= Seq(
-            "-feature",
-            "-unchecked",
-            "-Xlint",
-            "-Yrangepos",
-            "-Ywarn-unused:imports",
-          ),
-        scalacOptions ++= sys.props.get("lerna.enable.discipline").map(_ => "-Xfatal-warnings").toSeq,
-        scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(scalaVersion.value),
-        // https://scalacenter.github.io/scalafix/docs/users/installation.html#sbt
-        semanticdbEnabled := true,
-        semanticdbVersion := scalafixSemanticdb.revision,
-      ),
-    ),
     name := "akka-entity-replication",
     fork in Test := true,
     parallelExecution in Test := false,
@@ -68,12 +71,7 @@ lazy val lerna = (project in file("."))
           ),
       ),
     ),
-    // doc
-    Compile / doc / autoAPIMappings := true,
-    git.remoteRepo := "git@github.com:lerna-stack/akka-entity-replication.git",
     // test-coverage
-    coverageMinimum := 80,
-    coverageFailOnMinimum := true,
     coverageExcludedPackages := Seq(
         "lerna\\.akka\\.entityreplication\\.protobuf\\.msg\\..*",
       ).mkString(";"),
