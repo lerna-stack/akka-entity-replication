@@ -80,6 +80,8 @@ trait RaftSettings {
 
   def eventSourcedSnapshotEvery: Int
 
+  private [entityreplication] def withStickyLeaders(stickyLeaders: Map[String, String]): RaftSettings
+
   private[entityreplication] def withJournalPluginId(pluginId: String): RaftSettings
 
   private[entityreplication] def withSnapshotPluginId(pluginId: String): RaftSettings

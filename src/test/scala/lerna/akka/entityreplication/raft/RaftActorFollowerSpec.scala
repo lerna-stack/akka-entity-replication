@@ -210,18 +210,13 @@ class RaftActorFollowerSpec
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val regionProbe         = TestProbe()
-      val configStickyLeader = ConfigFactory
-        .parseString(s"""
-        lerna.akka.entityreplication.raft.sticky-leaders = {
-          "${shardId.raw}" = "${followerMemberIndex.role}"
-        }
-        // electionTimeout がテスト中に自動で発生しないようにする
-        lerna.akka.entityreplication.raft.election-timeout = 999999s""").withFallback(config)
+      val customSettings =
+        RaftSettings(defaultRaftConfig).withStickyLeaders(Map(shardId.raw -> followerMemberIndex.role))
       val follower = createRaftActor(
         shardId = shardId,
         selfMemberIndex = followerMemberIndex,
         region = regionProbe.ref,
-        settings = RaftSettings(configStickyLeader),
+        settings = customSettings,
       )
       val currentTerm  = Term(2)
       val followerData = createFollowerData(currentTerm, ReplicatedLog())
@@ -251,18 +246,13 @@ class RaftActorFollowerSpec
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val regionProbe         = TestProbe()
-      val configStickyLeader = ConfigFactory
-        .parseString(s"""
-        lerna.akka.entityreplication.raft.sticky-leaders = {
-          "other-actors-shard-id" = "other-actors-role"
-        }
-        // electionTimeout がテスト中に自動で発生しないようにする
-        lerna.akka.entityreplication.raft.election-timeout = 999999s""").withFallback(config)
+      val customSettings =
+        RaftSettings(defaultRaftConfig).withStickyLeaders(Map("other-actors-shard-id" -> "other-actors-role"))
       val follower = createRaftActor(
         shardId = shardId,
         selfMemberIndex = followerMemberIndex,
         region = regionProbe.ref,
-        settings = RaftSettings(configStickyLeader),
+        settings = customSettings,
       )
       val currentTerm  = Term(2)
       val followerData = createFollowerData(currentTerm, ReplicatedLog())

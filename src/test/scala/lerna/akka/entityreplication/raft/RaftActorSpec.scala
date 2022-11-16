@@ -709,18 +709,16 @@ class RaftActorSpec
       expectTerminated(ref)
     }
 
-    "notice warning log when `sticky-learders` is configured" in {
+    "notice warning log when sticky learders are configured" in {
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
-      val raftConfig = ConfigFactory
-        .parseString(s"""
-                        | lerna.akka.entityreplication.raft.sticky-leaders = { "${shardId.raw}" = "${followerMemberIndex.role}" }
-                        |""".stripMargin).withFallback(ConfigFactory.load())
-      LoggingTestKit.warn("`sticky-leaders` is configured").expect {
+      val customSettings =
+        RaftSettings(defaultRaftConfig).withStickyLeaders(Map(shardId.raw -> followerMemberIndex.role))
+      LoggingTestKit.warn("`sticky leaders` are configured").expect {
         createRaftActor(
           shardId = shardId,
           selfMemberIndex = followerMemberIndex,
-          settings = RaftSettings(raftConfig),
+          settings = customSettings,
         )
       }
     }

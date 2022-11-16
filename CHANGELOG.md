@@ -20,7 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Add function of Disabling raft actor [PR#173](https://github.com/lerna-stack/akka-entity-replication/pull/173)
 - Add diagnostic info to logs of sending replication results
   [PR#179](https://github.com/lerna-stack/akka-entity-replication/pull/179)
-- Allow only specific actors defined as a sticky leader to become a leader when `sticky-leaders` is configured
+- Allow only specific actors defined as a sticky leader to become a leader
   [PR#186](https://github.com/lerna-stack/akka-entity-replication/pull/186)
 
 ### Fixed

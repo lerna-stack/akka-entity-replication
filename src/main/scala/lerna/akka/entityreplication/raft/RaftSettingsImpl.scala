@@ -56,6 +56,9 @@ private[entityreplication] final case class RaftSettingsImpl(
       ).asJava
     }
 
+  override private[entityreplication] def withStickyLeaders(stickyLeaders: Map[String, String]) =
+    copy(stickyLeaders = stickyLeaders)
+
   override private[entityreplication] def withJournalPluginId(pluginId: String): RaftSettings =
     copy(journalPluginId = pluginId)
 
@@ -81,8 +84,7 @@ private[entityreplication] object RaftSettingsImpl {
 
     val electionTimeout: FiniteDuration = config.getDuration("election-timeout").toScala
 
-    val stickyLeaders: Map[String, String] =
-      config.getConfig("sticky-leaders").entrySet.asScala.map(e => e.getKey -> e.getValue.unwrapped().toString).toMap
+    val stickyLeaders: Map[String, String] = Map.empty
 
     val heartbeatInterval: FiniteDuration = config.getDuration("heartbeat-interval").toScala
 

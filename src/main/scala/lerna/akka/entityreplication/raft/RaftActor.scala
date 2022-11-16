@@ -160,7 +160,7 @@ private[raft] class RaftActor(
   if (settings.stickyLeaders.nonEmpty) {
     if (log.isWarningEnabled) {
       log.warning(
-        "`sticky-leaders` is configured: {}. This raft actor's shard id = {} and role = {}",
+        "`sticky leaders` are configured: {}. This raft actor's shard id = {} and role = {}",
         settings.stickyLeaders,
         shardId.raw,
         selfMemberIndex.role,

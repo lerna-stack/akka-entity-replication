@@ -217,18 +217,13 @@ class RaftActorCandidateSpec
       val shardId              = createUniqueShardId()
       val candidateMemberIndex = createUniqueMemberIndex()
       val regionProbe          = TestProbe()
-      val configStickyLeader = ConfigFactory
-        .parseString(s"""
-        lerna.akka.entityreplication.raft.sticky-leaders = {
-          "${shardId.raw}" = "${candidateMemberIndex.role}"
-        }
-        // electionTimeout がテスト中に自動で発生しないようにする
-        lerna.akka.entityreplication.raft.election-timeout = 999999s""").withFallback(config)
+      val customSettings =
+        RaftSettings(defaultRaftConfig).withStickyLeaders(Map(shardId.raw -> candidateMemberIndex.role))
       val candidate = createRaftActor(
         shardId = shardId,
         selfMemberIndex = candidateMemberIndex,
         region = regionProbe.ref,
-        settings = RaftSettings(configStickyLeader),
+        settings = customSettings,
       )
       val currentTerm   = Term(2)
       val candidateData = createCandidateData(currentTerm, ReplicatedLog())
@@ -258,18 +253,13 @@ class RaftActorCandidateSpec
       val shardId              = createUniqueShardId()
       val candidateMemberIndex = createUniqueMemberIndex()
       val regionProbe          = TestProbe()
-      val configStickyLeader = ConfigFactory
-        .parseString(s"""
-        lerna.akka.entityreplication.raft.sticky-leaders = {
-          "other-actors-shard-id" = "other-actors-role"
-        }
-        // electionTimeout がテスト中に自動で発生しないようにする
-        lerna.akka.entityreplication.raft.election-timeout = 999999s""").withFallback(config)
+      val customSettings =
+        RaftSettings(defaultRaftConfig).withStickyLeaders(Map("other-actors-shard-id" -> "other-actors-role"))
       val candidate = createRaftActor(
         shardId = shardId,
         selfMemberIndex = candidateMemberIndex,
         region = regionProbe.ref,
-        settings = RaftSettings(configStickyLeader),
+        settings = customSettings,
       )
       val currentTerm   = Term(2)
       val candidateData = createCandidateData(currentTerm, ReplicatedLog())
