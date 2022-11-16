@@ -5,7 +5,6 @@ import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
 import akka.persistence.testkit.scaladsl.PersistenceTestKit
 import akka.testkit.{ TestKit, TestProbe }
-import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.ReplicationRegion
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId }
 import lerna.akka.entityreplication.raft.RaftProtocol._

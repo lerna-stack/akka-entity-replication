@@ -5,16 +5,9 @@ import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
 import akka.persistence.testkit.scaladsl.PersistenceTestKit
 import akka.testkit.{ TestKit, TestProbe }
-import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.ReplicationRegion
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId }
-import lerna.akka.entityreplication.raft.RaftProtocol.{
-  Command,
-  ForwardedCommand,
-  ProcessCommand,
-  Replicate,
-  ReplicationFailed,
-}
+import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
