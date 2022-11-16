@@ -122,7 +122,6 @@ object ReplicationRegionSpecConfig extends MultiNodeConfig {
       lerna.akka.entityreplication.raft.compaction.log-size-threshold = 2
       lerna.akka.entityreplication.raft.compaction.preserve-log-size = 1
       lerna.akka.entityreplication.raft.compaction.log-size-check-interval = 0.1s
-      lerna.akka.entityreplication.raft.disabled-shards = ["12"]
       """))
       .withValue(
         "lerna.akka.entityreplication.raft.multi-raft-roles",
@@ -182,12 +181,15 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
     val raftActorProbe = TestProbe("RaftActor")
 
     @nowarn("msg=method start in class ClusterReplication is deprecated")
-    def createReplication(typeName: String): ActorRef =
+    def createReplication(
+        typeName: String,
+        settings: ClusterReplicationSettings = ClusterReplicationSettings.create(system),
+    ): ActorRef =
       planAutoKill {
         ClusterReplication(system).start(
           typeName = typeName,
           entityProps = DummyReplicationActor.props(entityProbe),
-          settings = ClusterReplicationSettings.create(system),
+          settings = settings,
           extractEntityId = DummyReplicationActor.extractEntityId,
           extractShardId = DummyReplicationActor.extractShardId,
         )
@@ -341,7 +343,11 @@ class ReplicationRegionSpec extends MultiNodeSpec(ReplicationRegionSpecConfig) w
       val typeName = createSeqTypeName()
 
       runOn(node4, node5, node6) {
-        clusterReplication = createReplication(typeName)
+        val customSettings =
+          ClusterReplicationSettings
+            .create(system)
+            .withDisabledShards(Set("12"))
+        clusterReplication = createReplication(typeName, settings = customSettings)
       }
       enterBarrier("ReplicationRegion created")
 

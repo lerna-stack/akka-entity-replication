@@ -55,6 +55,12 @@ class ClusterReplicationSettingsSpec extends WordSpec with Matchers {
       )
     }
 
+    "change value of raftSettings.disabledShards by withDisabledShards" in {
+      val settings    = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
+      val newSettings = settings.withDisabledShards(Set("1", "3"))
+      newSettings.raftSettings.disabledShards should be(Set("1", "3"))
+    }
+
     "change value of raftSettings.journalPluginId by withRaftJournalPluginId" in {
       val settings         = ClusterReplicationSettingsImpl(config, correctClusterRoles.headOption.toSet)
       val expectedPluginId = "new-raft-journal-plugin-id"
