@@ -14,7 +14,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [PR#177](https://github.com/lerna-stack/akka-entity-replication/pull/177)
 - Add function extracting shard id from entity id to lerna.akka.entityreplication.typed.ClusterReplication
   [PR#172](https://github.com/lerna-stack/akka-entity-replication/pull/172)
-- Add function of Disabling raft actor [PR#173](https://github.com/lerna-stack/akka-entity-replication/pull/173)
+- Add function of Disabling raft actor
+  [PR#173](https://github.com/lerna-stack/akka-entity-replication/pull/173),
+  [PR#188](https://github.com/lerna-stack/akka-entity-replication/pull/188)
 
 ### Changed
 - Enhance leader's replication response handling [PR#160](https://github.com/lerna-stack/akka-entity-replication/pull/160)
