@@ -10,7 +10,7 @@ import org.scalatest.concurrent.{ Eventually, ScalaFutures }
 import org.scalatest.{ BeforeAndAfterAll, Matchers, WordSpecLike }
 
 import java.time.ZonedDateTime
-import java.util.concurrent.atomic.{ AtomicInteger, AtomicLong }
+import java.util.concurrent.atomic.AtomicLong
 
 object CassandraSpecBase {
 
