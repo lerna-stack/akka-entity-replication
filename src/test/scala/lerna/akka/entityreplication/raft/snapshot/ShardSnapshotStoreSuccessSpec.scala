@@ -121,12 +121,12 @@ class ShardSnapshotStoreSuccessSpec
       expectTerminated(snapshotStore)
     }
 
-    "save EntitySnapshot as a snapshot per lerna.akka.entityreplication.raft.snapshot-store.snapshot-every" in {
+    "save EntitySnapshot as a snapshot per lerna.akka.entityreplication.raft.entity-snapshot-store.snapshot-every" in {
       implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
 
       val config = ConfigFactory
         .parseString("""
-                       |lerna.akka.entityreplication.raft.snapshot-store.snapshot-every = 1
+                       |lerna.akka.entityreplication.raft.entity-snapshot-store.snapshot-every = 1
                        |""".stripMargin)
         .withFallback(system.settings.config)
       val entityId                   = generateUniqueEntityId()

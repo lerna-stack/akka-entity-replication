@@ -180,11 +180,11 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       }
     }
 
-    "throw an IllegalArgumentException if the given snapshot-store.snapshot-every is less than or equal to 0" in {
+    "throw an IllegalArgumentException if the given entity-snapshot-store.snapshot-every is less than or equal to 0" in {
       {
         val config = ConfigFactory
           .parseString("""
-              |lerna.akka.entityreplication.raft.snapshot-store.snapshot-every = -1
+              |lerna.akka.entityreplication.raft.entity-snapshot-store.snapshot-every = -1
               |""".stripMargin)
           .withFallback(defaultConfig)
         a[IllegalArgumentException] shouldBe thrownBy {
@@ -194,7 +194,7 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       {
         val config = ConfigFactory
           .parseString("""
-              |lerna.akka.entityreplication.raft.snapshot-store.snapshot-every = 0
+              |lerna.akka.entityreplication.raft.entity-snapshot-store.snapshot-every = 0
               |""".stripMargin)
           .withFallback(defaultConfig)
         a[IllegalArgumentException] shouldBe thrownBy {

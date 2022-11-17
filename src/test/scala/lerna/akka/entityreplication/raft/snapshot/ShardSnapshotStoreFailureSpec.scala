@@ -90,7 +90,7 @@ class ShardSnapshotStoreFailureSpec
 
       val config = ConfigFactory
         .parseString("""
-                       |lerna.akka.entityreplication.raft.snapshot-store.snapshot-every = 1
+                       |lerna.akka.entityreplication.raft.entity-snapshot-store.snapshot-every = 1
                        |""".stripMargin)
         .withFallback(system.settings.config)
       val entityId                   = generateUniqueEntityId()
