@@ -258,6 +258,57 @@ Consistency is ensured when it processes operations that can effect outside the 
 The entity will output results base on the consistent up-to-date state even if under the network partitioning. 
 The commands will be fail on one side of the partitioned network to keep consistency.
 
+### Detecting data inconsistencies by Entity Implementation
+
+While akka-entity-replication 2.2.0 or above closes some data inconsistency issues,
+detecting such inconsistency issues by entity implementation is preferred.
+An entity can use the following techniques to detect data inconsistencies:
+
+* To detect an event duplication and miss, use an event number. As the state of the entity, the entity holds the event
+  number (called LastAppliedEventNumber) of the last event the entity applied itself. Furthermore, the entity puts the
+  event number (specifically, LastAppliedEventNumber plus one) to an event. The event handler of the entity verifies
+  that the event has the expected event number (specifically, the event number must be equal to LastAppliedEventNumber
+  plus one). If this verification fails, either an event duplication or miss has happened.
+* To detect an event misdelivery, put the entity ID to an event. The event handler of the entity verifies that the event
+  has the same entity ID as its own. If this verification fails, an event misdelivery has happened.
+
+The following example illustrates how an entity detects data inconsistencies:
+
+```scala
+import lerna.akka.entityreplication.typed._
+
+object MyReplicatedEntity {
+  final case class Command()
+  final case class Event(entityId: String, eventNo: Long)
+  final case class State(lastAppliedEventNo: Long)
+
+  def apply(entityContext: ReplicatedEntityContext[Command]): Behavior[Command] =
+    ReplicatedEntityBehavior[Command, Event, State](
+      entityContext,
+      emptyState = State(lastAppliedEventNo = 0),
+      commandHandler = (state, command) => {
+        if (??? /* the command is not processed yet */) {
+          // Replicate an event as below:
+          //  - To detect an event duplication and miss, put the event number (`state.lastAppliedEventNo + 1`) to the event.
+          //  - To detect an event misdelivery, put the entity ID (`entityContext.entityId`) to the event.
+          Effect.replicate(Event(entityContext.entityId, state.lastAppliedEventNo + 1))
+        } else {
+          // Replicate nothing
+          ???
+        }
+      },
+      eventHandler = (state, event) => {
+        // To detect an event duplication and miss, verifies the event has the expected event number:
+        require(event.eventNo == state.lastAppliedEventNo + 1)
+        // To detect an event misdelivery, verifies the event has the expected entity ID:
+        require(event.entityId == entityContext.entityId)
+        // The next state must set the event number of the event to LastAppliedEventNo:
+        State(event.eventNo)
+      }
+    )
+}
+```
+
 ### Passivation
 
 You can stop entities that are not used to reduce memory consumption.

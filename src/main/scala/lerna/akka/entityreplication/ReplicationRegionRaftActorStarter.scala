@@ -35,6 +35,7 @@ private[entityreplication] object ReplicationRegionRaftActorStarter {
   ): Behavior[Nothing] = {
     Behaviors
       .setup[Command] { context =>
+        context.setLoggerName(this.getClass)
         val (disableIds, enableIds) = ids.partition(settings.disabledShards.contains)
         if (disableIds.nonEmpty) {
           context.log.info(
