@@ -409,6 +409,31 @@ clusterReplication.init(entity)
 
 This is useful when you would like to change the datastore that persists events or snapshots for each type key.
 
+### Disable specific Raft shards
+
+By default, akka-entity-replication enables all Raft shards. You can disable specific Raft shards as the following:
+```scala
+import akka.actor.typed.ActorSystem
+import lerna.akka.entityreplication.typed._
+
+val system: ActorSystem[_] = ???
+val clusterReplication = ClusterReplication(system)
+
+// Settings for disabling Raft shards ("1" and "3")
+val settings =
+  ClusterReplicationSettings(system)
+    .withDisabledShards(Set("1", "3"))
+
+val entity = 
+  ReplicatedEntity(BankAccountBehavior.TypeKey)(entityContext => BankAccountBehavior(entityContext))
+    .withSettings(settings)
+    
+clusterReplication.init(entity)
+```
+
+This disabling is helpful when making the specific Raft shards maintenance mode. Persistent actors (including Raft actors)
+in disabled Raft shards don't start, which enables maintenance tools to write data store directly.
+
 ### Configuration
 
 On the command side, the related settings are defined at `lerna.akka.entityreplication`(except `lerna.akka.entityreplication.raft.eventsourced`) in [reference.conf](/src/main/resources/reference.conf).
