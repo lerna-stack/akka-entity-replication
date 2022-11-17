@@ -63,6 +63,8 @@ private[entityreplication] class Ready[Command, Event, State](
 
   import Ready._
 
+  override def stateName: String = "Ready"
+
   private[this] type BehaviorState = ReadyState[State]
 
   def createBehavior(readyState: BehaviorState): Behavior[EntityCommand] =
@@ -90,6 +92,16 @@ private[entityreplication] class Ready[Command, Event, State](
   }
 
   def receiveReplica(command: RaftProtocol.Replica, state: BehaviorState): Behavior[EntityCommand] = {
+    if (context.log.isTraceEnabled) {
+      context.log.trace(
+        "[{}] Received Replica: index=[{}], term=[{}], entityId=[{}], eventType=[{}]",
+        stateName,
+        command.logEntry.index,
+        command.logEntry.term.term,
+        command.logEntry.event.entityId.map(_.raw),
+        command.logEntry.event.event.getClass.getName,
+      )
+    }
     val logEntry = command.logEntry
     createBehavior(state.applyEvent(setup, logEntry.event.event, logEntry.index))
   }
@@ -116,6 +128,17 @@ private[entityreplication] class Ready[Command, Event, State](
       state: BehaviorState,
       effect: EffectImpl[Event, State],
   ): Behavior[EntityCommand] = {
+    if (context.log.isTraceEnabled) {
+      context.log.trace(
+        "[{}] Sending Replicate: entityId=[{}], instanceId=[{}], eventType=[{}], replyTo=[{}], to=[{}]",
+        stateName,
+        setup.entityContext.entityId,
+        setup.instanceId.underlying,
+        event.getClass.getName,
+        context.self.toClassic,
+        setup.shard,
+      )
+    }
     setup.shard ! RaftProtocol.Replicate(
       event = event,
       replyTo = context.self.toClassic,

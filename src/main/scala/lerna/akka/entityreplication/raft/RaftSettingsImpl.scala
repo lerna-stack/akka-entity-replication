@@ -56,6 +56,9 @@ private[entityreplication] final case class RaftSettingsImpl(
       ).asJava
     }
 
+  override private[entityreplication] def withDisabledShards(disabledShards: Set[String]): RaftSettings =
+    copy(disabledShards = disabledShards)
+
   override private[entityreplication] def withJournalPluginId(pluginId: String): RaftSettings =
     copy(journalPluginId = pluginId)
 
@@ -108,6 +111,8 @@ private[entityreplication] object RaftSettingsImpl {
       numberOfShards > 0,
       s"number-of-shards ($numberOfShards) should be larger than 0",
     )
+
+    val disabledShards: Set[String] = Set.empty
 
     val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
     require(
@@ -222,8 +227,6 @@ private[entityreplication] object RaftSettingsImpl {
       eventSourcedSnapshotEvery > 0,
       s"snapshot-every ($eventSourcedSnapshotEvery) should be greater than 0.",
     )
-
-    val disabledShards: Set[String] = config.getStringList("disabled-shards").asScala.toSet
 
     RaftSettingsImpl(
       config = config,

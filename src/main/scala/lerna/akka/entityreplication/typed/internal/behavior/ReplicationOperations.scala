@@ -19,8 +19,32 @@ private[entityreplication] trait ReplicationOperations[Command, Event, State] {
 
   protected def context: ActorContext[EntityCommand] = setup.context
 
+  /* The state name of a Behavior that executes replication operations.
+   * This state name is only for diagnostic logging.
+   */
+  protected def stateName: String
+
   def receiveTakeSnapshot(command: TakeSnapshot, entityState: State): Behavior[EntityCommand] = {
+    if (context.log.isTraceEnabled) {
+      context.log.trace(
+        "[{}] Received TakeSnapshot: index=[{}], entityId=[{}], replyTo=[{}]",
+        stateName,
+        command.metadata.logEntryIndex,
+        command.metadata.entityId.raw,
+        command.replyTo,
+      )
+    }
     val TakeSnapshot(metadata, replyTo) = command
+    if (context.log.isTraceEnabled) {
+      context.log.trace(
+        "[{}] Sending Snapshot: index=[{}], entityId=[{}], stateType=[{}], to=[{}]",
+        stateName,
+        command.metadata.logEntryIndex,
+        command.metadata.entityId.raw,
+        entityState.getClass.getName,
+        replyTo,
+      )
+    }
     replyTo ! Snapshot(metadata, EntityState(entityState))
     Behaviors.same
   }
