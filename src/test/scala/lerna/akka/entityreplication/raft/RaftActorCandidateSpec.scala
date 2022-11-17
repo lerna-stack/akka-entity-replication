@@ -242,12 +242,12 @@ class RaftActorCandidateSpec
       }
     }
 
-    "not send RequestVote on ElectionTimeout if other raft actors are defined as a sticky leader and it's not defined as a sticky leader" in {
+    "not send RequestVote on ElectionTimeout if another raft actor which belongs same shard is defined as a sticky leader" in {
       val shardId              = createUniqueShardId()
       val candidateMemberIndex = createUniqueMemberIndex()
       val regionProbe          = TestProbe()
       val customSettings =
-        RaftSettings(defaultRaftConfig).withStickyLeaders(Map("other-actors-shard-id" -> "other-actors-role"))
+        RaftSettings(defaultRaftConfig).withStickyLeaders(Map(s"${shardId.raw}" -> "other-actors-role"))
       val candidate = createRaftActor(
         shardId = shardId,
         selfMemberIndex = candidateMemberIndex,

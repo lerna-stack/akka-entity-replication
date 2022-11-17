@@ -44,10 +44,7 @@ private[raft] trait Follower { this: RaftActor =>
       if (log.isWarningEnabled) log.warning("[{}] election timeout. Leader will be changed", currentState)
     }
     cancelElectionTimeoutTimer()
-    if (
-      settings.stickyLeaders.isEmpty || settings.stickyLeaders
-        .get(this.shardId.raw).fold(false)(_ == this.selfMemberIndex.role)
-    ) {
+    if (canBecomeCandidate(this.shardId, this.selfMemberIndex)) {
       requestVote(currentData)
     }
   }
