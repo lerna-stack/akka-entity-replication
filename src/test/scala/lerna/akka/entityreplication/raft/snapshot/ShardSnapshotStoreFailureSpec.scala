@@ -6,6 +6,7 @@ import akka.actor.{ ActorRef, ActorSystem }
 import akka.persistence.testkit.scaladsl.{ PersistenceTestKit, SnapshotTestKit }
 import akka.persistence.testkit._
 import akka.testkit.TestKit
+import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -40,12 +41,12 @@ class ShardSnapshotStoreFailureSpec
     snapshotTestKit.resetPolicy()
   }
 
-  def createShardSnapshotStore(): ActorRef =
+  def createShardSnapshotStore(additionalConfig: Config = ConfigFactory.empty()): ActorRef =
     planAutoKill {
       childActorOf(
         ShardSnapshotStore.props(
           typeName,
-          RaftSettings(system.settings.config),
+          RaftSettings(additionalConfig.withFallback(system.settings.config)),
           memberIndex,
         ),
       )
@@ -87,8 +88,13 @@ class ShardSnapshotStoreFailureSpec
     "output warn log when save EntitySnapshot as a snapshot failed" in {
       implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
 
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.snapshot-store.snapshot-every = 1
+                       |""".stripMargin)
+        .withFallback(system.settings.config)
       val entityId                   = generateUniqueEntityId()
-      val shardSnapshotStore         = createShardSnapshotStore()
+      val shardSnapshotStore         = createShardSnapshotStore(additionalConfig = config)
       val snapshotStorePersistenceId = SnapshotStore.persistenceId(typeName, entityId, memberIndex)
       val metadata                   = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
       val snapshot                   = EntitySnapshot(metadata, EntityState(DummyState))
@@ -98,7 +104,6 @@ class ShardSnapshotStoreFailureSpec
 
       // Test:
       LoggingTestKit.warn("Saving EntitySnapshot as a snapshot failed.").expect {
-        // In this test, lerna.akka.entityreplication.raft.snapshot-store.snapshot-every = 1
         shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
         persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
         expectMsg(SaveSnapshotSuccess(metadata))
