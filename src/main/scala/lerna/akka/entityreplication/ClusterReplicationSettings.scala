@@ -40,6 +40,7 @@ trait ClusterReplicationSettings {
   def selfMemberIndex: MemberIndex
 
   def withStickyLeaders(stickyLeaders: Map[String, String]): ClusterReplicationSettings
+
   def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettings
 
   def withRaftSnapshotPluginId(pluginId: String): ClusterReplicationSettings
