@@ -709,12 +709,12 @@ class RaftActorSpec
       expectTerminated(ref)
     }
 
-    "notice warning log when sticky learders are configured" in {
+    "notice warning log when it is defined as sticky leader" in {
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()
       val customSettings =
         RaftSettings(defaultRaftConfig).withStickyLeaders(Map(shardId.raw -> followerMemberIndex.role))
-      LoggingTestKit.warn("`sticky leaders` are configured").expect {
+      LoggingTestKit.warn("This raft actor is defined as sticky leader").expect {
         createRaftActor(
           shardId = shardId,
           selfMemberIndex = followerMemberIndex,

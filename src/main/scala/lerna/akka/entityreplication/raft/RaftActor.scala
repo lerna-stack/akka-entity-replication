@@ -157,18 +157,15 @@ private[raft] class RaftActor(
   import RaftActor._
   import context.dispatcher
 
-  if (settings.stickyLeaders.nonEmpty) {
-    if (log.isWarningEnabled) {
-      log.warning(
-        "`sticky leaders` are configured: {}. This raft actor's shard id = {} and role = {}",
-        settings.stickyLeaders,
-        shardId.raw,
-        selfMemberIndex.role,
-      )
-      if (settings.stickyLeaders.get(shardId.raw).fold(false)(_ == selfMemberIndex.role)) {
-        log.warning("This raft actor is defined as sticky leader")
-      }
-    }
+  if (settings.stickyLeaders.get(shardId.raw).fold(false)(_ == selfMemberIndex.role) && log.isWarningEnabled) {
+    log.warning(
+      """This raft actor is defined as sticky leader.
+        | shard id = {} , role = {}, stickyLeaders = {}
+        | sticky leaders are not able to failover to other multi-raft-roles. This means that some entities can be unavailable by some failures. Please unset sticky-leaders settings if there is no need.""".stripMargin,
+      shardId.raw,
+      selfMemberIndex.role,
+      settings.stickyLeaders,
+    )
   }
 
   protected def canBecomeCandidate(shardId: NormalizedShardId, memberIndex: MemberIndex): Boolean =
