@@ -674,10 +674,8 @@ class RaftActorSpec
 
     "stop itself when its shard id is defined as disabled" in {
       val shardId = createUniqueShardId()
-      val raftConfig = ConfigFactory
-        .parseString(s"""
-            | lerna.akka.entityreplication.raft.disabled-shards = ["${shardId.raw}"]
-            |""".stripMargin).withFallback(ConfigFactory.load())
+      val raftSettings = RaftSettings(defaultRaftConfig)
+        .withDisabledShards(Set(shardId.raw))
       val ref = system.actorOf(
         Props(
           new RaftActor(
@@ -699,7 +697,7 @@ class RaftActorSpec
             }),
             _selfMemberIndex = createUniqueMemberIndex(),
             _otherMemberIndexes = Set(),
-            settings = RaftSettings(raftConfig),
+            settings = raftSettings,
             _commitLogStore = TestProbe().ref,
           ),
         ),

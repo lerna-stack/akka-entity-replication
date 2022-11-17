@@ -77,12 +77,8 @@ final class ReplicationRegionRaftActorStarterSpec
     "trigger all actor starts without disabled actor" in {
       val shardRegionProbe = TestProbe()
 
-      val customSettings = RaftSettings(
-        ConfigFactory
-          .parseString("""
-              |lerna.akka.entityreplication.raft.disabled-shards = ["2"]
-              |""".stripMargin).withFallback(system.settings.config),
-      )
+      val customSettings = RaftSettings(system.settings.config)
+        .withDisabledShards(Set("2"))
       val raftActorStarter =
         spawnRaftActorStarter(shardRegionProbe.ref, Set("1", "2", "3"), customSettings)
 

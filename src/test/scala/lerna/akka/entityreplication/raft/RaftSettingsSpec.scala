@@ -284,6 +284,13 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       }
     }
 
+    "create new settings using withDisabledShards" in {
+      val settings    = RaftSettings(defaultConfig)
+      val newSettings = settings.withDisabledShards(Set("1", "3"))
+      newSettings.disabledShards shouldNot be(settings.disabledShards)
+      newSettings.disabledShards shouldBe Set("1", "3")
+    }
+
     "create new settings using withJournalPluginId" in {
       val settings    = RaftSettings(defaultConfig)
       val newSettings = settings.withJournalPluginId("new-journal-plugin-id")

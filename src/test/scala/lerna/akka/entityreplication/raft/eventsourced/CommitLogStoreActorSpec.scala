@@ -30,7 +30,6 @@ object CommitLogStoreActorSpec {
       |  snapshot-store.plugin = ${PersistenceTestKitSnapshotPlugin.PluginId}
       |  snapshot-every = $snapshotEvery
       |}
-      |lerna.akka.entityreplication.raft.disabled-shards = ["disabled-shard-id"]
       |""".stripMargin)
 
   def config: Config = {
@@ -86,9 +85,10 @@ final class CommitLogStoreActorSpec
 
   private def spawnCommitLogStoreActor(
       name: Option[String] = None,
+      settings: ClusterReplicationSettings = ClusterReplicationSettings.create(system),
       beforeSpawn: PersistenceId => Unit = _ => {},
   ): (ActorRef, NormalizedShardId, PersistenceId) = {
-    val props         = CommitLogStoreActor.props(typeName, ClusterReplicationSettings.create(system))
+    val props         = CommitLogStoreActor.props(typeName, settings)
     val actorName     = name.getOrElse(UUID.randomUUID().toString)
     val shardId       = NormalizedShardId.from(actorName)
     val persistenceId = CommitLogStoreActor.persistenceId(typeName, shardId.raw)
@@ -570,7 +570,11 @@ final class CommitLogStoreActorSpec
     }
 
     "stop itself when its shard id is defined as disabled" in {
-      val (commitLogStoreActor, _, _) = spawnCommitLogStoreActor(name = Some("disabled-shard-id"))
+      val settings =
+        ClusterReplicationSettings
+          .create(system)
+          .withDisabledShards(Set("disabled-shard-id"))
+      val (commitLogStoreActor, _, _) = spawnCommitLogStoreActor(name = Some("disabled-shard-id"), settings = settings)
       watch(commitLogStoreActor)
       expectTerminated(commitLogStoreActor)
     }
