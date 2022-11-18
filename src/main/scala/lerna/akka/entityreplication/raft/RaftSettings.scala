@@ -14,6 +14,8 @@ trait RaftSettings {
 
   def electionTimeout: FiniteDuration
 
+  def stickyLeaders: Map[String, String]
+
   private[raft] def randomizedElectionTimeout(): FiniteDuration
 
   def heartbeatInterval: FiniteDuration
@@ -84,6 +86,8 @@ trait RaftSettings {
   def eventSourcedSnapshotEvery: Int
 
   private[entityreplication] def withDisabledShards(disabledShards: Set[String]): RaftSettings
+
+  private[entityreplication] def withStickyLeaders(stickyLeaders: Map[String, String]): RaftSettings
 
   private[entityreplication] def withJournalPluginId(pluginId: String): RaftSettings
 

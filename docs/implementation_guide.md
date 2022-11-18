@@ -164,6 +164,31 @@ AtLeastOnceComplete.askTo(
 )
 ```
 
+### Fixing leader actor per shard
+
+By default, all raft actors can become a Leader.
+You can fix a Leader actor per shard by setting a sticky leader.
+Fixing leader actor prevents committed event loss during recovery.
+
+```scala
+import akka.actor.typed.ActorSystem
+import lerna.akka.entityreplication.typed._
+
+val system: ActorSystem[_] = ???
+val clusterReplication = ClusterReplication(system)
+
+// Settings for sticky leader. Only a raft actor which have role "replica-group-1" can become Leader in shard given id "1"
+val settings =
+  ClusterReplicationSettings(system)
+    .withStickyLeaders(Map("1" -> "replica-group-1"))
+
+val entity = 
+  ReplicatedEntity(BankAccountBehavior.TypeKey)(entityContext => BankAccountBehavior(entityContext))
+    .withSettings(settings)
+    
+clusterReplication.init(entity)
+```
+
 ### Configuration
 
 On the command side, the related settings are defined at `lerna.akka.entityreplication`(except `lerna.akka.entityreplication.raft.eventsourced`) in [reference.conf](/src/main/resources/reference.conf).
