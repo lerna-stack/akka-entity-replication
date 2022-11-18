@@ -159,9 +159,7 @@ private[raft] class RaftActor(
 
   if (settings.stickyLeaders.get(shardId.raw).fold(false)(_ == selfMemberIndex.role) && log.isWarningEnabled) {
     log.warning(
-      """This raft actor is defined as sticky leader.
-        | shard id = {} , role = {}, stickyLeaders = {}
-        | sticky leaders are not able to failover to other multi-raft-roles. This means that some entities can be unavailable by some failures. Please unset sticky-leaders settings if there is no need.""".stripMargin,
+      "This raft actor is defined as sticky leader. shard id = {} , role = {}, stickyLeaders = {}. sticky leaders are not able to failover to other multi-raft-roles. This means that some entities can be unavailable by some failures. Please unset sticky-leaders settings if there is no need.",
       shardId.raw,
       selfMemberIndex.role,
       settings.stickyLeaders,
