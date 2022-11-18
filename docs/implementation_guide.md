@@ -164,10 +164,10 @@ AtLeastOnceComplete.askTo(
 )
 ```
 
-### Fixing leader actor every shard
+### Fixing leader actor per shard
 
 By default, all raft actors can become a Leader.
-You can fix a Leader actor every shard by setting a sticky leader.
+You can fix a Leader actor per shard by setting a sticky leader.
 
 ```scala
 import akka.actor.typed.ActorSystem
