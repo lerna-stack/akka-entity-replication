@@ -1,0 +1,2 @@
+# ClusterReplicationSettings should not be extended by users
+ProblemFilters.exclude[ReversedMissingMethodProblem]("lerna.akka.entityreplication.ClusterReplicationSettings.withStickyLeaders")

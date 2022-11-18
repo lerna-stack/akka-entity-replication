@@ -706,6 +706,20 @@ class RaftActorSpec
       watch(ref)
       expectTerminated(ref)
     }
+
+    "notice warning log when it is defined as sticky leader" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val customSettings =
+        RaftSettings(defaultRaftConfig).withStickyLeaders(Map(shardId.raw -> followerMemberIndex.role))
+      LoggingTestKit.warn("This raft actor is defined as sticky leader").expect {
+        createRaftActor(
+          shardId = shardId,
+          selfMemberIndex = followerMemberIndex,
+          settings = customSettings,
+        )
+      }
+    }
   }
 
 }

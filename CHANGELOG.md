@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [PR#179](https://github.com/lerna-stack/akka-entity-replication/pull/179)
 - Persist EntitySnapshot as an event
   [PR#184](https://github.com/lerna-stack/akka-entity-replication/pull/184)
+- Allow only specific actors defined as a sticky leader to become a leader
+  [PR#186](https://github.com/lerna-stack/akka-entity-replication/pull/186)
 
 ### Fixed
 - RaftActor might delete committed entries

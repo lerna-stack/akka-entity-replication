@@ -20,6 +20,7 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       val settings = RaftSettings(defaultConfig)
       settings.config shouldBe defaultConfig.getConfig("lerna.akka.entityreplication.raft")
       settings.electionTimeout shouldBe 750.millis
+      settings.stickyLeaders shouldBe Map.empty
       settings.heartbeatInterval shouldBe 100.millis
       settings.multiRaftRoles shouldBe Set("replica-group-1", "replica-group-2", "replica-group-3")
       settings.replicationFactor shouldBe 3
