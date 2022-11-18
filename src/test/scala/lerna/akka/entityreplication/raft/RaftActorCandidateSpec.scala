@@ -206,6 +206,41 @@ class RaftActorCandidateSpec
       }
     }
 
+    "send RequestVote on ElectionTimeout if a shard which it's belongs to doesn't have a sticky leader" in {
+      val shardId              = createUniqueShardId()
+      val candidateMemberIndex = createUniqueMemberIndex()
+      val regionProbe          = TestProbe()
+      val customSettings       = RaftSettings(defaultRaftConfig).withStickyLeaders(Map.empty)
+      val candidate = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = candidateMemberIndex,
+        region = regionProbe.ref,
+        settings = customSettings,
+      )
+      val currentTerm   = Term(2)
+      val candidateData = createCandidateData(currentTerm, ReplicatedLog())
+      setState(candidate, Candidate, candidateData)
+
+      // ElectionTimeout triggers that this candidate sends a RequestVote.
+      candidate ! ElectionTimeout
+      val expectedRequestVote =
+        RequestVote(
+          shardId,
+          term = Term(3),
+          candidate = candidateMemberIndex,
+          lastLogIndex = LogEntryIndex(0),
+          lastLogTerm = Term(0),
+        )
+      regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+      awaitAssert {
+        assert(getState(candidate).stateName == Candidate)
+        val stateData = getState(candidate).stateData
+        assert(stateData.currentTerm == Term(3))
+        assert(stateData.votedFor.isEmpty)
+        assert(stateData.acceptedMembers.isEmpty)
+      }
+    }
+
     "send RequestVote on ElectionTimeout if it is defined as sticky leader" in {
       val shardId              = createUniqueShardId()
       val candidateMemberIndex = createUniqueMemberIndex()
