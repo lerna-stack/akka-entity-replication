@@ -168,7 +168,7 @@ AtLeastOnceComplete.askTo(
 
 By default, all raft actors can become a Leader.
 You can fix a Leader actor per shard by setting a sticky leader.
-Fixing leader actor prevent committed event loss during recovery.
+Fixing leader actor prevents committed event loss during recovery.
 
 ```scala
 import akka.actor.typed.ActorSystem
