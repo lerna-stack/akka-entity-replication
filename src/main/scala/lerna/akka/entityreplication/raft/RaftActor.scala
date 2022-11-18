@@ -169,8 +169,8 @@ private[raft] class RaftActor(
   private def isStickyLeader: Boolean =
     settings.stickyLeaders.get(this.shardId.raw).fold(false)(_ == this.selfMemberIndex.role)
 
-  protected def canBecomeCandidate(shardId: NormalizedShardId, memberIndex: MemberIndex): Boolean =
-    settings.stickyLeaders.get(shardId.raw).fold(true)(_ == memberIndex.role)
+  protected def canBecomeCandidate: Boolean =
+    settings.stickyLeaders.get(this.shardId.raw).fold(true)(_ == this.selfMemberIndex.role)
 
   protected[this] def shardId: NormalizedShardId = NormalizedShardId.from(self.path)
 

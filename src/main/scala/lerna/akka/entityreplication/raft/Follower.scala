@@ -44,7 +44,7 @@ private[raft] trait Follower { this: RaftActor =>
       if (log.isWarningEnabled) log.warning("[{}] election timeout. Leader will be changed", currentState)
     }
     cancelElectionTimeoutTimer()
-    if (canBecomeCandidate(this.shardId, this.selfMemberIndex)) {
+    if (canBecomeCandidate) {
       requestVote(currentData)
     }
   }

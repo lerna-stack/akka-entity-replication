@@ -42,7 +42,7 @@ private[raft] trait Candidate { this: RaftActor =>
       log.info("[Candidate] Election timeout at {}. Retrying leader election.", currentData.currentTerm)
     val newTerm = currentData.currentTerm.next()
     cancelElectionTimeoutTimer()
-    if (canBecomeCandidate(this.shardId, this.selfMemberIndex)) {
+    if (canBecomeCandidate) {
       broadcast(
         RequestVote(
           shardId,
