@@ -1,0 +1,3 @@
+# typed.ClusterReplicationSettings should not be extended by users
+ProblemFilters.exclude[ReversedMissingMethodProblem]("lerna.akka.entityreplication.typed.ClusterReplicationSettings.withDisabledShards")
+ProblemFilters.exclude[ReversedMissingMethodProblem]("lerna.akka.entityreplication.typed.ClusterReplicationSettings.withStickyLeaders")
