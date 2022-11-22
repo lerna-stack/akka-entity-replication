@@ -5,7 +5,10 @@ import akka.persistence.cassandra.testkit.CassandraLauncher
 import akka.testkit.TestKitBase
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.rollback.cassandra.testkit.FirstTimeBucket
-import lerna.akka.entityreplication.rollback.testkit.PatienceConfigurationForTestKitBase
+import lerna.akka.entityreplication.rollback.testkit.{
+  PatienceConfigurationForTestKitBase,
+  PersistenceInitializationAwaiter,
+}
 import org.scalatest.concurrent.{ Eventually, ScalaFutures }
 import org.scalatest.{ BeforeAndAfterAll, Matchers, WordSpecLike }
 
@@ -75,6 +78,7 @@ abstract class CassandraSpecBase(
     super.beforeAll()
     // NOTE: Cassandra is running until all tests are done.
     CassandraLauncher.main(Array(s"${CassandraSpecBase.CassandraPort}", "true"))
+    PersistenceInitializationAwaiter(system).awaitInit()
   }
 
   private val currentPersistenceId: AtomicLong = new AtomicLong(0)
