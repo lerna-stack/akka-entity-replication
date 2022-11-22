@@ -5,7 +5,10 @@
     </encoder>
   </appender>
 
-  <logger name="lerna.akka.entityreplication" level="DEBUG" />
+  <logger name="com.datastax.oss.driver" level="ERROR" />
+  <logger name="akka" level="ERROR" />
+  <logger name="lerna.akka.entityreplication" level="WARN" />
+  <logger name="lerna.akka.entityreplication.rollback" level="DEBUG" />
   <root level="INFO">
     <appender-ref ref="STDOUT"/>
   </root>
