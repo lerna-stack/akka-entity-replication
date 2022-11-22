@@ -27,6 +27,8 @@ trait ClusterReplicationSettings extends classic.ClusterReplicationSettings {
 
   override def withDisabledShards(disabledShards: Set[String]): ClusterReplicationSettings
 
+  override def withStickyLeaders(stickyLeaders: Map[String, String]): ClusterReplicationSettings
+
   override def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettings
 
   override def withRaftSnapshotPluginId(pluginId: String): ClusterReplicationSettings
