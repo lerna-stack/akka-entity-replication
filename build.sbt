@@ -87,6 +87,8 @@ lazy val lerna = (project in file("."))
 
 lazy val lernaRollbackCassandra = (project in file("rollback-cassandra"))
   .dependsOn(lerna)
+  .enablePlugins(MultiJvmPlugin)
+  .configs(MultiJvm)
   .settings(
     name := "akka-entity-replication-rollback-cassandra",
     fork in Test := true,
@@ -102,8 +104,19 @@ lazy val lernaRollbackCassandra = (project in file("rollback-cassandra"))
         "com.typesafe.akka" %% "akka-slf4j"                          % akkaVersion                     % Test,
         "com.typesafe.akka" %% "akka-actor-testkit-typed"            % akkaVersion                     % Test,
         "com.typesafe.akka" %% "akka-serialization-jackson"          % akkaVersion                     % Test,
+        "com.typesafe.akka" %% "akka-multi-node-testkit"             % akkaVersion                     % Test,
         "org.scalamock"     %% "scalamock"                           % "5.2.0"                         % Test,
       ),
+    inConfig(MultiJvm)(
+      scalafmtConfigSettings
+      ++ scalafixConfigSettings(MultiJvm)
+      ++ Seq(
+        scalatestOptions ++= Seq(
+            "-u",
+            (baseDirectory.value) + "/target/multi-jvm-test-reports",
+          ),
+      ),
+    ),
     // MiMa
     mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %% moduleName.value % _).toSet,
     mimaReportSignatureProblems := true, // check also generic parameters

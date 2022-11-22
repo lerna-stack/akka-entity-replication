@@ -13,3 +13,4 @@ sbt-cache/
 
 # For rollback-cassandra
 rollback-cassandra/.toDelete
+.toDelete
