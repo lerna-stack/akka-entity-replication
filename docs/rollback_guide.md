@@ -132,7 +132,7 @@ clusterReplication.init(entity)
 ## Configure the rollback tool
 
 There are configuration properties for the rollback tool. Refer
-to [reference.conf](../rollback-cassandra/src/main/resources/reference.conf) for details.
+to [reference.conf](../rollback-tool-cassandra/src/main/resources/reference.conf) for details.
 
 You also can configure the rollback tool using the custom configuration object programmatically as below:
 

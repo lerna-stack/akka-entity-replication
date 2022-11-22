@@ -85,12 +85,12 @@ lazy val lerna = (project in file("."))
     mimaReportSignatureProblems := true, // check also generic parameters
   )
 
-lazy val lernaRollbackCassandra = (project in file("rollback-cassandra"))
+lazy val rollbackToolCassandra = (project in file("rollback-tool-cassandra"))
   .dependsOn(lerna)
   .enablePlugins(MultiJvmPlugin)
   .configs(MultiJvm)
   .settings(
-    name := "akka-entity-replication-rollback-cassandra",
+    name := "akka-entity-replication-rollback-tool-cassandra",
     fork in Test := true,
     parallelExecution in Test := false,
     javaOptions in Test ++= sbtJavaOptions,
