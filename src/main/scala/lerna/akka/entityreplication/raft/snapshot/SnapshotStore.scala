@@ -2,7 +2,7 @@ package lerna.akka.entityreplication.raft.snapshot
 
 import akka.actor.{ ActorLogging, ActorRef, Props, ReceiveTimeout }
 import akka.persistence
-import akka.persistence.{ PersistentActor, Recovery, SnapshotSelectionCriteria }
+import akka.persistence.PersistentActor
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.RaftSettings
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -33,6 +33,8 @@ private[entityreplication] class SnapshotStore(
     with ActorLogging {
   import SnapshotProtocol._
 
+  private var replyRefCache: Option[ActorRef] = None
+
   override def persistenceId: String =
     SnapshotStore.persistenceId(typeName, entityId, selfMemberIndex)
 
@@ -42,19 +44,29 @@ private[entityreplication] class SnapshotStore(
 
   context.setReceiveTimeout(settings.compactionSnapshotCacheTimeToLive)
 
-  // SequenceNr is always 0 because SnapshotStore doesn't persist events (only persist snapshots).
-  override def recovery: Recovery =
-    Recovery(
-      toSequenceNr = 0L,
-      fromSnapshot = SnapshotSelectionCriteria(maxSequenceNr = 0L, maxTimestamp = Long.MaxValue),
-    )
-
   override def receiveRecover: Receive = {
+    case snapshot: EntitySnapshot => context.become(hasSnapshot(snapshot))
     case akka.persistence.SnapshotOffer(_, s: EntitySnapshot) =>
       context.become(hasSnapshot(s))
   }
 
   override def receiveCommand: Receive = hasNoSnapshot
+
+  override protected def onPersistFailure(cause: Throwable, event: Any, seqNr: Long): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "Saving snapshot failed - {}: {}",
+        cause.getClass.getCanonicalName,
+        cause.getMessage,
+      )
+    }
+    super.onPersistFailure(cause, event, seqNr)
+    replyRefCache.fold(
+      if (log.isWarningEnabled) log.warning("missing reply reference - {}", cause.getClass.getCanonicalName),
+    )(
+      _ ! SaveSnapshotFailure(event.asInstanceOf[EntitySnapshot].metadata),
+    )
+  }
 
   def hasNoSnapshot: Receive = {
     case command: Command =>
@@ -81,12 +93,19 @@ private[entityreplication] class SnapshotStore(
       // reduce IO: don't save if same as cached snapshot
       command.replyTo ! SaveSnapshotSuccess(command.snapshot.metadata)
     } else {
-      saveSnapshot(command.snapshot)
-      context.become(savingSnapshot(command.replyTo, command.snapshot, prevSnapshot))
+      replyRefCache = Option(command.replyTo)
+      persistAsync(command.snapshot) { _ =>
+        command.replyTo ! SaveSnapshotSuccess(command.snapshot.metadata)
+        if (lastSequenceNr % settings.snapshotStoreSnapshotEvery == 0 && lastSequenceNr != 0) {
+          saveSnapshot(command.snapshot)
+        }
+        context.become(hasSnapshot(command.snapshot))
+      }
+      context.become(savingSnapshot(prevSnapshot))
     }
   }
 
-  def savingSnapshot(replyTo: ActorRef, snapshot: EntitySnapshot, prevSnapshot: Option[EntitySnapshot]): Receive = {
+  def savingSnapshot(prevSnapshot: Option[EntitySnapshot]): Receive = {
     case command: Command =>
       command match {
         case cmd: SaveSnapshot =>
@@ -103,23 +122,24 @@ private[entityreplication] class SnapshotStore(
               replyTo ! SnapshotProtocol.SnapshotNotFound(entityId)
           }
       }
-    case _: persistence.SaveSnapshotSuccess =>
-      replyTo ! SaveSnapshotSuccess(snapshot.metadata)
-      context.become(hasSnapshot(snapshot))
-    case failure: persistence.SaveSnapshotFailure =>
-      if (log.isWarningEnabled)
-        log.warning(
-          "Saving snapshot failed - {}: {}",
-          failure.cause.getClass.getCanonicalName,
-          failure.cause.getMessage,
-        )
-      replyTo ! SaveSnapshotFailure(snapshot.metadata)
   }
 
   override def unhandled(message: Any): Unit =
     message match {
       case ReceiveTimeout =>
         context.stop(self)
+      case _: persistence.SaveSnapshotSuccess =>
+        if (log.isDebugEnabled) {
+          log.debug("Saving EntitySnapshot as a snapshot succeeded.")
+        }
+      case failure: persistence.SaveSnapshotFailure =>
+        if (log.isWarningEnabled) {
+          log.warning(
+            "Saving EntitySnapshot as a snapshot failed. - {}: {}",
+            failure.cause.getClass.getCanonicalName,
+            failure.cause.getMessage,
+          )
+        }
       case _ =>
         super.unhandled(message)
     }
