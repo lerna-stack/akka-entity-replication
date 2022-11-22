@@ -1,8 +1,11 @@
 package lerna.akka.entityreplication.raft.snapshot
 
+import akka.actor.testkit.typed.scaladsl.LoggingTestKit
+import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
+
 import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ ActorRef, ActorSystem, PoisonPill }
-import akka.persistence.testkit.scaladsl.SnapshotTestKit
+import akka.persistence.testkit.scaladsl.{ PersistenceTestKit, SnapshotTestKit }
 import akka.testkit.TestKit
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
@@ -23,6 +26,7 @@ class ShardSnapshotStoreSuccessSpec
   import ShardSnapshotStoreSuccessSpec._
   import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 
+  private val persistenceTestKit     = PersistenceTestKit(system)
   private val snapshotTestKit        = SnapshotTestKit(system)
   private val typeName               = TypeName.from("test")
   private val memberIndex            = MemberIndex("test-role")
@@ -30,6 +34,8 @@ class ShardSnapshotStoreSuccessSpec
 
   override def beforeEach(): Unit = {
     super.beforeEach()
+    persistenceTestKit.clearAll()
+    persistenceTestKit.resetPolicy()
     snapshotTestKit.clearAll()
     snapshotTestKit.resetPolicy()
   }
@@ -44,7 +50,7 @@ class ShardSnapshotStoreSuccessSpec
       val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
 
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
-      snapshotTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+      persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
       expectMsg(SaveSnapshotSuccess(metadata))
     }
 
@@ -57,12 +63,12 @@ class ShardSnapshotStoreSuccessSpec
 
       // Prepare:
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
-      snapshotTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+      persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
       expectMsg(SaveSnapshotSuccess(metadata))
 
       // Test:
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
-      snapshotTestKit.expectNothingPersisted(snapshotStorePersistenceId)
+      persistenceTestKit.expectNothingPersisted(snapshotStorePersistenceId)
       expectMsg(SaveSnapshotSuccess(metadata))
     }
 
@@ -74,7 +80,7 @@ class ShardSnapshotStoreSuccessSpec
       val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
 
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
-      snapshotTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+      persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
       expectMsg(SaveSnapshotSuccess(metadata))
 
       // terminate SnapshotStore
@@ -113,6 +119,29 @@ class ShardSnapshotStoreSuccessSpec
       val snapshotStore = lastSender
       watch(snapshotStore)
       expectTerminated(snapshotStore)
+    }
+
+    "save EntitySnapshot as a snapshot per lerna.akka.entityreplication.raft.entity-snapshot-store.snapshot-every" in {
+      implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
+
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.entity-snapshot-store.snapshot-every = 1
+                       |""".stripMargin)
+        .withFallback(system.settings.config)
+      val entityId                   = generateUniqueEntityId()
+      val shardSnapshotStore         = createShardSnapshotStore(additionalConfig = config)
+      val snapshotStorePersistenceId = SnapshotStore.persistenceId(typeName, entityId, memberIndex)
+      val metadata                   = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
+
+      LoggingTestKit.debug("Saving EntitySnapshot as a snapshot succeeded.").expect {
+        shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+        persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+        expectMsg(SaveSnapshotSuccess(metadata))
+
+        snapshotTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+      }
     }
   }
 

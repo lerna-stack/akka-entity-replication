@@ -2,18 +2,11 @@ package lerna.akka.entityreplication.raft.snapshot
 
 import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
-
-import java.util.concurrent.atomic.AtomicInteger
 import akka.actor.{ ActorRef, ActorSystem }
-import akka.persistence.testkit.scaladsl.SnapshotTestKit
-import akka.persistence.testkit.{
-  ProcessingResult,
-  ProcessingSuccess,
-  SnapshotOperation,
-  SnapshotStorage,
-  WriteSnapshot,
-}
+import akka.persistence.testkit.scaladsl.{ PersistenceTestKit, SnapshotTestKit }
+import akka.persistence.testkit._
 import akka.testkit.TestKit
+import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.model.LogEntryIndex
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -21,6 +14,7 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
 import lerna.akka.entityreplication.testkit.KryoSerializable
 
+import java.util.concurrent.atomic.AtomicInteger
 import scala.concurrent.Promise
 
 object ShardSnapshotStoreFailureSpec {
@@ -34,22 +28,25 @@ class ShardSnapshotStoreFailureSpec
     with ActorSpec {
   import ShardSnapshotStoreFailureSpec._
 
-  private val snapshotTestKit = SnapshotTestKit(system)
-  private val typeName        = TypeName.from("test")
-  private val memberIndex     = MemberIndex("test-role")
+  private val persistenceTestKit = PersistenceTestKit(system)
+  private val snapshotTestKit    = SnapshotTestKit(system)
+  private val typeName           = TypeName.from("test")
+  private val memberIndex        = MemberIndex("test-role")
 
   override def beforeEach(): Unit = {
     super.beforeEach()
+    persistenceTestKit.clearAll()
+    persistenceTestKit.resetPolicy()
     snapshotTestKit.clearAll()
     snapshotTestKit.resetPolicy()
   }
 
-  def createShardSnapshotStore(): ActorRef =
+  def createShardSnapshotStore(additionalConfig: Config = ConfigFactory.empty()): ActorRef =
     planAutoKill {
       childActorOf(
         ShardSnapshotStore.props(
           typeName,
-          RaftSettings(system.settings.config),
+          RaftSettings(additionalConfig.withFallback(system.settings.config)),
           memberIndex,
         ),
       )
@@ -83,9 +80,36 @@ class ShardSnapshotStoreFailureSpec
       val dummyEntityState           = EntityState(DummyState)
       val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
 
-      snapshotTestKit.failNextPersisted(snapshotStorePersistenceId)
+      persistenceTestKit.failNextPersisted(snapshotStorePersistenceId)
       shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
       expectMsg(SaveSnapshotFailure(metadata))
+    }
+
+    "output warn log when save EntitySnapshot as a snapshot failed" in {
+      implicit val typedSystem: akka.actor.typed.ActorSystem[Nothing] = system.toTyped
+
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.entity-snapshot-store.snapshot-every = 1
+                       |""".stripMargin)
+        .withFallback(system.settings.config)
+      val entityId                   = generateUniqueEntityId()
+      val shardSnapshotStore         = createShardSnapshotStore(additionalConfig = config)
+      val snapshotStorePersistenceId = SnapshotStore.persistenceId(typeName, entityId, memberIndex)
+      val metadata                   = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
+      val snapshot                   = EntitySnapshot(metadata, EntityState(DummyState))
+
+      // Prepare:
+      snapshotTestKit.failNextPersisted(snapshotStorePersistenceId)
+
+      // Test:
+      LoggingTestKit.warn("Saving EntitySnapshot as a snapshot failed.").expect {
+        shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
+        persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
+        expectMsg(SaveSnapshotSuccess(metadata))
+
+        snapshotTestKit.expectNothingPersisted(snapshotStorePersistenceId)
+      }
     }
   }
 
@@ -95,12 +119,12 @@ class ShardSnapshotStoreFailureSpec
     // Note:
     //   The promise (`processingResultPromise`) must be fulfilled.
     //   The succeeding tests will fail unless the promise is fulfilled.
-    class TimeConsumingWriteSnapshotPolicy extends SnapshotStorage.SnapshotPolicies.PolicyType {
-      val processingResultPromise = Promise[ProcessingResult]()
-      override def tryProcess(persistenceId: String, processingUnit: SnapshotOperation): ProcessingResult = {
+    class TimeConsumingPersistEventPolicy extends EventStorage.JournalPolicies.PolicyType {
+      private val processingResultPromise = Promise[ProcessingResult]()
+      override def tryProcess(persistenceId: String, processingUnit: JournalOperation): ProcessingResult = {
         processingUnit match {
-          case _: WriteSnapshot => processingResultPromise.future.await
-          case _                => ProcessingSuccess
+          case _: WriteEvents => processingResultPromise.future.await
+          case _              => ProcessingSuccess
         }
       }
       def trySuccess(): Unit = {
@@ -114,10 +138,10 @@ class ShardSnapshotStoreFailureSpec
       val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex(1))
       val snapshot           = EntitySnapshot(metadata, EntityState(DummyState))
 
-      val timeConsumingWriteSnapshotPolicy = new TimeConsumingWriteSnapshotPolicy()
+      val timeConsumingPersistEventPolicy = new TimeConsumingPersistEventPolicy()
       try {
         // Prepare: SnapshotStore is saving the snapshot
-        snapshotTestKit.withPolicy(timeConsumingWriteSnapshotPolicy)
+        persistenceTestKit.withPolicy(timeConsumingPersistEventPolicy)
         shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
 
         // Test:
@@ -126,7 +150,7 @@ class ShardSnapshotStoreFailureSpec
       } finally {
         // Cleanup:
         // The succeeding tests will fail unless the promise is fulfilled.
-        timeConsumingWriteSnapshotPolicy.trySuccess()
+        timeConsumingPersistEventPolicy.trySuccess()
       }
     }
 
@@ -140,10 +164,10 @@ class ShardSnapshotStoreFailureSpec
       shardSnapshotStore ! SaveSnapshot(firstSnapshot, replyTo = testActor)
       expectMsg(SaveSnapshotSuccess(firstSnapshotMetadata))
 
-      val timeConsumingWriteSnapshotPolicy = new TimeConsumingWriteSnapshotPolicy()
+      val timeConsumingPersistEventPolicy = new TimeConsumingPersistEventPolicy()
       try {
         // Prepare: SnapshotStore is saving the second snapshot
-        snapshotTestKit.withPolicy(timeConsumingWriteSnapshotPolicy)
+        persistenceTestKit.withPolicy(timeConsumingPersistEventPolicy)
         val secondSnapshot =
           EntitySnapshot(EntitySnapshotMetadata(entityId, LogEntryIndex(5)), EntityState(DummyState))
         shardSnapshotStore ! SaveSnapshot(secondSnapshot, replyTo = testActor)
@@ -154,7 +178,7 @@ class ShardSnapshotStoreFailureSpec
       } finally {
         // Cleanup:
         // The succeeding tests will fail unless the promise is fulfilled.
-        timeConsumingWriteSnapshotPolicy.trySuccess()
+        timeConsumingPersistEventPolicy.trySuccess()
       }
     }
 
@@ -166,10 +190,10 @@ class ShardSnapshotStoreFailureSpec
       val metadata           = EntitySnapshotMetadata(entityId, LogEntryIndex(1))
       val snapshot           = EntitySnapshot(metadata, EntityState(DummyState))
 
-      val timeConsumingWriteSnapshotPolicy = new TimeConsumingWriteSnapshotPolicy()
+      val timeConsumingPersistEventPolicy = new TimeConsumingPersistEventPolicy()
       try {
         // Prepare: SnapshotStore is saving the snapshot
-        snapshotTestKit.withPolicy(timeConsumingWriteSnapshotPolicy)
+        persistenceTestKit.withPolicy(timeConsumingPersistEventPolicy)
         shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
 
         // Test:
@@ -183,7 +207,7 @@ class ShardSnapshotStoreFailureSpec
       } finally {
         // Cleanup:
         // The succeeding tests will fail unless the promise is fulfilled.
-        timeConsumingWriteSnapshotPolicy.trySuccess()
+        timeConsumingPersistEventPolicy.trySuccess()
       }
     }
 
