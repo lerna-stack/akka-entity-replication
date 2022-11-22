@@ -64,8 +64,8 @@ private[rollback] final class RaftShardRollback(
           .findUpperBound(raftActorId.persistenceId, toTimestamp)
           .map { sequenceNr =>
             log.info(
-              "Calculated RaftActor rollback setup: id=[], to_sequence_nr=[]",
-              raftActorId,
+              "Calculated RaftActor rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
+              raftActorId.persistenceId,
               sequenceNr.fold(0L)(_.value),
             )
             RaftActorRollbackSetup(raftActorId, sequenceNr)
@@ -102,8 +102,8 @@ private[rollback] final class RaftShardRollback(
           .findUpperBound(snapshotStoreId.persistenceId, toTimestamp)
           .map { sequenceNr =>
             log.info(
-              "Calculated SnapshotStore rollback setup: id=[], to_sequence_nr=[]",
-              snapshotStoreId,
+              "Calculated SnapshotStore rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
+              snapshotStoreId.persistenceId,
               sequenceNr.fold(0L)(_.value),
             )
             SnapshotStoreRollbackSetup(snapshotStoreId, sequenceNr)
@@ -130,8 +130,8 @@ private[rollback] final class RaftShardRollback(
           .findUpperBound(snapshotSyncManagerId.persistenceId, toTimestamp)
           .map { sequenceNr =>
             log.info(
-              "Calculated SnapshotSyncManager rollback setup: id=[], to_sequence_nr=[]",
-              snapshotSyncManagerId,
+              "Calculated SnapshotSyncManager rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
+              snapshotSyncManagerId.persistenceId,
               sequenceNr.fold(0L)(_.value),
             )
             SnapshotSyncManagerRollbackSetup(snapshotSyncManagerId, sequenceNr)
@@ -171,16 +171,16 @@ private[rollback] final class RaftShardRollback(
               SequenceNr(logEntryIndex.underlying)
             }
             log.info(
-              "Calculated CommitLogStoreActor rollback setup: id=[], to_sequence_nr=[]",
-              commitLogStoreActorId,
+              "Calculated CommitLogStoreActor rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
+              commitLogStoreActorId.persistenceId,
               sequenceNrOption.fold(0L)(_.value),
             )
             CommitLogStoreActorRollbackSetup(commitLogStoreActorId, sequenceNrOption)
           }
       case None =>
         log.info(
-          "Calculated CommitLogStoreActor rollback setup: id=[], to_sequence_nr=[0]",
-          commitLogStoreActorId,
+          "Calculated CommitLogStoreActor rollback setup: persistence_id=[{}], to_sequence_nr=[0]",
+          commitLogStoreActorId.persistenceId,
         )
         Future.successful(CommitLogStoreActorRollbackSetup(commitLogStoreActorId, None))
     }
