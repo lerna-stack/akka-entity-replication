@@ -18,6 +18,12 @@ private[entityreplication] final case class ClusterReplicationSettingsImpl(
 ) extends ClusterReplicationSettings
     with typed.ClusterReplicationSettings {
 
+  override def withDisabledShards(disabledShards: Set[String]): ClusterReplicationSettings =
+    copy(raftSettings = raftSettings.withDisabledShards(disabledShards))
+
+  override def withStickyLeaders(stickyLeaders: Map[String, String]): ClusterReplicationSettingsImpl =
+    copy(raftSettings = raftSettings.withStickyLeaders(stickyLeaders))
+
   override def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettingsImpl =
     copy(raftSettings = raftSettings.withJournalPluginId(pluginId))
 

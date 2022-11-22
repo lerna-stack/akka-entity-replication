@@ -205,6 +205,105 @@ class RaftActorFollowerSpec
       }
     }
 
+    "send RequestVote on ElectionTimeout if a shard which it's belongs to doesn't have a sticky leader" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val regionProbe         = TestProbe()
+      val customSettings      = RaftSettings(defaultRaftConfig).withStickyLeaders(Map.empty)
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+        region = regionProbe.ref,
+        settings = customSettings,
+      )
+      val currentTerm  = Term(2)
+      val followerData = createFollowerData(currentTerm, ReplicatedLog())
+      setState(follower, Follower, followerData)
+
+      // ElectionTimeout triggers that this follower sends a RequestVote.
+      follower ! ElectionTimeout
+      val expectedRequestVote =
+        RequestVote(
+          shardId,
+          term = Term(3),
+          candidate = followerMemberIndex,
+          lastLogIndex = LogEntryIndex(0),
+          lastLogTerm = Term(0),
+        )
+      regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+      awaitAssert {
+        assert(getState(follower).stateName == Candidate)
+        val stateData = getState(follower).stateData
+        assert(stateData.currentTerm == Term(3))
+        assert(stateData.votedFor.isEmpty)
+        assert(stateData.acceptedMembers.isEmpty)
+      }
+    }
+
+    "send RequestVote on ElectionTimeout if it is defined as sticky leader" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val regionProbe         = TestProbe()
+      val customSettings =
+        RaftSettings(defaultRaftConfig).withStickyLeaders(Map(shardId.raw -> followerMemberIndex.role))
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+        region = regionProbe.ref,
+        settings = customSettings,
+      )
+      val currentTerm  = Term(2)
+      val followerData = createFollowerData(currentTerm, ReplicatedLog())
+      setState(follower, Follower, followerData)
+
+      // ElectionTimeout triggers that this follower sends a RequestVote.
+      follower ! ElectionTimeout
+      val expectedRequestVote =
+        RequestVote(
+          shardId,
+          term = Term(3),
+          candidate = followerMemberIndex,
+          lastLogIndex = LogEntryIndex(0),
+          lastLogTerm = Term(0),
+        )
+      regionProbe.expectMsg(ReplicationRegion.Broadcast(expectedRequestVote))
+      awaitAssert {
+        assert(getState(follower).stateName == Candidate)
+        val stateData = getState(follower).stateData
+        assert(stateData.currentTerm == Term(3))
+        assert(stateData.votedFor.isEmpty)
+        assert(stateData.acceptedMembers.isEmpty)
+      }
+    }
+
+    "not send RequestVote on ElectionTimeout if another raft actor which belongs same shard is defined as a sticky leader" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val regionProbe         = TestProbe()
+      val customSettings =
+        RaftSettings(defaultRaftConfig).withStickyLeaders(Map(s"${shardId.raw}" -> "other-actors-role"))
+      val follower = createRaftActor(
+        shardId = shardId,
+        selfMemberIndex = followerMemberIndex,
+        region = regionProbe.ref,
+        settings = customSettings,
+      )
+      val currentTerm  = Term(2)
+      val followerData = createFollowerData(currentTerm, ReplicatedLog())
+      setState(follower, Follower, followerData)
+
+      // ElectionTimeout should not trigger that this follower sends a RequestVote.
+      follower ! ElectionTimeout
+      regionProbe.expectNoMessage()
+      awaitAssert {
+        assert(getState(follower).stateName == Follower)
+        val stateData = getState(follower).stateData
+        assert(stateData.currentTerm == Term(2))
+        assert(stateData.votedFor.isEmpty)
+        assert(stateData.acceptedMembers.isEmpty)
+      }
+    }
+
     "自分が持っている Term と同じ場合は AppendEntries を成功させる" in {
       val shardId             = createUniqueShardId()
       val followerMemberIndex = createUniqueMemberIndex()

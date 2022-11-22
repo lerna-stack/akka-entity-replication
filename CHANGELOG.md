@@ -10,10 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - Add diagnostic logs
   [PR#164](https://github.com/lerna-stack/akka-entity-replication/pull/164),
+  [PR#176](https://github.com/lerna-stack/akka-entity-replication/pull/176),
   [PR#177](https://github.com/lerna-stack/akka-entity-replication/pull/177)
 - Add function extracting shard id from entity id to lerna.akka.entityreplication.typed.ClusterReplication
   [PR#172](https://github.com/lerna-stack/akka-entity-replication/pull/172)
-- Add function of Disabling raft actor [PR#173](https://github.com/lerna-stack/akka-entity-replication/pull/173)
+- Add function of Disabling raft actor
+  [PR#173](https://github.com/lerna-stack/akka-entity-replication/pull/173),
+  [PR#188](https://github.com/lerna-stack/akka-entity-replication/pull/188)
 - Add a rollback tool for Raft shard [PR#187](https://github.com/lerna-stack/akka-entity-replication/pull/187)
 
 ### Changed
@@ -24,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [PR178](https://github.com/lerna-stack/akka-entity-replication/pull/178)
 - Add diagnostic info to logs of sending replication results
   [PR#179](https://github.com/lerna-stack/akka-entity-replication/pull/179)
+- Allow only specific actors defined as a sticky leader to become a leader
+  [PR#186](https://github.com/lerna-stack/akka-entity-replication/pull/186)
 
 ### Fixed
 - RaftActor might delete committed entries

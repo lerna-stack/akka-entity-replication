@@ -20,6 +20,7 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       val settings = RaftSettings(defaultConfig)
       settings.config shouldBe defaultConfig.getConfig("lerna.akka.entityreplication.raft")
       settings.electionTimeout shouldBe 750.millis
+      settings.stickyLeaders shouldBe Map.empty
       settings.heartbeatInterval shouldBe 100.millis
       settings.multiRaftRoles shouldBe Set("replica-group-1", "replica-group-2", "replica-group-3")
       settings.replicationFactor shouldBe 3
@@ -281,6 +282,13 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       a[IllegalArgumentException] shouldBe thrownBy {
         RaftSettings(config)
       }
+    }
+
+    "create new settings using withDisabledShards" in {
+      val settings    = RaftSettings(defaultConfig)
+      val newSettings = settings.withDisabledShards(Set("1", "3"))
+      newSettings.disabledShards shouldNot be(settings.disabledShards)
+      newSettings.disabledShards shouldBe Set("1", "3")
     }
 
     "create new settings using withJournalPluginId" in {

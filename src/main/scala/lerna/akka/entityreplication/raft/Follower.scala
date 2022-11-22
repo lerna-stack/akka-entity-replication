@@ -12,15 +12,7 @@ private[raft] trait Follower { this: RaftActor =>
   import RaftActor._
 
   def followerBehavior: Receive = {
-
-    case ElectionTimeout =>
-      if (currentData.leaderMember.isEmpty) {
-        if (log.isDebugEnabled) log.debug("=== [Follower] election timeout ===")
-      } else {
-        if (log.isWarningEnabled) log.warning("[{}] election timeout. Leader will be changed", currentState)
-      }
-      requestVote(currentData)
-
+    case ElectionTimeout                                 => receiveElectionTimeout()
     case request: RequestVote                            => receiveRequestVote(request)
     case request: AppendEntries                          => receiveAppendEntries(request)
     case request: InstallSnapshot                        => receiveInstallSnapshot(request)
@@ -43,6 +35,18 @@ private[raft] trait Follower { this: RaftActor =>
     case response: CommitLogStoreActor.AppendCommittedEntriesResponse =>
       receiveAppendCommittedEntriesResponse(response)
 
+  }
+
+  private[this] def receiveElectionTimeout(): Unit = {
+    if (currentData.leaderMember.isEmpty) {
+      if (log.isDebugEnabled) log.debug("=== [Follower] election timeout ===")
+    } else {
+      if (log.isWarningEnabled) log.warning("[{}] election timeout. Leader will be changed", currentState)
+    }
+    cancelElectionTimeoutTimer()
+    if (canBecomeCandidate) {
+      requestVote(currentData)
+    }
   }
 
   private[this] def receiveRequestVote(request: RequestVote): Unit =
@@ -150,7 +154,6 @@ private[raft] trait Follower { this: RaftActor =>
 
   private[this] def requestVote(data: RaftMemberData): Unit = {
     val newTerm = data.currentTerm.next()
-    cancelElectionTimeoutTimer()
     broadcast(
       RequestVote(shardId, newTerm, selfMemberIndex, data.replicatedLog.lastLogIndex, data.replicatedLog.lastLogTerm),
     ) // TODO: 永続化前に broadcast して問題ないか調べる

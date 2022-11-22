@@ -14,6 +14,8 @@ trait RaftSettings {
 
   def electionTimeout: FiniteDuration
 
+  def stickyLeaders: Map[String, String]
+
   private[raft] def randomizedElectionTimeout(): FiniteDuration
 
   def heartbeatInterval: FiniteDuration
@@ -28,6 +30,11 @@ trait RaftSettings {
 
   def numberOfShards: Int
 
+  /** Shard IDs of Raft actors to disable
+    *
+    * The default value is `Set.empty`, which means no RaftActors are disabled. This value is not loaded from the config
+    * to preventing stopping RaftActors across all type names. It only can be changed via [[withDisabledShards]].
+    */
   def disabledShards: Set[String]
 
   def maxAppendEntriesSize: Int
@@ -77,6 +84,10 @@ trait RaftSettings {
   def eventSourcedSnapshotStorePluginId: String
 
   def eventSourcedSnapshotEvery: Int
+
+  private[entityreplication] def withDisabledShards(disabledShards: Set[String]): RaftSettings
+
+  private[entityreplication] def withStickyLeaders(stickyLeaders: Map[String, String]): RaftSettings
 
   private[entityreplication] def withJournalPluginId(pluginId: String): RaftSettings
 

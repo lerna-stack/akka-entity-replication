@@ -674,10 +674,8 @@ class RaftActorSpec
 
     "stop itself when its shard id is defined as disabled" in {
       val shardId = createUniqueShardId()
-      val raftConfig = ConfigFactory
-        .parseString(s"""
-            | lerna.akka.entityreplication.raft.disabled-shards = ["${shardId.raw}"]
-            |""".stripMargin).withFallback(ConfigFactory.load())
+      val raftSettings = RaftSettings(defaultRaftConfig)
+        .withDisabledShards(Set(shardId.raw))
       val ref = system.actorOf(
         Props(
           new RaftActor(
@@ -699,7 +697,7 @@ class RaftActorSpec
             }),
             _selfMemberIndex = createUniqueMemberIndex(),
             _otherMemberIndexes = Set(),
-            settings = RaftSettings(raftConfig),
+            settings = raftSettings,
             _commitLogStore = TestProbe().ref,
           ),
         ),
@@ -707,6 +705,20 @@ class RaftActorSpec
       )
       watch(ref)
       expectTerminated(ref)
+    }
+
+    "notice warning log when it is defined as sticky leader" in {
+      val shardId             = createUniqueShardId()
+      val followerMemberIndex = createUniqueMemberIndex()
+      val customSettings =
+        RaftSettings(defaultRaftConfig).withStickyLeaders(Map(shardId.raw -> followerMemberIndex.role))
+      LoggingTestKit.warn("This raft actor is defined as sticky leader").expect {
+        createRaftActor(
+          shardId = shardId,
+          selfMemberIndex = followerMemberIndex,
+          settings = customSettings,
+        )
+      }
     }
   }
 

@@ -11,6 +11,7 @@ import scala.util.Random
 private[entityreplication] final case class RaftSettingsImpl(
     config: Config,
     electionTimeout: FiniteDuration,
+    stickyLeaders: Map[String, String],
     heartbeatInterval: FiniteDuration,
     electionTimeoutMin: Duration,
     multiRaftRoles: Set[String],
@@ -55,6 +56,12 @@ private[entityreplication] final case class RaftSettingsImpl(
       ).asJava
     }
 
+  override private[entityreplication] def withDisabledShards(disabledShards: Set[String]): RaftSettings =
+    copy(disabledShards = disabledShards)
+
+  override private[entityreplication] def withStickyLeaders(stickyLeaders: Map[String, String]) =
+    copy(stickyLeaders = stickyLeaders)
+
   override private[entityreplication] def withJournalPluginId(pluginId: String): RaftSettings =
     copy(journalPluginId = pluginId)
 
@@ -79,6 +86,8 @@ private[entityreplication] object RaftSettingsImpl {
     val config: Config = root.getConfig("lerna.akka.entityreplication.raft")
 
     val electionTimeout: FiniteDuration = config.getDuration("election-timeout").toScala
+
+    val stickyLeaders: Map[String, String] = Map.empty
 
     val heartbeatInterval: FiniteDuration = config.getDuration("heartbeat-interval").toScala
 
@@ -107,6 +116,8 @@ private[entityreplication] object RaftSettingsImpl {
       numberOfShards > 0,
       s"number-of-shards ($numberOfShards) should be larger than 0",
     )
+
+    val disabledShards: Set[String] = Set.empty
 
     val maxAppendEntriesSize: Int = config.getInt("max-append-entries-size")
     require(
@@ -216,11 +227,10 @@ private[entityreplication] object RaftSettingsImpl {
       s"snapshot-every ($eventSourcedSnapshotEvery) should be greater than 0.",
     )
 
-    val disabledShards: Set[String] = config.getStringList("disabled-shards").asScala.toSet
-
     RaftSettingsImpl(
       config = config,
       electionTimeout = electionTimeout,
+      stickyLeaders = stickyLeaders,
       heartbeatInterval = heartbeatInterval,
       electionTimeoutMin = electionTimeoutMin,
       multiRaftRoles = multiRaftRoles,
