@@ -25,6 +25,10 @@ trait ClusterReplicationSettings extends classic.ClusterReplicationSettings {
    * This trait allows us to use type API by just importing lerna.akka.entityreplication.typed_.
    */
 
+  override def withDisabledShards(disabledShards: Set[String]): ClusterReplicationSettings
+
+  override def withStickyLeaders(stickyLeaders: Map[String, String]): ClusterReplicationSettings
+
   override def withRaftJournalPluginId(pluginId: String): ClusterReplicationSettings
 
   override def withRaftSnapshotPluginId(pluginId: String): ClusterReplicationSettings
