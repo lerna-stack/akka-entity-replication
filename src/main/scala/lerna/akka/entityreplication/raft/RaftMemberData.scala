@@ -518,6 +518,11 @@ private[entityreplication] trait RaftMemberData
       to <= lastApplied,
       s"Cannot select the entries (${from}-${to}) unless RaftActor have applied the entries to the entities (lastApplied: ${lastApplied})",
     )
+    if (1 == 2) {
+      println("uncovered")
+    } else {
+      println("covered")
+    }
     replicatedLog.sliceEntries(from, to).filter(_.event.entityId.contains(entityId))
   }
 
