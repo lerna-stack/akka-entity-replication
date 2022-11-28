@@ -62,6 +62,37 @@ For more information on how to implement an application using this library, plea
 **NOTE**: It is highly recommended that you carefully do cluster operations.
 For more details, please refer to [Operation Guide](docs/operation_guide.md).
 
+## Rollback tool
+Rollback tool `akka-entity-replication-rollback-tool-cassandra` is helpful for rolling back Raft shards of akka-entity-replication.
+You can use this rollback tool if your application uses [Akka Persistence Cassandra](https://doc.akka.io/docs/akka-persistence-cassandra/1.0.5/).
+Add the following likes to your `build.sbt` file to use this rollback tool:
+
+**Stable Release**
+
+[![Maven Central](https://img.shields.io/maven-central/v/com.lerna-stack/akka-entity-replication-rollback-tool-cassandra_2.13?color=%23005cb2&label=stable)](https://mvnrepository.com/artifact/com.lerna-stack/akka-entity-replication-rollback-tool-cassandra) 
+
+```scala
+libraryDependencies += "com.lerna-stack" %% "akka-entity-replication-rollback-tool-cassandra" % "X.X.X"
+```
+
+**Unstable Release (SNAPSHOT)**
+
+[![Sonatype Nexus (Snapshots)](https://img.shields.io/nexus/s/com.lerna-stack/akka-entity-replication-rollback-tool-cassandra_2.13?color=%237B1FA2&label=unstable&server=https%3A%2F%2Foss.sonatype.org)](https://oss.sonatype.org/index.html#nexus-search;gav~com.lerna-stack~akka-entity-replication-rollback-tool-cassandra_*~~~)
+
+```scala
+resolvers += Resolver.sonatypeRepo("snapshots")  // If you use SNAPSHOT, you need to refer to Sonatype
+
+libraryDependencies += "com.lerna-stack" %% "akka-entity-replication-rollback-tool-cassandra" % "X.X.X-SNAPSHOT"
+```
+
+Please refer to [Rollback Guide](docs/rollback_guide.md) for more details.
+
+Since the rollback tool depends on some internal APIs, it is recommended that you use the following versions to avoid binary compatibility issues:
+- The same version of akka-entity-replication as the one your application uses
+- The same version of akka-persistence-cassandra as the one on which this rollback tool depends
+
+Please see `build.sbt` for reviewing the library versions on which this rollback tool depends on.
+
 ## For Contributors
 
 [CONTRIBUTING](CONTRIBUTING.md) may help us.
