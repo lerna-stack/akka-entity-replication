@@ -21,7 +21,7 @@ ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
 ThisBuild / Compile / doc / autoAPIMappings := true
 ThisBuild / git.remoteRepo := "git@github.com:lerna-stack/akka-entity-replication.git"
 
-lazy val lerna = (project in file("."))
+lazy val core = (project in file("core"))
   .enablePlugins(
     MultiJvmPlugin,
     SiteScaladocPlugin,
