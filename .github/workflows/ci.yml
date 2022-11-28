@@ -66,7 +66,7 @@ jobs:
         github_token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Check the test coverage is above the minimum criteria
-      run: sbt coverageAggregate
+      run: sbt core/coverageReport
 
       # https://www.scala-sbt.org/1.x/docs/GitHub-Actions-with-sbt.html#Caching
     - name: Clean files for caching
