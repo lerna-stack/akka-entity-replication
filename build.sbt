@@ -23,20 +23,26 @@ ThisBuild / git.remoteRepo := "git@github.com:lerna-stack/akka-entity-replicatio
 
 lazy val root = project
   .in(file("."))
-  .enablePlugins(MultiJvmPlugin)
+  .enablePlugins(
+    MultiJvmPlugin,
+    ScalaUnidocPlugin,
+    GhpagesPlugin,
+  )
   .configs(MultiJvm)
   .aggregate(core)
   .settings(
     name := "akka-entity-replication-root",
     publish / skip := true,
     mimaFailOnNoPrevious := false,
+    ScalaUnidoc / siteSubdirName := "latest/api",
+    addMappingsToSiteDir(ScalaUnidoc / packageDoc / mappings, ScalaUnidoc / siteSubdirName),
+    previewSite / aggregate := false,
+    ghpagesPushSite / aggregate := false,
   )
 
 lazy val core = (project in file("core"))
   .enablePlugins(
     MultiJvmPlugin,
-    SiteScaladocPlugin,
-    GhpagesPlugin,
   )
   .configs(MultiJvm)
   .settings(

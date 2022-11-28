@@ -8,6 +8,8 @@ addSbtPlugin("ch.epfl.scala" % "sbt-scalafix" % "0.9.25")
 
 addSbtPlugin("org.scoverage" % "sbt-scoverage" % "1.6.1")
 
+addSbtPlugin("com.eed3si9n" % "sbt-unidoc" % "0.4.3")
+
 addSbtPlugin("com.typesafe.sbt" % "sbt-site" % "1.4.1")
 
 addSbtPlugin("com.typesafe.sbt" % "sbt-ghpages" % "0.6.3")
