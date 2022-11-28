@@ -206,12 +206,9 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
           AtLeastOnceComplete.askTo(entityB, Catalog.Add(i, _), 500.millis).await should be(Done)
         }
       }
-      runOn(node1, node4, node5, node6, node7) {
-        val expectedPersistingTime =
-          clusterReplicationSettings.raftSettings.heartbeatInterval / 2.0 * numOfEventsPerRound
-        Thread.sleep(expectedPersistingTime.toMillis)
-      }
-      enterBarrier("Persisted Events (round 1)")
+      val totalPersistTimeout =
+        clusterReplicationSettings.raftSettings.heartbeatInterval * numOfEventsPerRound
+      enterBarrier(max = totalPersistTimeout, "Persisted Events (round 1)")
     }
 
     "store a rollback timestamp" in {
@@ -237,12 +234,9 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
           AtLeastOnceComplete.askTo(entityB, Catalog.Add(baseValue + i, _), 500.millis).await should be(Done)
         }
       }
-      runOn(node1, node5, node6, node7) {
-        val expectedPersistingTime =
-          clusterReplicationSettings.raftSettings.heartbeatInterval / 2.0 * numOfEventsPerRound
-        Thread.sleep(expectedPersistingTime.toMillis)
-      }
-      enterBarrier("Persisted events (round 2)")
+      val totalPersistTimeout =
+        clusterReplicationSettings.raftSettings.heartbeatInterval * numOfEventsPerRound
+      enterBarrier(max = totalPersistTimeout, "Persisted events (round 2)")
     }
 
     "wait for the completion of the event sourcing" in {
@@ -265,10 +259,7 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
           interval = 500.millis,
         )
       }
-      runOn(node1, node5, node6, node7) {
-        Thread.sleep(propagationTimeout.toMillis)
-      }
-      enterBarrier("Completed the event sourcing")
+      enterBarrier(max = propagationTimeout, "Completed the event sourcing")
     }
 
     "shut down the cluster (nodes: [2,3,4])" in {
@@ -296,11 +287,8 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
           ).await
         rollback.rollback(rollbackSetup).await should be(Done)
       }
-      runOn(node5, node6, node7) {
-        Thread.sleep(rollbackTimeout.toMillis)
-      }
       runOn(node1, node5, node6, node7) {
-        enterBarrier("rolled back the target shard")
+        enterBarrier(max = rollbackTimeout, "rolled back the target shard")
       }
     }
 
@@ -343,11 +331,8 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
           interval = 500.millis,
         )
       }
-      runOn(node1) {
-        Thread.sleep(2 * initializationTimeout.toMillis)
-      }
       runOn(node1, node5, node6, node7) {
-        enterBarrier("Read the rolled-back data from entity")
+        enterBarrier(max = initializationTimeout * 2, "Read the rolled-back data from entity")
       }
     }
 
@@ -371,11 +356,8 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
           interval = 500.millis,
         )
       }
-      runOn(node1) {
-        Thread.sleep(propagationTimeout.toMillis)
-      }
       runOn(node1, node5, node6, node7) {
-        enterBarrier("Read the rolled-back data via tag queries")
+        enterBarrier(max = propagationTimeout, "Read the rolled-back data via tag queries")
       }
     }
 
