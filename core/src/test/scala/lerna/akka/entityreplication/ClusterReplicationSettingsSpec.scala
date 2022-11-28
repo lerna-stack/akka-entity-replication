@@ -11,6 +11,10 @@ class ClusterReplicationSettingsSpec extends WordSpec with Matchers {
       |lerna.akka.entityreplication.raft.multi-raft-roles = ["group-1", "group-2", "group-3"]
       |""".stripMargin).withFallback(ConfigFactory.load())
 
+  "fail" in {
+    assert(false)
+  }
+
   "ClusterReplicationSettings" should {
 
     "not throw any exceptions when clusterRoles is appropriate" in {
