@@ -21,6 +21,17 @@ ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
 ThisBuild / Compile / doc / autoAPIMappings := true
 ThisBuild / git.remoteRepo := "git@github.com:lerna-stack/akka-entity-replication.git"
 
+lazy val root = project
+  .in(file("."))
+  .enablePlugins(MultiJvmPlugin)
+  .configs(MultiJvm)
+  .aggregate(core)
+  .settings(
+    name := "akka-entity-replication-root",
+    publish / skip := true,
+    mimaFailOnNoPrevious := false,
+  )
+
 lazy val core = (project in file("core"))
   .enablePlugins(
     MultiJvmPlugin,
@@ -104,6 +115,6 @@ addCommandAlias(
     "coverage",
     "test",
     "multi-jvm:test",
-    "coverageReport",
+    "coverageAggregate",
   ).mkString(";"),
 )
