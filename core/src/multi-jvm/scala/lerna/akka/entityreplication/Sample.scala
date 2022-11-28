@@ -24,6 +24,10 @@ class SampleSpec extends MultiNodeSpec(SampleSpecConfig) with STMultiNodeSpec {
 
   override def initialParticipants: Int = roles.size
 
+  "fail" in {
+    assert(false)
+  }
+
   "Nodes" should {
 
     "wait for all nodes to enter a barrier" in {
