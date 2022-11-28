@@ -39,22 +39,14 @@ A test coverage is generated in the directory `target/scala-2.13/scoverage-repor
 
 ## Build Scaladoc
 ```shell
-sbt doc
+sbt unidoc
 ```
 
-A Scaladoc is generated in the directory `target/scala-2.13/api`.
+Scaladoc is generated in the directory `target/scala-2.13/unidoc`.
 
-## Publish GitHub Pages
+## Preview GitHub Pages
 
-We publish a Scaladoc to GitHub Pages using `sbt-site` and `sbt-ghpages`.
-
-To preview generated web pages, run the below command.
+To preview generated GitHub Pages, run the below command.
 ```shell
 sbt previewSite
-```
-
-To publish the pages, run the below command.  
-You should have proper permission to publish.
-```shell
-sbt ghpagesPushSite
 ```
