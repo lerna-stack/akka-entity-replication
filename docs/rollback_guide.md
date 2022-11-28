@@ -38,6 +38,9 @@ val entity = ReplicatedEntity(???)(???).withSettings(settings)
 clusterReplication.init(entity)
 ```
 
+It is possible to avoid sending a request to an entity on the disabled shards, which reduces unnecessary request
+timeout waits. For more details, see [Avoid sending requests to disabled entities](typed/implementation_guide.md#avoid-sending-requests-to-disabled-entities).
+
 ### 2. Execute rollback for the target shard
 
 `CassandraRaftShardRollback` can roll back the specific Raft shard to the specific UNIX timestamp as below:

@@ -434,6 +434,45 @@ clusterReplication.init(entity)
 This disabling is helpful when making the specific Raft shards maintenance mode. Persistent actors (including Raft actors)
 in disabled Raft shards don't start, which enables maintenance tools to write data store directly.
 
+### Avoid sending requests to disabled entities
+
+Requests to disabled entities (entities on the disabled Raft shards) will be timed out. `ClusterReplication.shardIdOf`
+helps avoid sending requests to such entities. For example, the following code replies to a request for a disabled
+entity with an error immediately.
+
+```scala
+import scala.concurrent._
+import akka.actor.typed.ActorSystem
+import akka.util.Timeout
+import lerna.akka.entityreplication.typed._
+import lerna.akka.entityreplication.util.AtLeastOnceComplete
+
+val system: ActorSystem[_] = ???
+val clusterReplication = ClusterReplication(system)
+
+// Initialization (Shard `1` and `3` are disabled)
+val settings =
+  ClusterReplicationSettings(system)
+    .withDisabledShards(Set("1", "3"))
+val entity =
+  ReplicatedEntity(BankAccountBehavior.TypeKey)(entityContext => BankAccountBehavior(entityContext))
+    .withSettings(settings)
+clusterReplication.init(entity)
+
+def handleRequest(entityId: String, command: BankAccountBehavior.Deposit)(implicit timeout: Timeout): Future[DepositSucceeded] = {
+  val shardId: String = clusterReplication.shardIdOf(BankAccountBehavior.TypeKey, entityId)
+  if (settings.raftSettings.disabledShards.contains(shardId)) {
+    // The given entity is on a disabled shard.
+    // Reply with error immediately instead.
+    Future.failed(???)
+  } else {
+    val entityRef = clusterReplication.entityRefFor(BankAccountBehavior.TypeKey, entityId)
+    AtLeastOnceComplete.askTo(destination = entityRef, message = command, retryInterval = 500.milliseconds)
+  }
+}
+```
+
+
 ### Configuration
 
 On the command side, the related settings are defined at `lerna.akka.entityreplication`(except `lerna.akka.entityreplication.raft.eventsourced`) in [reference.conf](/src/main/resources/reference.conf).
