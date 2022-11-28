@@ -86,7 +86,7 @@ lazy val core = (project in file("core"))
       ),
     ),
     // test-coverage
-    coverageMinimum := 80,
+    coverageMinimum := 100,
     coverageFailOnMinimum := true,
     coverageExcludedPackages := Seq(
         "lerna\\.akka\\.entityreplication\\.protobuf\\.msg\\..*",
