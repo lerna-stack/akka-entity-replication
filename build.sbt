@@ -64,7 +64,7 @@ lazy val core = (project in file("core"))
       ++ Seq(
         scalatestOptions ++= Seq(
             "-u",
-            "target/multi-jvm-test-reports",
+            (target.value / "multi-jvm-test-reports").getPath,
           ),
       ),
     ),

@@ -26,7 +26,7 @@ sbt multi-jvm:test
 ```
 
 If we want to dig in failed test cases in integration tests,
-we can look at integration test reports `target/multi-jvm-test-reports/*.xml` using [xunit-viewer](https://www.npmjs.com/package/xunit-viewer).
+we can look at integration test reports `**/target/multi-jvm-test-reports/*.xml` using [xunit-viewer](https://www.npmjs.com/package/xunit-viewer).
 
 Tips: Integration tests is not stable for now.
 
