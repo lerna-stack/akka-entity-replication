@@ -132,9 +132,9 @@ lazy val rollbackToolCassandra = (project in file("rollback-tool-cassandra"))
       ),
     ),
     // MiMa
-    mimaFailOnNoPrevious := false, // TODO enable after the first stable version release
+    mimaFailOnNoPrevious := false,      // TODO enable after the first stable version release
     mimaPreviousArtifacts := Set.empty, // TODO set non empty after the first stable version release
-    mimaReportSignatureProblems := true
+    mimaReportSignatureProblems := true,
   )
 
 /**
