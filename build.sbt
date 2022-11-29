@@ -5,6 +5,9 @@ resolvers += "dnvriend" at "https://dl.bintray.com/dnvriend/maven"
 lazy val akkaVersion                     = "2.6.17"
 lazy val akkaPersistenceCassandraVersion = "1.0.5"
 
+// Restrict the number of concurrently executing MultiJVM/test tasks in all project:
+Global / concurrentRestrictions += Tags.limit(Tags.Untagged, 1)
+
 ThisBuild / scalaVersion := "2.13.4"
 ThisBuild / scalacOptions ++= Seq(
   "-feature",
