@@ -42,7 +42,19 @@ private[entityreplication] class SnapshotStore(
 
   override def snapshotPluginId: String = settings.snapshotStorePluginId
 
-  context.setReceiveTimeout(settings.compactionSnapshotCacheTimeToLive)
+  override def preStart(): Unit = {
+    if (log.isDebugEnabled) {
+      log.debug(
+        "Starting SnapshotStore (typeName=[{}], entityId=[{}], memberIndex=[{}]), which will stop when it is inactive for snapshot-cache-time-to-live period [{}] ms",
+        typeName,
+        entityId.raw,
+        selfMemberIndex,
+        settings.compactionSnapshotCacheTimeToLive.toMillis,
+      )
+    }
+    super.preStart()
+    context.setReceiveTimeout(settings.compactionSnapshotCacheTimeToLive)
+  }
 
   override def receiveRecover: Receive = {
     case snapshot: EntitySnapshot => context.become(hasSnapshot(snapshot))
@@ -93,10 +105,34 @@ private[entityreplication] class SnapshotStore(
       // reduce IO: don't save if same as cached snapshot
       command.replyTo ! SaveSnapshotSuccess(command.snapshot.metadata)
     } else {
+      if (log.isDebugEnabled) {
+        log.debug(
+          "Saving EntitySnapshot: entityId=[{}], logEntryIndex=[{}], stateType=[{}]",
+          command.snapshot.metadata.entityId.raw,
+          command.snapshot.metadata.logEntryIndex,
+          command.snapshot.state.underlying.getClass.getName,
+        )
+      }
       replyRefCache = Option(command.replyTo)
       persistAsync(command.snapshot) { _ =>
+        if (log.isDebugEnabled) {
+          log.debug(
+            "Saved EntitySnapshot: entityId=[{}], logEntryIndex=[{}], stateType=[{}]",
+            command.snapshot.metadata.entityId.raw,
+            command.snapshot.metadata.logEntryIndex,
+            command.snapshot.state.underlying.getClass.getName,
+          )
+        }
         command.replyTo ! SaveSnapshotSuccess(command.snapshot.metadata)
         if (lastSequenceNr % settings.snapshotStoreSnapshotEvery == 0 && lastSequenceNr != 0) {
+          if (log.isDebugEnabled) {
+            log.debug(
+              "Saving EntitySnapshot as a snapshot: entityId=[{}], logEntryIndex=[{}], stateType=[{}]",
+              command.snapshot.metadata.entityId.raw,
+              command.snapshot.metadata.logEntryIndex,
+              command.snapshot.state.underlying.getClass.getName,
+            )
+          }
           saveSnapshot(command.snapshot)
         }
         context.become(hasSnapshot(command.snapshot))
@@ -127,6 +163,14 @@ private[entityreplication] class SnapshotStore(
   override def unhandled(message: Any): Unit =
     message match {
       case ReceiveTimeout =>
+        if (log.isDebugEnabled) {
+          log.debug(
+            "Stopping SnapshotStore (typeName=[{}], entityId=[{}], memberIndex=[{}]) since it is inactive",
+            typeName,
+            entityId.raw,
+            selfMemberIndex,
+          )
+        }
         context.stop(self)
       case _: persistence.SaveSnapshotSuccess =>
         if (log.isDebugEnabled) {
