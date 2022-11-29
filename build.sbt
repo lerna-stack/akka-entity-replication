@@ -108,6 +108,7 @@ lazy val rollbackToolCassandra = (project in file("rollback-tool-cassandra"))
     fork in Test := true,
     parallelExecution in Test := false,
     javaOptions in Test ++= sbtJavaOptions,
+    jvmOptions in MultiJvm ++= sbtJavaOptions,
     libraryDependencies ++= Seq(
         "com.typesafe.akka" %% "akka-persistence"                    % akkaVersion,
         "com.typesafe.akka" %% "akka-persistence-query"              % akkaVersion,
