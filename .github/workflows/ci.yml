@@ -62,11 +62,11 @@ jobs:
       if: ${{ always() }}
       with:
         check_name: ScalaTest Report (Java ${{ matrix.java }})
-        report_paths: 'target/**test-reports/TEST-*.xml'
+        report_paths: '**/target/**test-reports/TEST-*.xml'
         github_token: ${{ secrets.GITHUB_TOKEN }}
 
     - name: Check the test coverage is above the minimum criteria
-      run: sbt coverageAggregate
+      run: sbt coverageReport
 
       # https://www.scala-sbt.org/1.x/docs/GitHub-Actions-with-sbt.html#Caching
     - name: Clean files for caching

@@ -54,7 +54,16 @@ Check the release is available at [Maven Central Repository](https://repo1.maven
 - The release will be available about 10 minutes after publishing.
 - It requires more time to be able to find the release with searching (about 2 hours max).
 
-## 7. Create a new release `vX.Y.Z`
+## 7. Publish GitHub Pages
+
+Publish GitHub Pages using `sbt-site` and `sbt-ghpages`.
+To publish the pages, checkout the new version tag `vX.Y.Z` and then run the below command.
+Note that you should have proper permission to publish.
+```shell
+sbt ghpagesPushSite
+```
+
+## 8. Create a new release `vX.Y.Z`
 
 Create a new release `vX.Y.Z` from [this link](https://github.com/lerna-stack/akka-entity-replication/releases/new).
 

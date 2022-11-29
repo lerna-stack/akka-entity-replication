@@ -4,31 +4,48 @@ resolvers += "dnvriend" at "https://dl.bintray.com/dnvriend/maven"
 
 lazy val akkaVersion = "2.6.17"
 
-lazy val lerna = (project in file("."))
+ThisBuild / scalaVersion := "2.13.4"
+ThisBuild / scalacOptions ++= Seq(
+  "-feature",
+  "-unchecked",
+  "-Xlint",
+  "-Yrangepos",
+  "-Ywarn-unused:imports",
+)
+ThisBuild / scalacOptions ++= sys.props.get("lerna.enable.discipline").map(_ => "-Xfatal-warnings").toSeq
+ThisBuild / scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(scalaVersion.value)
+// https://scalacenter.github.io/scalafix/docs/users/installation.html#sbt
+ThisBuild / semanticdbEnabled := true
+ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
+// doc
+ThisBuild / Compile / doc / autoAPIMappings := true
+ThisBuild / git.remoteRepo := "git@github.com:lerna-stack/akka-entity-replication.git"
+
+lazy val root = project
+  .in(file("."))
   .enablePlugins(
     MultiJvmPlugin,
-    SiteScaladocPlugin,
+    ScalaUnidocPlugin,
     GhpagesPlugin,
   )
   .configs(MultiJvm)
+  .aggregate(core)
   .settings(
-    inThisBuild(
-      List(
-        scalaVersion := "2.13.4",
-        scalacOptions ++= Seq(
-            "-feature",
-            "-unchecked",
-            "-Xlint",
-            "-Yrangepos",
-            "-Ywarn-unused:imports",
-          ),
-        scalacOptions ++= sys.props.get("lerna.enable.discipline").map(_ => "-Xfatal-warnings").toSeq,
-        scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(scalaVersion.value),
-        // https://scalacenter.github.io/scalafix/docs/users/installation.html#sbt
-        semanticdbEnabled := true,
-        semanticdbVersion := scalafixSemanticdb.revision,
-      ),
-    ),
+    name := "akka-entity-replication-root",
+    publish / skip := true,
+    mimaFailOnNoPrevious := false,
+    ScalaUnidoc / siteSubdirName := "latest/api",
+    addMappingsToSiteDir(ScalaUnidoc / packageDoc / mappings, ScalaUnidoc / siteSubdirName),
+    previewSite / aggregate := false,
+    ghpagesPushSite / aggregate := false,
+  )
+
+lazy val core = (project in file("core"))
+  .enablePlugins(
+    MultiJvmPlugin,
+  )
+  .configs(MultiJvm)
+  .settings(
     name := "akka-entity-replication",
     fork in Test := true,
     parallelExecution in Test := false,
@@ -64,13 +81,10 @@ lazy val lerna = (project in file("."))
       ++ Seq(
         scalatestOptions ++= Seq(
             "-u",
-            "target/multi-jvm-test-reports",
+            (target.value / "multi-jvm-test-reports").getPath,
           ),
       ),
     ),
-    // doc
-    Compile / doc / autoAPIMappings := true,
-    git.remoteRepo := "git@github.com:lerna-stack/akka-entity-replication.git",
     // test-coverage
     coverageMinimum := 80,
     coverageFailOnMinimum := true,
@@ -107,6 +121,6 @@ addCommandAlias(
     "coverage",
     "test",
     "multi-jvm:test",
-    "coverageReport",
+    "coverageAggregate",
   ).mkString(";"),
 )
