@@ -21,26 +21,6 @@ ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
 // doc
 ThisBuild / Compile / doc / autoAPIMappings := true
 ThisBuild / git.remoteRepo := "git@github.com:lerna-stack/akka-entity-replication.git"
-// test coverage
-ThisBuild / coverageMinimum := 80
-ThisBuild / coverageFailOnMinimum := true
-
-ThisBuild / scalaVersion := "2.13.4"
-ThisBuild / scalacOptions ++= Seq(
-  "-feature",
-  "-unchecked",
-  "-Xlint",
-  "-Yrangepos",
-  "-Ywarn-unused:imports",
-)
-ThisBuild / scalacOptions ++= sys.props.get("lerna.enable.discipline").map(_ => "-Xfatal-warnings").toSeq
-ThisBuild / scalafixScalaBinaryVersion := CrossVersion.binaryScalaVersion(scalaVersion.value)
-// https://scalacenter.github.io/scalafix/docs/users/installation.html#sbt
-ThisBuild / semanticdbEnabled := true
-ThisBuild / semanticdbVersion := scalafixSemanticdb.revision
-// doc
-ThisBuild / Compile / doc / autoAPIMappings := true
-ThisBuild / git.remoteRepo := "git@github.com:lerna-stack/akka-entity-replication.git"
 
 lazy val root = project
   .in(file("."))
@@ -50,7 +30,7 @@ lazy val root = project
     GhpagesPlugin,
   )
   .configs(MultiJvm)
-  .aggregate(core)
+  .aggregate(core, rollbackToolCassandra)
   .settings(
     name := "akka-entity-replication-root",
     publish / skip := true,
@@ -120,7 +100,7 @@ lazy val core = (project in file("core"))
   )
 
 lazy val rollbackToolCassandra = (project in file("rollback-tool-cassandra"))
-  .dependsOn(lerna)
+  .dependsOn(core)
   .enablePlugins(MultiJvmPlugin)
   .configs(MultiJvm)
   .settings(
@@ -147,13 +127,14 @@ lazy val rollbackToolCassandra = (project in file("rollback-tool-cassandra"))
       ++ Seq(
         scalatestOptions ++= Seq(
             "-u",
-            (baseDirectory.value) + "/target/multi-jvm-test-reports",
+            (target.value / "multi-jvm-test-reports").getPath,
           ),
       ),
     ),
     // MiMa
+    mimaFailOnNoPrevious := false, // TODO enable after the first stable version release
     mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %% moduleName.value % _).toSet,
-    mimaReportSignatureProblems := true, // check also generic parameters
+    mimaReportSignatureProblems := true
   )
 
 /**
