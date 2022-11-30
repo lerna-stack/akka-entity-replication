@@ -1,0 +1,15 @@
+<configuration>
+  <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+    <encoder>
+      <pattern>%level\t%logger\t%X{akkaSource}\t%msg%n</pattern>
+    </encoder>
+  </appender>
+
+  <logger name="com.datastax.oss.driver" level="ERROR" />
+  <logger name="akka" level="ERROR" />
+  <logger name="lerna.akka.entityreplication" level="WARN" />
+  <logger name="lerna.akka.entityreplication.rollback" level="DEBUG" />
+  <root level="INFO">
+    <appender-ref ref="STDOUT"/>
+  </root>
+</configuration>

@@ -2,7 +2,11 @@ import org.scalafmt.sbt.ScalafmtPlugin.scalafmtConfigSettings
 
 resolvers += "dnvriend" at "https://dl.bintray.com/dnvriend/maven"
 
-lazy val akkaVersion = "2.6.17"
+lazy val akkaVersion                     = "2.6.17"
+lazy val akkaPersistenceCassandraVersion = "1.0.5"
+
+// Restrict the number of concurrently executing MultiJVM/test tasks in all project:
+Global / concurrentRestrictions += Tags.limit(Tags.Untagged, 1)
 
 ThisBuild / scalaVersion := "2.13.4"
 ThisBuild / scalacOptions ++= Seq(
@@ -29,7 +33,7 @@ lazy val root = project
     GhpagesPlugin,
   )
   .configs(MultiJvm)
-  .aggregate(core)
+  .aggregate(core, rollbackToolCassandra)
   .settings(
     name := "akka-entity-replication-root",
     publish / skip := true,
@@ -86,8 +90,6 @@ lazy val core = (project in file("core"))
       ),
     ),
     // test-coverage
-    coverageMinimum := 80,
-    coverageFailOnMinimum := true,
     coverageExcludedPackages := Seq(
         "lerna\\.akka\\.entityreplication\\.protobuf\\.msg\\..*",
       ).mkString(";"),
@@ -98,6 +100,45 @@ lazy val core = (project in file("core"))
     // mima
     mimaPreviousArtifacts := previousStableVersion.value.map(organization.value %% moduleName.value % _).toSet,
     mimaReportSignatureProblems := true, // check also generic parameters
+  )
+
+lazy val rollbackToolCassandra = (project in file("rollback-tool-cassandra"))
+  .dependsOn(core)
+  .enablePlugins(MultiJvmPlugin)
+  .configs(MultiJvm)
+  .settings(
+    name := "akka-entity-replication-rollback-tool-cassandra",
+    fork in Test := true,
+    parallelExecution in Test := false,
+    javaOptions in Test ++= sbtJavaOptions,
+    jvmOptions in MultiJvm ++= sbtJavaOptions,
+    libraryDependencies ++= Seq(
+        "com.typesafe.akka" %% "akka-persistence"                    % akkaVersion,
+        "com.typesafe.akka" %% "akka-persistence-query"              % akkaVersion,
+        "com.typesafe.akka" %% "akka-persistence-cassandra"          % akkaPersistenceCassandraVersion,
+        "com.typesafe.akka" %% "akka-persistence-cassandra-launcher" % akkaPersistenceCassandraVersion % Test,
+        "ch.qos.logback"     % "logback-classic"                     % "1.2.3"                         % Test,
+        "org.scalatest"     %% "scalatest"                           % "3.0.9"                         % Test,
+        "com.typesafe.akka" %% "akka-slf4j"                          % akkaVersion                     % Test,
+        "com.typesafe.akka" %% "akka-actor-testkit-typed"            % akkaVersion                     % Test,
+        "com.typesafe.akka" %% "akka-serialization-jackson"          % akkaVersion                     % Test,
+        "com.typesafe.akka" %% "akka-multi-node-testkit"             % akkaVersion                     % Test,
+        "org.scalamock"     %% "scalamock"                           % "5.2.0"                         % Test,
+      ),
+    inConfig(MultiJvm)(
+      scalafmtConfigSettings
+      ++ scalafixConfigSettings(MultiJvm)
+      ++ Seq(
+        scalatestOptions ++= Seq(
+            "-u",
+            (target.value / "multi-jvm-test-reports").getPath,
+          ),
+      ),
+    ),
+    // MiMa
+    mimaFailOnNoPrevious := false,      // TODO enable after the first stable version release
+    mimaPreviousArtifacts := Set.empty, // TODO set non empty after the first stable version release
+    mimaReportSignatureProblems := true,
   )
 
 /**

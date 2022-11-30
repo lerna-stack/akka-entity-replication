@@ -10,3 +10,7 @@ sbt-cache/
 # For Windows
 # protobridge are installed below directory
 /null/
+
+# For rollback-cassandra
+rollback-cassandra/.toDelete
+.toDelete

@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   [PR#173](https://github.com/lerna-stack/akka-entity-replication/pull/173),
   [PR#188](https://github.com/lerna-stack/akka-entity-replication/pull/188),
   [PR#189](https://github.com/lerna-stack/akka-entity-replication/pull/189)
+- Add a rollback tool for Raft shard [PR#187](https://github.com/lerna-stack/akka-entity-replication/pull/187)
 
 ### Changed
 - Enhance leader's replication response handling [PR#160](https://github.com/lerna-stack/akka-entity-replication/pull/160)
