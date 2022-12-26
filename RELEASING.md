@@ -42,6 +42,7 @@ Other maintainers will review and merge the pull request.
 Create and push the new version tag `vX.Y.Z` like the following:
 ```shell
 git checkout master
+git pull origin
 git tag vX.Y.Z
 git push origin vX.Y.Z
 ```
