@@ -461,6 +461,11 @@ private[raft] class RaftActor(
     } else {
       // restart
       replicationActor(entityId)
+      if (currentState == Leader) {
+        // Non-leaders (followers or candidates) entities might be stopped since the leader could permit passivation mistakenly.
+        // The leader will recover from the mistake by requesting non-leaders such that non-leaders entities start.
+        broadcastWithoutSelf(TryCreateEntity(shardId, entityId))
+      }
     }
   }
 
@@ -569,6 +574,12 @@ private[raft] class RaftActor(
   def broadcast(message: Any): Unit = {
     if (log.isDebugEnabled) log.debug("=== [{}] broadcast {} ===", currentState, message)
     region ! ReplicationRegion.Broadcast(message)
+  }
+
+  /** Send the message to the other members */
+  private def broadcastWithoutSelf(message: Any): Unit = {
+    if (log.isDebugEnabled) log.debug("=== [{}] broadcast {} without self ===", currentState, message)
+    region ! ReplicationRegion.BroadcastWithoutSelf(message)
   }
 
   def applyToReplicationActor(logEntry: LogEntry): Unit =

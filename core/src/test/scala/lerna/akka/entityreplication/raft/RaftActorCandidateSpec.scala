@@ -1,6 +1,6 @@
 package lerna.akka.entityreplication.raft
 
-import akka.actor.ActorSystem
+import akka.actor.{ Actor, ActorSystem, Props }
 import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
 import akka.persistence.testkit.scaladsl.PersistenceTestKit
@@ -13,6 +13,8 @@ import lerna.akka.entityreplication.raft.protocol._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import org.scalatest.Inside
+
+import scala.concurrent.{ ExecutionContext, Promise }
 
 class RaftActorCandidateSpec
     extends TestKit(ActorSystem("RaftActorCandidateSpec", RaftActorSpecBase.configWithPersistenceTestKits))
@@ -1047,6 +1049,47 @@ class RaftActorCandidateSpec
       candidate ! EntityPassivationDenied(passivationTargetEntityId)
 
       entity.expectNoMessage()
+    }
+
+    "send no TryCreateEntity messages if entity is terminated due to other than passivation" in {
+      val shardId  = createUniqueShardId()
+      val entityId = NormalizedEntityId("entity-id")
+      val region   = TestProbe()
+      // Arrange: the region only receives TryCreateEntity for simplicity.
+      region.ignoreMsg {
+        case ReplicationRegion.BroadcastWithoutSelf(_: TryCreateEntity) => false
+        case _                                                          => true
+      }
+      // An entity will fail after the promise is fulfilled.
+      val failurePromise = Promise[RuntimeException]()
+      val entityProps = Props(new Actor {
+        locally {
+          import akka.pattern.pipe
+          implicit val ec: ExecutionContext = context.dispatcher
+          failurePromise.future.pipeTo(self)
+        }
+        override def receive: Receive = {
+          case ex: Throwable => throw ex
+        }
+      })
+      val candidate = {
+        val raftActor = createRaftActorWithProps(
+          shardId = shardId,
+          region = region.ref,
+          replicationActorProps = entityProps,
+          entityId = entityId,
+        )
+        setState(raftActor, Candidate, createCandidateData(Term(1)))
+        raftActor
+      }
+
+      // Arrange: the target entity starts.
+      candidate ! TryCreateEntity(shardId, entityId)
+
+      // Trigger the entity termination with failure.
+      failurePromise.success(new RuntimeException())
+
+      region.expectNoMessage()
     }
 
   }
