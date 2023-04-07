@@ -33,7 +33,7 @@ import lerna.akka.entityreplication.raft.protocol.RaftCommands.{
   RequestVoteAccepted,
   RequestVoteDenied,
 }
-import lerna.akka.entityreplication.raft.protocol.{ SuspendEntity, TryCreateEntity }
+import lerna.akka.entityreplication.raft.protocol._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
   EntitySnapshot,
@@ -276,6 +276,24 @@ final class ClusterReplicationSerializerSpec
     checkSerialization(
       TryCreateEntity(
         NormalizedShardId.from("shard/somewhere"),
+        NormalizedEntityId.from("entity/someone"),
+      ),
+    )
+    checkSerialization(
+      EntityPassivationPermitRequest(
+        NormalizedShardId.from("shard/somewhere"),
+        NormalizedEntityId.from("entity/someone"),
+        MyStopMessage,
+      ),
+    )
+    checkSerialization(
+      EntityPassivationPermitted(
+        NormalizedEntityId.from("entity/someone"),
+        MyStopMessage,
+      ),
+    )
+    checkSerialization(
+      EntityPassivationDenied(
         NormalizedEntityId.from("entity/someone"),
       ),
     )
