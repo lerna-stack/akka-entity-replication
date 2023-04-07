@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 [Unreleased]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.2.0...master
 
+### Fixed
+- Dead letters about ReplicationRegion$Passivate continue
+  [#199](https://github.com/lerna-stack/akka-entity-replication/issues/199),
+  [PR#200](https://github.com/lerna-stack/akka-entity-replication/pull/200)
+
 
 ## [v2.2.0] - 2022-012-26
 [v2.2.0]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.1.0...v2.2.0
