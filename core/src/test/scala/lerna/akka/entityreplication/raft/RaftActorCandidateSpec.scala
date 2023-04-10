@@ -965,7 +965,7 @@ class RaftActorCandidateSpec
     "send no EntityPassivationPermitRequest message if it receives a Passivate message" in {
       val shardId = createUniqueShardId()
 
-      val region  = TestProbe()
+      val region = TestProbe()
       // Arrange: the region only receives EntityPassivationPermitRequest for simplicity.
       region.ignoreMsg {
         case ReplicationRegion.DeliverTo(_, _: EntityPassivationPermitRequest) => false
