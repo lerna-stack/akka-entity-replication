@@ -275,7 +275,7 @@ private[raft] trait Leader { this: RaftActor =>
     if (isEntityTerminated(request.entityId)) {
       // NOTE:
       // The leader could permit passivation mistakenly if the entity has been terminated with a failure at this time.
-      // The leader can recover from this mistake. It will detect the leader's entity termination by deach watch and then
+      // The leader can recover from this mistake. It will detect the leader's entity termination by death watch and then
       // request non-leaders such that the non-leaders entities start.
       if (log.isDebugEnabled) {
         log.debug(
