@@ -401,7 +401,7 @@ private[raft] class RaftActor(
     case _ => stash()
   }
 
-  protected def handlePassivate(passivate: ReplicationRegion.Passivate): Unit = {
+  protected def handlePassivateForNonLeader(passivate: ReplicationRegion.Passivate): Unit = {
     currentData.leaderMember match {
       case Some(leaderMemberIndex) =>
         assert(leaderMemberIndex != selfMemberIndex, s"This RaftActor [$this] should be non-leader.")
