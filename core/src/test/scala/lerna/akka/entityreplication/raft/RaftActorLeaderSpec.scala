@@ -3,7 +3,7 @@ package lerna.akka.entityreplication.raft
 import akka.Done
 import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter._
-import akka.actor.ActorSystem
+import akka.actor.{ Actor, ActorSystem, Props }
 import akka.cluster.Cluster
 import akka.persistence.testkit.scaladsl.PersistenceTestKit
 import akka.testkit.{ TestKit, TestProbe }
@@ -11,16 +11,10 @@ import com.typesafe.config.ConfigFactory
 import lerna.akka.entityreplication.internal.ClusterReplicationSettingsImpl
 import lerna.akka.entityreplication.ReplicationRegion
 import lerna.akka.entityreplication.model.{ EntityInstanceId, NormalizedEntityId, NormalizedShardId, TypeName }
-import lerna.akka.entityreplication.raft.RaftProtocol.{
-  Command,
-  ProcessCommand,
-  Replica,
-  Replicate,
-  ReplicationFailed,
-  ReplicationSucceeded,
-}
+import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.raft.model._
+import lerna.akka.entityreplication.raft.protocol._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.testkit.CustomTestProbe._
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.{
@@ -32,6 +26,7 @@ import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, Snapshot
 import lerna.akka.entityreplication.util.EventStore
 import org.scalatest.Inside
 
+import scala.concurrent.{ ExecutionContext, Promise }
 import scala.concurrent.duration.DurationInt
 
 class RaftActorLeaderSpec
@@ -1522,6 +1517,145 @@ class RaftActorLeaderSpec
         ).expect {
           leader ! ReplicationFailed
         }
+    }
+
+    "send SuspendEntity messages if it receives a Passivate message" in {
+      val shardId = createUniqueShardId()
+      val region  = TestProbe()
+      val leader = {
+        val raftActor = createRaftActor(shardId = shardId, region = region.ref)
+        setState(raftActor, Leader, createLeaderData(Term(1)))
+        raftActor
+      }
+
+      val passivationTargetEntityPath = leader.path / "passivation-target-entity-id"
+      leader ! ReplicationRegion.Passivate(passivationTargetEntityPath, "stop message")
+
+      val suspendEntityMessage = region.fishForSpecificMessage[SuspendEntity]() {
+        case ReplicationRegion.Broadcast(message: SuspendEntity) => message
+      }
+      suspendEntityMessage.shardId should be(shardId)
+      suspendEntityMessage.entityId should be(NormalizedEntityId("passivation-target-entity-id"))
+      suspendEntityMessage.stopMessage should be("stop message")
+    }
+
+    "reply with a EntityPassivationPermitted message if it receives an EntityPassivationPermitRequest message whose target entity is terminated" in {
+      val shardId = createUniqueShardId()
+      val leader = {
+        val raftActor = createRaftActor(shardId = shardId)
+        setState(raftActor, Leader, createLeaderData(Term(1)))
+        raftActor
+      }
+      val follower                  = TestProbe()
+      val passivationTargetEntityId = NormalizedEntityId("passivation-target-entity-id")
+
+      leader.tell(EntityPassivationPermitRequest(shardId, passivationTargetEntityId, "stop message"), follower.ref)
+
+      follower.expectMsg(EntityPassivationPermitted(passivationTargetEntityId, "stop message"))
+    }
+
+    "reply with a EntityPassivationDenied message if it receives an EntityPassivationPermitRequest message whose target entity is running" in {
+      val shardId = createUniqueShardId()
+      val leader = {
+        val raftActor = createRaftActor(shardId = shardId)
+        setState(raftActor, Leader, createLeaderData(Term(1)))
+        raftActor
+      }
+      val follower                  = TestProbe()
+      val passivationTargetEntityId = NormalizedEntityId("passivation-target-entity-id")
+
+      // Arrange: the passivation target entity starts.
+      leader ! TryCreateEntity(shardId, passivationTargetEntityId)
+
+      leader.tell(EntityPassivationPermitRequest(shardId, passivationTargetEntityId, "stop message"), follower.ref)
+
+      follower.expectMsg(EntityPassivationDenied(passivationTargetEntityId))
+    }
+
+    "send no StopMessage to the passivation target entity if it receives an EntityPassivationPermitted message" in {
+      val shardId = createUniqueShardId()
+      val entity  = TestProbe()
+      val leader = {
+        val raftActor = createRaftActor(shardId = shardId, replicationActor = entity.ref)
+        setState(raftActor, Leader, createLeaderData(Term(1)))
+        raftActor
+      }
+      val passivationTargetEntityId = NormalizedEntityId("passivation-target-entity-id")
+      val stopMessage               = "stop message"
+
+      // Arrange: the entity only receives stop messages for simplicity.
+      entity.ignoreMsg {
+        case msg if msg != stopMessage => true
+      }
+      // Arrange: the passivation target entity starts.
+      leader ! TryCreateEntity(shardId, passivationTargetEntityId)
+
+      leader ! EntityPassivationPermitted(passivationTargetEntityId, stopMessage)
+
+      entity.expectNoMessage()
+    }
+
+    "send no StopMessage to the passivation target entity if it receives an EntityPassivationDenied message" in {
+      val shardId = createUniqueShardId()
+      val entity  = TestProbe()
+      val leader = {
+        val raftActor = createRaftActor(shardId = shardId, replicationActor = entity.ref)
+        setState(raftActor, Leader, createLeaderData(Term(1)))
+        raftActor
+      }
+      val passivationTargetEntityId = NormalizedEntityId("passivation-target-entity-id")
+      val stopMessage               = "stop message"
+
+      // Arrange: the entity only receives stop messages for simplicity.
+      entity.ignoreMsg {
+        case msg if msg != stopMessage => true
+      }
+      // Arrange: the passivation target entity starts.
+      leader ! TryCreateEntity(shardId, passivationTargetEntityId)
+
+      leader ! EntityPassivationPermitted(passivationTargetEntityId, stopMessage)
+
+      entity.expectNoMessage()
+    }
+
+    "send TryCreateEntity messages if entity is terminated due to other than passivation" in {
+      val shardId  = createUniqueShardId()
+      val entityId = NormalizedEntityId("entity-id")
+      val region   = TestProbe()
+      // An entity will fail after the promise is fulfilled.
+      val failurePromise = Promise[RuntimeException]()
+      val entityProps = Props(new Actor {
+        locally {
+          import akka.pattern.pipe
+          implicit val ec: ExecutionContext = context.dispatcher
+          failurePromise.future.pipeTo(self)
+        }
+        override def receive: Receive = {
+          case ex: Throwable => throw ex
+        }
+      })
+      val leader = {
+        val raftActor = createRaftActorWithProps(
+          shardId = shardId,
+          region = region.ref,
+          replicationActorProps = entityProps,
+          entityId = entityId,
+        )
+        setState(raftActor, Leader, createLeaderData(Term(1)))
+        raftActor
+      }
+
+      // Arrange: the target entity starts.
+      leader ! TryCreateEntity(shardId, entityId)
+
+      // Trigger the entity termination with failure.
+      failurePromise.success(new RuntimeException())
+
+      val tryCreateEntityMessage = region.fishForSpecificMessage[TryCreateEntity]() {
+        case ReplicationRegion.BroadcastWithoutSelf(message: TryCreateEntity) => message
+      }
+      tryCreateEntityMessage.shardId should be(shardId)
+      tryCreateEntityMessage.entityId should be(NormalizedEntityId("entity-id"))
     }
 
   }

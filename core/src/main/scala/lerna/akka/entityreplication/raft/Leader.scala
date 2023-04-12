@@ -5,7 +5,7 @@ import lerna.akka.entityreplication.model.NormalizedEntityId
 import lerna.akka.entityreplication.raft.RaftProtocol._
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
-import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, SuspendEntity, TryCreateEntity }
+import lerna.akka.entityreplication.raft.protocol._
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
 import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager
 import lerna.akka.entityreplication.ReplicationRegion
@@ -31,6 +31,8 @@ private[raft] trait Leader { this: RaftActor =>
     case request: Replicate                                   => replicate(request)
     case response: ReplicationResponse                        => receiveReplicationResponse(response)
     case ReplicationRegion.Passivate(entityPath, stopMessage) => startEntityPassivationProcess(entityPath, stopMessage)
+    case request: EntityPassivationPermitRequest              => handleEntityPassivationPermitRequest(request)
+    case _: EntityPassivationPermitResponse                   => // ignore, because I'm the leader
     case TryCreateEntity(_, entityId)                         => createEntityIfNotExists(entityId)
     case request: FetchEntityEvents                           => receiveFetchEntityEvents(request)
     case EntityTerminated(id)                                 => receiveEntityTerminated(id)
@@ -267,6 +269,36 @@ private[raft] trait Leader { this: RaftActor =>
 
   private[this] def startEntityPassivationProcess(entityPath: ActorPath, stopMessage: Any): Unit = {
     broadcast(SuspendEntity(shardId, NormalizedEntityId.of(entityPath), stopMessage))
+  }
+
+  private def handleEntityPassivationPermitRequest(request: EntityPassivationPermitRequest): Unit = {
+    if (isEntityTerminated(request.entityId)) {
+      // NOTE:
+      // The leader could permit passivation mistakenly if the entity has been terminated with a failure at this time.
+      // The leader can recover from this mistake. It will detect the leader's entity termination by death watch and then
+      // request non-leaders such that the non-leaders entities start.
+      if (log.isDebugEnabled) {
+        log.debug(
+          "[Leader] got a passivation permit request (entityId=[{}], stopMessage=[{}]) from [{}]." +
+          " Replying with a passivation permit since the leader's entity is terminated.",
+          request.entityId,
+          request.stopMessage.getClass.getName,
+          sender(),
+        )
+      }
+      sender() ! EntityPassivationPermitted(request.entityId, request.stopMessage)
+    } else {
+      if (log.isDebugEnabled) {
+        log.debug(
+          "[Leader] got a passivation permit request (entityId=[{}], stopMessage=[{}]) from [{}]." +
+          " Replying with a passivation denial since the leader's entity is running.",
+          request.entityId,
+          request.stopMessage.getClass.getName,
+          sender(),
+        )
+      }
+      sender() ! EntityPassivationDenied(request.entityId)
+    }
   }
 
   private[this] def publishAppendEntries(): Unit = {

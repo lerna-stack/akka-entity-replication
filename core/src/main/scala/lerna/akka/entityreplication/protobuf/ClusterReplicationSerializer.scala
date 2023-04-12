@@ -39,16 +39,19 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
   val CommitLogStoreAppendCommittedEntriesManifest         = "BD"
   val CommitLogStoreAppendCommittedEntriesResponseManifest = "BE"
   // raft.protocol
-  val RequestVoteManifest              = "CA"
-  val RequestVoteAcceptedManifest      = "CB"
-  val RequestVoteDeniedManifest        = "CC"
-  val AppendEntriesManifest            = "CD"
-  val AppendEntriesSucceededManifest   = "CE"
-  val AppendEntriesFailedManifest      = "CF"
-  val InstallSnapshotManifest          = "CG"
-  val InstallSnapshotSucceededManifest = "CH"
-  val SuspendEntityManifest            = "CI"
-  val TryCreateEntityManifest          = "CJ"
+  val RequestVoteManifest                    = "CA"
+  val RequestVoteAcceptedManifest            = "CB"
+  val RequestVoteDeniedManifest              = "CC"
+  val AppendEntriesManifest                  = "CD"
+  val AppendEntriesSucceededManifest         = "CE"
+  val AppendEntriesFailedManifest            = "CF"
+  val InstallSnapshotManifest                = "CG"
+  val InstallSnapshotSucceededManifest       = "CH"
+  val SuspendEntityManifest                  = "CI"
+  val TryCreateEntityManifest                = "CJ"
+  val EntityPassivationPermitRequestManifest = "CK"
+  val EntityPassivationPermittedManifest     = "CL"
+  val EntityPassivationDeniedManifest        = "CM"
   // raft.snapshot
   val EntitySnapshotManifest = "DA"
   // raft.snapshot.sync
@@ -85,16 +88,19 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     CommitLogStoreAppendCommittedEntriesManifest         -> commitLogStoreAppendCommittedEntriesFromBinary,
     CommitLogStoreAppendCommittedEntriesResponseManifest -> commitLogStoreAppendCommittedEntriesResponseFromBinary,
     // raft.protocol
-    RequestVoteManifest              -> requestVoteFromBinary,
-    RequestVoteAcceptedManifest      -> requestVoteAcceptedFromBinary,
-    RequestVoteDeniedManifest        -> requestVoteDeniedFromBinary,
-    AppendEntriesManifest            -> appendEntriesFromBinary,
-    AppendEntriesSucceededManifest   -> appendEntriesSucceededFromBinary,
-    AppendEntriesFailedManifest      -> appendEntriesFailedFromBinary,
-    InstallSnapshotManifest          -> installSnapshotFromBinary,
-    InstallSnapshotSucceededManifest -> installSnapshotSucceededFromBinary,
-    SuspendEntityManifest            -> suspendEntityFromBinary,
-    TryCreateEntityManifest          -> tryCreateEntityFromBinary,
+    RequestVoteManifest                    -> requestVoteFromBinary,
+    RequestVoteAcceptedManifest            -> requestVoteAcceptedFromBinary,
+    RequestVoteDeniedManifest              -> requestVoteDeniedFromBinary,
+    AppendEntriesManifest                  -> appendEntriesFromBinary,
+    AppendEntriesSucceededManifest         -> appendEntriesSucceededFromBinary,
+    AppendEntriesFailedManifest            -> appendEntriesFailedFromBinary,
+    InstallSnapshotManifest                -> installSnapshotFromBinary,
+    InstallSnapshotSucceededManifest       -> installSnapshotSucceededFromBinary,
+    SuspendEntityManifest                  -> suspendEntityFromBinary,
+    TryCreateEntityManifest                -> tryCreateEntityFromBinary,
+    EntityPassivationPermitRequestManifest -> entityPassivationPermitRequestFromBinary,
+    EntityPassivationPermittedManifest     -> entityPassivationPermittedFromBinary,
+    EntityPassivationDeniedManifest        -> entityPassivationDeniedFromBinary,
     // raft.snapshot
     EntitySnapshotManifest -> entitySnapshotFromBinary,
     // raft.snapshot.sync
@@ -171,6 +177,9 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     case _: raft.protocol.RaftCommands.InstallSnapshotSucceeded => InstallSnapshotSucceededManifest
     case _: raft.protocol.SuspendEntity                         => SuspendEntityManifest
     case _: raft.protocol.TryCreateEntity                       => TryCreateEntityManifest
+    case _: raft.protocol.EntityPassivationPermitRequest        => EntityPassivationPermitRequestManifest
+    case _: raft.protocol.EntityPassivationPermitted            => EntityPassivationPermittedManifest
+    case _: raft.protocol.EntityPassivationDenied               => EntityPassivationDeniedManifest
     // raft.snapsnot
     case _: raft.snapshot.SnapshotProtocol.EntitySnapshot => EntitySnapshotManifest
     // raft.snapshot.sync
@@ -219,6 +228,9 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     case m: raft.protocol.RaftCommands.InstallSnapshotSucceeded => installSnapshotSucceededToBinary(m)
     case m: raft.protocol.SuspendEntity                         => suspendEntityToBinary(m)
     case m: raft.protocol.TryCreateEntity                       => tryCreateEntityToBinary(m)
+    case m: raft.protocol.EntityPassivationPermitRequest        => entityPassivationPermitRequestToBinary(m)
+    case m: raft.protocol.EntityPassivationPermitted            => entityPassivationPermittedToBinary(m)
+    case m: raft.protocol.EntityPassivationDenied               => entityPassivationDeniedToBinary(m)
     // raft.snapshot
     case m: raft.snapshot.SnapshotProtocol.EntitySnapshot => entitySnapShotToBinary(m)
     // raft.snapshot.sync
@@ -724,6 +736,66 @@ private[entityreplication] final class ClusterReplicationSerializer(val system: 
     val proto = msg.TryCreateEntity.parseFrom(bytes)
     raft.protocol.TryCreateEntity(
       shardId = normalizedShardIdFromProto(proto.shardId),
+      entityId = normalizedEntityIdFromProto(proto.entityId),
+    )
+  }
+
+  private def entityPassivationPermitRequestToBinary(
+      message: raft.protocol.EntityPassivationPermitRequest,
+  ): Array[Byte] = {
+    msg.EntityPassivationPermitRequest
+      .of(
+        shardId = normalizedShardIdToProto(message.shardId),
+        entityId = normalizedEntityIdToProto(message.entityId),
+        stopMessage = payloadToProto(message.stopMessage),
+      ).toByteArray
+  }
+
+  private def entityPassivationPermitRequestFromBinary(
+      bytes: Array[Byte],
+  ): raft.protocol.EntityPassivationPermitRequest = {
+    val proto = msg.EntityPassivationPermitRequest.parseFrom(bytes)
+    raft.protocol.EntityPassivationPermitRequest(
+      shardId = normalizedShardIdFromProto(proto.shardId),
+      entityId = normalizedEntityIdFromProto(proto.entityId),
+      stopMessage = payloadFromProto(proto.stopMessage),
+    )
+  }
+
+  private def entityPassivationPermittedToBinary(
+      message: raft.protocol.EntityPassivationPermitted,
+  ): Array[Byte] = {
+    msg.EntityPassivationPermitted
+      .of(
+        entityId = normalizedEntityIdToProto(message.entityId),
+        stopMessage = payloadToProto(message.stopMessage),
+      ).toByteArray
+  }
+
+  private def entityPassivationPermittedFromBinary(
+      bytes: Array[Byte],
+  ): raft.protocol.EntityPassivationPermitted = {
+    val proto = msg.EntityPassivationPermitted.parseFrom(bytes)
+    raft.protocol.EntityPassivationPermitted(
+      entityId = normalizedEntityIdFromProto(proto.entityId),
+      stopMessage = payloadFromProto(proto.stopMessage),
+    )
+  }
+
+  private def entityPassivationDeniedToBinary(
+      message: raft.protocol.EntityPassivationDenied,
+  ): Array[Byte] = {
+    msg.EntityPassivationDenied
+      .of(
+        entityId = normalizedEntityIdToProto(message.entityId),
+      ).toByteArray
+  }
+
+  private def entityPassivationDeniedFromBinary(
+      bytes: Array[Byte],
+  ): raft.protocol.EntityPassivationDenied = {
+    val proto = msg.EntityPassivationDenied.parseFrom(bytes)
+    raft.protocol.EntityPassivationDenied(
       entityId = normalizedEntityIdFromProto(proto.entityId),
     )
   }

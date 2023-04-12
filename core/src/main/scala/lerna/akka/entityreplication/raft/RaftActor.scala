@@ -9,7 +9,7 @@ import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardI
 import lerna.akka.entityreplication.raft.RaftProtocol.{ Replicate, _ }
 import lerna.akka.entityreplication.raft.eventsourced.CommitLogStoreActor
 import lerna.akka.entityreplication.raft.model._
-import lerna.akka.entityreplication.raft.protocol.{ FetchEntityEvents, FetchEntityEventsResponse }
+import lerna.akka.entityreplication.raft.protocol._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol
@@ -188,6 +188,11 @@ private[raft] class RaftActor(
   protected[this] def otherMemberIndexes: Set[MemberIndex] = _otherMemberIndexes
 
   protected def commitLogStore: ActorRef = _commitLogStore
+
+  /** Returns `true` if the given entity is terminated, `false` otherwise. */
+  protected def isEntityTerminated(entityId: NormalizedEntityId): Boolean = {
+    context.child(entityId.underlying).isEmpty
+  }
 
   protected[this] def createEntityIfNotExists(entityId: NormalizedEntityId): Unit = replicationActor(entityId)
 
@@ -396,12 +401,71 @@ private[raft] class RaftActor(
     case _ => stash()
   }
 
+  protected def handlePassivateForNonLeader(passivate: ReplicationRegion.Passivate): Unit = {
+    currentData.leaderMember match {
+      case Some(leaderMemberIndex) =>
+        assert(leaderMemberIndex != selfMemberIndex, s"This RaftActor [$this] should be non-leader.")
+        val passivationPermitRequest =
+          EntityPassivationPermitRequest(shardId, NormalizedEntityId.of(passivate.entityPath), passivate.stopMessage)
+        if (log.isDebugEnabled) {
+          log.debug(
+            s"=== [$currentState] sending a passivation request (shardId=[{}], entityId=[{}], stopMessage=[{}]) to the leader [{}]. ===",
+            passivationPermitRequest.shardId,
+            passivationPermitRequest.entityId,
+            passivationPermitRequest.stopMessage.getClass.getName,
+            leaderMemberIndex,
+          )
+        }
+        region ! ReplicationRegion.DeliverTo(leaderMemberIndex, passivationPermitRequest)
+      case None =>
+        if (log.isDebugEnabled) {
+          log.debug(
+            "=== [{}] dropped a Passivate message (entityPath=[{}], stopMessage=[{}]) since there was no leader." +
+            " The entity should request passivation later again. ===",
+            currentState,
+            passivate.entityPath,
+            passivate.stopMessage.getClass.getName,
+          )
+        }
+    }
+  }
+
+  protected def handleEntityPassivationPermitResponse(response: EntityPassivationPermitResponse): Unit = {
+    response match {
+      case EntityPassivationPermitted(entityId, stopMessage) =>
+        if (log.isDebugEnabled) {
+          log.debug(
+            "=== [{}] got a passivation permit (entityId=[{}], stopMessage=[{}]) from the leader [{}]. ===",
+            currentState,
+            entityId,
+            stopMessage.getClass.getName,
+            sender(),
+          )
+        }
+        suspendEntity(entityId, stopMessage)
+      case EntityPassivationDenied(entityId) =>
+        if (log.isDebugEnabled) {
+          log.debug(
+            "=== [{}] got a passivation denial (entityId=[{}]) from the leader [{}]. ===",
+            currentState,
+            entityId,
+            sender(),
+          )
+        }
+    }
+  }
+
   def receiveEntityTerminated(entityId: NormalizedEntityId): Unit = {
     if (currentData.entityStateOf(entityId).isPassivating) {
       applyDomainEvent(TerminatedEntity(entityId)) { _ => }
     } else {
       // restart
       replicationActor(entityId)
+      if (currentState == Leader) {
+        // Non-leaders (followers or candidates) entities might be stopped since the leader could permit passivation mistakenly.
+        // The leader will recover from the mistake by requesting non-leaders such that non-leaders entities start.
+        broadcastWithoutSelf(TryCreateEntity(shardId, entityId))
+      }
     }
   }
 
@@ -510,6 +574,12 @@ private[raft] class RaftActor(
   def broadcast(message: Any): Unit = {
     if (log.isDebugEnabled) log.debug("=== [{}] broadcast {} ===", currentState, message)
     region ! ReplicationRegion.Broadcast(message)
+  }
+
+  /** Send the message to the other members */
+  private def broadcastWithoutSelf(message: Any): Unit = {
+    if (log.isDebugEnabled) log.debug("=== [{}] broadcast {} without self ===", currentState, message)
+    region ! ReplicationRegion.BroadcastWithoutSelf(message)
   }
 
   def applyToReplicationActor(logEntry: LogEntry): Unit =

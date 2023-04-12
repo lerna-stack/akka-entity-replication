@@ -92,6 +92,32 @@ trait RaftActorSpecBase extends ActorSpec { self: TestKit =>
         case msg => shardSnapshotStore forward msg
       }
     })
+    createRaftActorWithProps(
+      shardId,
+      shardSnapshotStoreProps,
+      region,
+      selfMemberIndex,
+      otherMemberIndexes,
+      settings,
+      replicationActorProps,
+      typeName,
+      entityId,
+      commitLogStore,
+    )
+  }
+
+  protected def createRaftActorWithProps(
+      shardId: NormalizedShardId = defaultShardId,
+      shardSnapshotStoreProps: Props = Props.empty,
+      region: ActorRef = TestProbe().ref,
+      selfMemberIndex: MemberIndex = defaultSelfMemberIndex,
+      otherMemberIndexes: Set[MemberIndex] = Set(),
+      settings: RaftSettings = RaftSettings(defaultRaftConfig),
+      replicationActorProps: Props = Props.empty,
+      typeName: TypeName = defaultTypeName,
+      entityId: NormalizedEntityId = NormalizedEntityId.from("dummy"),
+      commitLogStore: ActorRef = TestProbe().ref,
+  ): RaftTestFSMRef = {
     val extractEntityId: PartialFunction[ReplicationRegion.Msg, (NormalizedEntityId, ReplicationRegion.Msg)] = {
       case msg => (entityId, msg)
     }
