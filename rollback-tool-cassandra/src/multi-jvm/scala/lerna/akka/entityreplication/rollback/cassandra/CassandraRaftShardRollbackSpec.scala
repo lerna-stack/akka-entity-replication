@@ -122,7 +122,6 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
   private val entityIdA           = "entity-A"
   private val entityIdB           = "entity-B"
   private val numOfEventsPerRound = 100
-  private val numOfRounds         = 2
 
   private lazy val clusterReplication =
     ClusterReplication(typedSystem)
@@ -249,10 +248,10 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
               case EventEnvelope(_, _, _, event: Catalog.Event) => event
             }
             val expectedEventsOfEntityA =
-              (0 until numOfRounds * numOfEventsPerRound).map(i => Catalog.Added(entityIdA, i))
+              (0 until 2 * numOfEventsPerRound).map(i => Catalog.Added(entityIdA, i))
             events.filter(_.entityId == entityIdA) should be(expectedEventsOfEntityA)
             val expectedEventsOfEntityB =
-              (0 until numOfRounds * numOfEventsPerRound).map(i => Catalog.Added(entityIdB, i))
+              (0 until 2 * numOfEventsPerRound).map(i => Catalog.Added(entityIdB, i))
             events.filter(_.entityId == entityIdB) should be(expectedEventsOfEntityB)
           },
           max = propagationTimeout,
@@ -325,7 +324,7 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
           {
             val entityB  = clusterReplication.entityRefFor(Catalog.typeKey, entityIdB)
             val response = AtLeastOnceComplete.askTo(entityB, Catalog.Get(_), 500.millis).await
-            response.values should contain theSameElementsAs (0 until numOfRounds * numOfEventsPerRound)
+            response.values should contain theSameElementsAs (0 until 2 * numOfEventsPerRound)
           },
           max = initializationTimeout,
           interval = 500.millis,
@@ -349,7 +348,7 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
               (0 until numOfEventsPerRound).map(i => Catalog.Added(entityIdA, i))
             events.filter(_.entityId == entityIdA) should be(expectedEventsOfEntityA)
             val expectedEventsOfEntityB =
-              (0 until numOfRounds * numOfEventsPerRound).map(i => Catalog.Added(entityIdB, i))
+              (0 until 2 * numOfEventsPerRound).map(i => Catalog.Added(entityIdB, i))
             events.filter(_.entityId == entityIdB) should be(expectedEventsOfEntityB)
           },
           max = propagationTimeout,
@@ -358,6 +357,84 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
       }
       runOn(node1, node5, node6, node7) {
         enterBarrier(max = propagationTimeout, "Read the rolled-back data via tag queries")
+      }
+    }
+
+    "persist events (round 3) after the rollback" in {
+      implicit val timeout: Timeout = 2000.millis
+      val baseValue                 = 2 * numOfEventsPerRound
+      runOn(node5) {
+        for (i <- 0 until numOfEventsPerRound) {
+          val entityA = clusterReplication.entityRefFor(Catalog.typeKey, entityIdA)
+          AtLeastOnceComplete.askTo(entityA, Catalog.Add(baseValue + i, _), 500.millis).await should be(Done)
+        }
+      }
+      runOn(node6) {
+        for (i <- 0 until numOfEventsPerRound) {
+          val entityB = clusterReplication.entityRefFor(Catalog.typeKey, entityIdB)
+          AtLeastOnceComplete.askTo(entityB, Catalog.Add(baseValue + i, _), 500.millis).await should be(Done)
+        }
+      }
+      val totalPersistTimeout =
+        clusterReplicationSettings.raftSettings.heartbeatInterval * numOfEventsPerRound
+      runOn(node1, node5, node6, node7) {
+        enterBarrier(max = totalPersistTimeout, "Persisted events (round 3)")
+      }
+    }
+
+    "read the newly persisted data after the rollback from entities" in {
+      runOn(node5, node6, node7) {
+        implicit val timeout: Timeout = 2000.millis
+        awaitAssert(
+          {
+            val entityA  = clusterReplication.entityRefFor(Catalog.typeKey, entityIdA)
+            val response = AtLeastOnceComplete.askTo(entityA, Catalog.Get(_), 500.millis).await
+            val expectedValuesOfEntityA =
+              (0 until numOfEventsPerRound) ++
+              (2 * numOfEventsPerRound until 3 * numOfEventsPerRound)
+            response.values should contain theSameElementsAs expectedValuesOfEntityA
+          },
+          max = initializationTimeout,
+          interval = 500.millis,
+        )
+        awaitAssert(
+          {
+            val entityB  = clusterReplication.entityRefFor(Catalog.typeKey, entityIdB)
+            val response = AtLeastOnceComplete.askTo(entityB, Catalog.Get(_), 500.millis).await
+            response.values should contain theSameElementsAs (0 until 3 * numOfEventsPerRound)
+          },
+          max = initializationTimeout,
+          interval = 500.millis,
+        )
+      }
+      runOn(node1, node5, node6, node7) {
+        enterBarrier(max = initializationTimeout * 2, "Read the newly persisted data after the rollback from entities")
+      }
+    }
+
+    "wait for the completion of the event sourcing that provides tagged events persisted after the rollback" in {
+      runOn(node5, node6, node7) {
+        awaitAssert(
+          {
+            val source = queries
+              .currentEventsByTag(CatalogEventAdapter.tag, Offset.noOffset)
+            val events = source.runWith(Sink.seq).await.collect {
+              case EventEnvelope(_, _, _, event: Catalog.Event) => event
+            }
+            val expectedEventsOfEntityA =
+              (0 until numOfEventsPerRound).map(i => Catalog.Added(entityIdA, i)) ++
+              (2 * numOfEventsPerRound until 3 * numOfEventsPerRound).map(i => Catalog.Added(entityIdA, i))
+            events.filter(_.entityId == entityIdA) should be(expectedEventsOfEntityA)
+            val expectedEventsOfEntityB =
+              (0 until 3 * numOfEventsPerRound).map(i => Catalog.Added(entityIdB, i))
+            events.filter(_.entityId == entityIdB) should be(expectedEventsOfEntityB)
+          },
+          max = propagationTimeout,
+          interval = 500.millis,
+        )
+      }
+      runOn(node1, node5, node6, node7) {
+        enterBarrier(max = propagationTimeout, "Read tagged events persisted after the rollback via tag queries")
       }
     }
 
