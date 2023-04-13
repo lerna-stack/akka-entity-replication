@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 [Unreleased]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.2.0...master
 
+### Changed
+* Rollback deletes only tagged events after the given sequence number
+  [#202](https://github.com/lerna-stack/akka-entity-replication/issues/202),
+  [PR#203](https://github.com/lerna-stack/akka-entity-replication/pull/203)
+
 ### Fixed
 - Dead letters about ReplicationRegion$Passivate continue
   [#199](https://github.com/lerna-stack/akka-entity-replication/issues/199),
