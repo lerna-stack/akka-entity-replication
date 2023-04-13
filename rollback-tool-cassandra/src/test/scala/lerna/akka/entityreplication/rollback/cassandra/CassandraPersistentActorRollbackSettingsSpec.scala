@@ -17,6 +17,9 @@ final class CassandraPersistentActorRollbackSettingsSpec extends TestKitBase wit
       |    table = "custom_messages"
       |    target-partition-size = 1000000
       |  }
+      |  events-by-tag {
+      |    table = "custom_tag_views"
+      |  }
       |  query {
       |    read-profile = "custom_akka-persistence-cassandra-query-profile"
       |    max-buffer-size = 1000
@@ -56,6 +59,10 @@ final class CassandraPersistentActorRollbackSettingsSpec extends TestKitBase wit
       settings.query.readProfile should be("custom_akka-persistence-cassandra-query-profile")
       settings.query.maxBufferSize should be(1000)
       settings.query.deserializationParallelism should be(2)
+
+      // EventsByTag Settings
+      settings.eventsByTag.keyspace should be("custom_akka")
+      settings.eventsByTag.table should be("custom_tag_views")
 
       // Snapshot settings
       settings.snapshot.writeProfile should be("custom_akka-persistence-cassandra-snapshot-write-profile")

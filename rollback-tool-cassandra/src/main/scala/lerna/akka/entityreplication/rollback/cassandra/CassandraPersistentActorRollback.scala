@@ -29,6 +29,9 @@ private final class CassandraPersistentActorRollback(
   private val reconciliation: Reconciliation =
     new Reconciliation(system, settings.reconciliation)
 
+  private val deleteTagViews: DeleteTagViews =
+    new DeleteTagViews(system, settings)
+
   private[cassandra] val queries: CassandraPersistenceQueries =
     new CassandraPersistenceQueries(systemProvider, settings.queries)
 
@@ -73,7 +76,7 @@ private final class CassandraPersistentActorRollback(
     for {
       _ <- deleteEventsFrom(persistenceId, deleteFromSequenceNr)
       _ <- deleteSnapshotsFrom(persistenceId, deleteFromSequenceNr)
-      _ <- deleteTagView(persistenceId)
+      _ <- deleteTagView(persistenceId, deleteFromSequenceNr)
       _ <- rebuildTagView(persistenceId)
     } yield Done
   }
@@ -90,7 +93,7 @@ private final class CassandraPersistentActorRollback(
     for {
       _ <- cleanup.deleteAllEvents(persistenceId, neverUsePersistenceIdAgain = true)
       _ <- cleanup.deleteAllSnapshots(persistenceId)
-      _ <- deleteTagView(persistenceId)
+      _ <- deleteTagView(persistenceId, SequenceNr(1))
     } yield Done
   }
 
@@ -162,23 +165,28 @@ private final class CassandraPersistentActorRollback(
     }
   }
 
-  /** Deletes tag views for the given persistence ID
+  /** Deletes tag views and metadata (`tag_write_progress`, `tag_scanning`) after the given sequence number (inclusive) for the persistence ID
     *
-    * Prerequisite: `tag_progress` should be consistent (not broken) since it is used to select all tags for the given
+    * Prerequisite: `tag_write_progress` should be consistent (not broken) since it is used to select all tags for the given
     * persistence ID.
     *
     * If dry-run mode, this method logs an INFO message and does not execute actual deletes.
     */
-  def deleteTagView(persistenceId: String): Future[Done] = {
+  def deleteTagView(persistenceId: String, from: SequenceNr): Future[Done] = {
     reconciliation
       .tagsForPersistenceId(persistenceId)
       .flatMap { tags =>
         if (settings.dryRun) {
-          log.info("dry-run: delete tag_view(s) [{}] for persistence_id [{}]", tags, persistenceId)
+          log.info(
+            "dry-run: delete tag_view(s) [{}] after sequence_nr [{}] for persistence_id [{}] ",
+            tags,
+            from.value,
+            persistenceId,
+          )
           Future.successful(Done)
         } else {
           Future.traverse(tags) { tag =>
-            reconciliation.deleteTagViewForPersistenceIds(Set(persistenceId), tag)
+            deleteTagViews.execute(persistenceId, tag, from)
           }
         }
       }.map(_ => Done)

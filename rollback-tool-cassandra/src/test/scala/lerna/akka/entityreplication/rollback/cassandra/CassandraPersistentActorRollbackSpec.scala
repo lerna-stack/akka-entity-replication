@@ -861,22 +861,31 @@ final class CassandraPersistentActorRollbackSpec
       probe.expectMsg(TestPersistentActor.Ack(2))
       actor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
       probe.expectMsg(TestPersistentActor.Ack(3))
+      actor ! TestPersistentActor.PersistTaggedEvent(tagA, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(4))
+      actor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(5))
 
       // Test prerequisites:
       eventually {
         val eventsOfTagA =
           queries.currentEventsByTag(tagA, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-        eventsOfTagA should be(Seq(TestPersistentActor.Event(2)))
+        eventsOfTagA should be(Seq(TestPersistentActor.Event(2), TestPersistentActor.Event(4)))
         val eventsOfTagB =
           queries.currentEventsByTag(tagB, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-        eventsOfTagB should be(Seq(TestPersistentActor.Event(3)))
+        eventsOfTagB should be(Seq(TestPersistentActor.Event(3), TestPersistentActor.Event(5)))
       }
 
+      // Prepare: stop the actor before deletes
+      probe.watch(actor)
+      system.stop(actor)
+      probe.expectTerminated(actor)
+
       // Test:
-      rollback.deleteTagView(persistenceId).futureValue should be(Done)
+      rollback.deleteTagView(persistenceId, SequenceNr(3)).futureValue should be(Done)
       val eventsOfTagA =
         queries.currentEventsByTag(tagA, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-      eventsOfTagA should be(empty)
+      eventsOfTagA should be(Seq(TestPersistentActor.Event(2)))
       val eventsOfTagB =
         queries.currentEventsByTag(tagB, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
       eventsOfTagB should be(empty)
@@ -897,15 +906,19 @@ final class CassandraPersistentActorRollbackSpec
       probe.expectMsg(TestPersistentActor.Ack(2))
       actor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
       probe.expectMsg(TestPersistentActor.Ack(3))
+      actor ! TestPersistentActor.PersistTaggedEvent(tagA, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(4))
+      actor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(5))
 
       // Test prerequisites:
       eventually {
         val eventsOfTagA =
           queries.currentEventsByTag(tagA, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-        eventsOfTagA should be(Seq(TestPersistentActor.Event(2)))
+        eventsOfTagA should be(Seq(TestPersistentActor.Event(2), TestPersistentActor.Event(4)))
         val eventsOfTagB =
           queries.currentEventsByTag(tagB, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-        eventsOfTagB should be(Seq(TestPersistentActor.Event(3)))
+        eventsOfTagB should be(Seq(TestPersistentActor.Event(3), TestPersistentActor.Event(5)))
       }
 
       // Prepare: stop the actor before deletes
@@ -918,20 +931,101 @@ final class CassandraPersistentActorRollbackSpec
         implicit val typedSystem: ActorSystem[Nothing] = system.toTyped
         LoggingTestKit
           .info(
-            s"dry-run: delete tag_view(s) [Set($tagA, $tagB)] for persistence_id [$persistenceId]",
+            s"dry-run: delete tag_view(s) [Set($tagA, $tagB)] after sequence_nr [3] for persistence_id [$persistenceId]",
           ).expect {
-            rollback.deleteTagView(persistenceId).futureValue should be(Done)
+            rollback.deleteTagView(persistenceId, SequenceNr(3)).futureValue should be(Done)
           }
       }
 
       // Test: delete no tag views
       val eventsOfTagA =
         queries.currentEventsByTag(tagA, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-      eventsOfTagA should be(Seq(TestPersistentActor.Event(2)))
+      eventsOfTagA should be(Seq(TestPersistentActor.Event(2), TestPersistentActor.Event(4)))
       val eventsOfTagB =
         queries.currentEventsByTag(tagB, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-      eventsOfTagB should be(Seq(TestPersistentActor.Event(3)))
+      eventsOfTagB should be(Seq(TestPersistentActor.Event(3), TestPersistentActor.Event(5)))
+    }
 
+    "delete no tag views for persistence IDs other than the given" in {
+      val rollback            = new CassandraPersistentActorRollback(system, settings)
+      val probe               = TestProbe()
+      val targetPersistenceId = nextPersistenceId()
+      val otherPersistenceId  = nextPersistenceId()
+      val tagA                = nextUniqueTag()
+      val tagB                = nextUniqueTag()
+
+      def currentEventsByTagAndPersistenceId(tag: String, persistenceId: String): Seq[Any] = {
+        queries
+          .currentEventsByTag(tag, Offset.noOffset)
+          .filter(_.persistenceId == persistenceId)
+          .map(_.event)
+          .runWith(Sink.seq)
+          .futureValue
+      }
+
+      // Prepare:
+      val targetActor: ActorRef = system.actorOf(TestPersistentActor.props(targetPersistenceId))
+      targetActor ! TestPersistentActor.PersistEvent(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(1))
+      targetActor ! TestPersistentActor.PersistTaggedEvent(tagA, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(2))
+      targetActor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(3))
+      targetActor ! TestPersistentActor.PersistTaggedEvent(tagA, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(4))
+      targetActor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(5))
+
+      val otherActor: ActorRef = system.actorOf(TestPersistentActor.props(otherPersistenceId))
+      otherActor ! TestPersistentActor.PersistEvent(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(1))
+      otherActor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(2))
+      otherActor ! TestPersistentActor.PersistTaggedEvent(tagA, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(3))
+      otherActor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(4))
+      otherActor ! TestPersistentActor.PersistTaggedEvent(tagA, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(5))
+
+      // Test prerequisites:
+      eventually {
+        currentEventsByTagAndPersistenceId(tagA, targetPersistenceId) should be(
+          Seq(TestPersistentActor.Event(2), TestPersistentActor.Event(4)),
+        )
+        currentEventsByTagAndPersistenceId(tagB, targetPersistenceId) should be(
+          Seq(TestPersistentActor.Event(3), TestPersistentActor.Event(5)),
+        )
+        currentEventsByTagAndPersistenceId(tagA, otherPersistenceId) should be(
+          Seq(TestPersistentActor.Event(3), TestPersistentActor.Event(5)),
+        )
+        currentEventsByTagAndPersistenceId(tagB, otherPersistenceId) should be(
+          Seq(TestPersistentActor.Event(2), TestPersistentActor.Event(4)),
+        )
+      }
+
+      // Prepare: stop the actors before deletes
+      probe.watch(targetActor)
+      system.stop(targetActor)
+      probe.expectTerminated(targetActor)
+
+      probe.watch(otherActor)
+      system.stop(otherActor)
+      probe.expectTerminated(otherActor)
+
+      // Test:
+      rollback.deleteTagView(targetPersistenceId, SequenceNr(3)).futureValue should be(Done)
+
+      // Test: Tagged events with the target persistence ID is deleted.
+      currentEventsByTagAndPersistenceId(tagA, targetPersistenceId) should be(Seq(TestPersistentActor.Event(2)))
+      currentEventsByTagAndPersistenceId(tagB, targetPersistenceId) should be(empty)
+      // Test: Tagged events with the other persistence ID is not deleted.
+      currentEventsByTagAndPersistenceId(tagA, otherPersistenceId) should be(
+        Seq(TestPersistentActor.Event(3), TestPersistentActor.Event(5)),
+      )
+      currentEventsByTagAndPersistenceId(tagB, otherPersistenceId) should be(
+        Seq(TestPersistentActor.Event(2), TestPersistentActor.Event(4)),
+      )
     }
 
   }
@@ -953,15 +1047,19 @@ final class CassandraPersistentActorRollbackSpec
       probe.expectMsg(TestPersistentActor.Ack(2))
       actor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
       probe.expectMsg(TestPersistentActor.Ack(3))
+      actor ! TestPersistentActor.PersistTaggedEvent(tagA, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(4))
+      actor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(5))
 
       // Test prerequisites:
       eventually {
         val eventsOfTagA =
           queries.currentEventsByTag(tagA, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-        eventsOfTagA should be(Seq(TestPersistentActor.Event(2)))
+        eventsOfTagA should be(Seq(TestPersistentActor.Event(2), TestPersistentActor.Event(4)))
         val eventsOfTagB =
           queries.currentEventsByTag(tagB, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-        eventsOfTagB should be(Seq(TestPersistentActor.Event(3)))
+        eventsOfTagB should be(Seq(TestPersistentActor.Event(3), TestPersistentActor.Event(5)))
       }
 
       // Prepare: stop the actor before deletes
@@ -970,13 +1068,13 @@ final class CassandraPersistentActorRollbackSpec
       probe.expectTerminated(actor)
 
       // Prepare: delete tag views
-      rollback.deleteTagView(persistenceId).futureValue should be(Done)
+      rollback.deleteTagView(persistenceId, SequenceNr(3)).futureValue should be(Done)
 
       // Test prerequisites:
       locally {
         val eventsOfTagA =
           queries.currentEventsByTag(tagA, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-        eventsOfTagA should be(empty)
+        eventsOfTagA should be(Seq(TestPersistentActor.Event(2)))
         val eventsOfTagB =
           queries.currentEventsByTag(tagB, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
         eventsOfTagB should be(empty)
@@ -986,10 +1084,10 @@ final class CassandraPersistentActorRollbackSpec
       rollback.rebuildTagView(persistenceId).futureValue should be(Done)
       val eventsOfTagA =
         queries.currentEventsByTag(tagA, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-      eventsOfTagA should be(Seq(TestPersistentActor.Event(2)))
+      eventsOfTagA should be(Seq(TestPersistentActor.Event(2), TestPersistentActor.Event(4)))
       val eventsOfTagB =
         queries.currentEventsByTag(tagB, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-      eventsOfTagB should be(Seq(TestPersistentActor.Event(3)))
+      eventsOfTagB should be(Seq(TestPersistentActor.Event(3), TestPersistentActor.Event(5)))
     }
 
     "rebuild no tag views and log an info message if it is in dry-run mode" in {
@@ -1006,15 +1104,19 @@ final class CassandraPersistentActorRollbackSpec
       probe.expectMsg(TestPersistentActor.Ack(2))
       actor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
       probe.expectMsg(TestPersistentActor.Ack(3))
+      actor ! TestPersistentActor.PersistTaggedEvent(tagA, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(4))
+      actor ! TestPersistentActor.PersistTaggedEvent(tagB, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(5))
 
       // Test prerequisites:
       eventually {
         val eventsOfTagA =
           queries.currentEventsByTag(tagA, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-        eventsOfTagA should be(Seq(TestPersistentActor.Event(2)))
+        eventsOfTagA should be(Seq(TestPersistentActor.Event(2), TestPersistentActor.Event(4)))
         val eventsOfTagB =
           queries.currentEventsByTag(tagB, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-        eventsOfTagB should be(Seq(TestPersistentActor.Event(3)))
+        eventsOfTagB should be(Seq(TestPersistentActor.Event(3), TestPersistentActor.Event(5)))
       }
 
       // Prepare: stop the actor before deletes
@@ -1025,12 +1127,12 @@ final class CassandraPersistentActorRollbackSpec
       // Prepare: delete tag views
       locally {
         val rollback = new CassandraPersistentActorRollback(system, settings)
-        rollback.deleteTagView(persistenceId).futureValue should be(Done)
+        rollback.deleteTagView(persistenceId, SequenceNr(3)).futureValue should be(Done)
 
         // Test prerequisites:
         val eventsOfTagA =
           queries.currentEventsByTag(tagA, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-        eventsOfTagA should be(empty)
+        eventsOfTagA should be(Seq(TestPersistentActor.Event(2)))
         val eventsOfTagB =
           queries.currentEventsByTag(tagB, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
         eventsOfTagB should be(empty)
@@ -1051,7 +1153,7 @@ final class CassandraPersistentActorRollbackSpec
       // Test: rebuild no tag views
       val eventsOfTagA =
         queries.currentEventsByTag(tagA, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
-      eventsOfTagA should be(empty)
+      eventsOfTagA should be(Seq(TestPersistentActor.Event(2)))
       val eventsOfTagB =
         queries.currentEventsByTag(tagB, Offset.noOffset).map(_.event).runWith(Sink.seq).futureValue
       eventsOfTagB should be(empty)
