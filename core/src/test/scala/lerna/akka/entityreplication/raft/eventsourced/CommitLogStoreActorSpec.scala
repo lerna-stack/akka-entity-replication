@@ -4,11 +4,13 @@ import akka.Done
 import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
 import akka.actor.{ typed, ActorRef, ActorSystem }
+import akka.cluster.Cluster
 import akka.persistence.testkit.scaladsl.{ PersistenceTestKit, SnapshotTestKit }
 import akka.persistence.testkit._
 import akka.testkit.TestKit
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ClusterReplicationSettings
+import lerna.akka.entityreplication.internal.ClusterReplicationSettingsImpl
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
 import lerna.akka.entityreplication.raft.ActorSpec
 import lerna.akka.entityreplication.raft.model.{ EntityEvent, LogEntry, LogEntryIndex, NoOp, Term }
@@ -19,16 +21,10 @@ import scala.annotation.nowarn
 
 object CommitLogStoreActorSpec {
 
-  // Pick not too large and not too small value.
-  //   * A too-large value requires more time to test.
-  //   * A too-small value affects other tests unrelated to the snapshot feature.
-  val snapshotEvery: Int = 10
-
   val commitLogStoreConfig: Config = ConfigFactory.parseString(s"""
       |lerna.akka.entityreplication.raft.eventsourced.persistence {
       |  journal.plugin = ${PersistenceTestKitPlugin.PluginId}
       |  snapshot-store.plugin = ${PersistenceTestKitSnapshotPlugin.PluginId}
-      |  snapshot-every = $snapshotEvery
       |}
       |""".stripMargin)
 
@@ -83,6 +79,17 @@ final class CommitLogStoreActorSpec
     finally super.afterAll()
   }
 
+  private def configFor(
+      snapshotEvery: Int,
+  ): Config = {
+    ConfigFactory
+      .parseString(
+        s"""
+           |lerna.akka.entityreplication.raft.eventsourced.persistence.snapshot-every = $snapshotEvery
+           |""".stripMargin,
+      ).withFallback(system.settings.config)
+  }
+
   private def spawnCommitLogStoreActor(
       name: Option[String] = None,
       settings: ClusterReplicationSettings = ClusterReplicationSettings.create(system),
@@ -95,6 +102,16 @@ final class CommitLogStoreActorSpec
     beforeSpawn(persistenceId)
     val actor = planAutoKill(system.actorOf(props, actorName))
     (actor, shardId, persistenceId)
+  }
+
+  private def spawnCommitLogStoreActorWithConfig(
+      config: Config,
+      name: Option[String] = None,
+      beforeSpawn: PersistenceId => Unit = _ => {},
+  ): (ActorRef, NormalizedShardId, PersistenceId) = {
+    val settings: ClusterReplicationSettings =
+      ClusterReplicationSettingsImpl(config, Cluster(system).settings.Roles)
+    spawnCommitLogStoreActor(name, settings, beforeSpawn)
   }
 
   "CommitLogStoreActor.AppendCommittedEntries" should {
@@ -215,8 +232,9 @@ final class CommitLogStoreActorSpec
     }
 
     "save a snapshot every `snapshot-every` events" in {
-      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      val snapshotEvery                                 = 10
+      val config                                        = configFor(snapshotEvery)
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
       val indices                                       = Vector.tabulate(snapshotEvery * 2)(_ + 1)
       indices.foreach { i =>
         val index              = LogEntryIndex.initial().plus(i)
@@ -240,14 +258,10 @@ final class CommitLogStoreActorSpec
     }
 
     "load the latest snapshot if it restarts" in {
-      // This test verify that an actor will replay the latest snapshot and at-least one event.
-      assume(
-        snapshotEvery > 1,
-        "`snapshot-every` should be greater than 1 since an actor should replay at-least one event.",
-      )
-
+      val snapshotEvery                                 = 10
+      val config                                        = configFor(snapshotEvery)
       val name                                          = UUID.randomUUID().toString
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor(Option(name))
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config, Option(name))
 
       // Save a snapshot.
       def shouldSaveSnapshot(index: LogEntryIndex): Boolean = index.underlying % snapshotEvery == 0
@@ -288,8 +302,9 @@ final class CommitLogStoreActorSpec
     }
 
     "continue it's behavior if a snapshot save fails" in {
-      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      val snapshotEvery                                 = 10
+      val config                                        = configFor(snapshotEvery)
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
       val indices                                       = Vector.tabulate(snapshotEvery) { i => LogEntryIndex.initial().plus(i + 1) }
       indices.zipWithIndex.dropRight(1).foreach {
         case (index, n) =>
@@ -339,8 +354,9 @@ final class CommitLogStoreActorSpec
     }
 
     "not save a snapshot if an event save fails" in {
-      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      val snapshotEvery                                 = 10
+      val config                                        = configFor(snapshotEvery)
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
       val indices                                       = Vector.tabulate(snapshotEvery) { i => LogEntryIndex.initial().plus(i + 1) }
       indices.zipWithIndex.dropRight(1).foreach {
         case (index, n) =>
@@ -480,8 +496,9 @@ final class CommitLogStoreActorSpec
     }
 
     "save a snapshot every `snapshot-every` events (with AppendCommittedEntries)" in {
-      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      val snapshotEvery                                 = 10
+      val config                                        = configFor(snapshotEvery)
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
 
       def makeEntries(baseIndex: LogEntryIndex, numberOfEntries: Int): Seq[LogEntry] = {
         val indices = Vector.tabulate(numberOfEntries)(i => baseIndex.plus(i))
@@ -516,8 +533,9 @@ final class CommitLogStoreActorSpec
     }
 
     "continue its behavior if a snapshot save fails (with AppendCommittedEntries)" in {
-      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      val snapshotEvery                                 = 10
+      val config                                        = configFor(snapshotEvery)
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
 
       val entries = Vector.tabulate(snapshotEvery + 1) { i =>
         val entityId    = NormalizedEntityId("entity1")
@@ -549,8 +567,9 @@ final class CommitLogStoreActorSpec
     }
 
     "not save a snapshot if an event save fails (with AppendCommittedEntries)" in {
-      assume(snapshotEvery > 0, "`snapshot-every` should be greater than 0.")
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActor()
+      val snapshotEvery                                 = 10
+      val config                                        = configFor(snapshotEvery)
+      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
 
       val entries = Vector.tabulate(snapshotEvery) { i =>
         val entityId    = NormalizedEntityId("entity1")
