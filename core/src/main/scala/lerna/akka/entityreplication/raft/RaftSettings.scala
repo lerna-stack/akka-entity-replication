@@ -87,6 +87,22 @@ trait RaftSettings {
 
   def eventSourcedSnapshotEvery: Int
 
+  /** Returns `true` if an event-sourcing store (`CommitLogStoreActor`) deletes old events when it successfully saves a
+    * snapshot, `false` otherwise.
+    */
+  def eventSourcedDeleteOldEvents: Boolean
+
+  /** Returns `true` if an event-sourcing store (`CommitLogStoreActor`) deletes old snapshots when it successfully saves
+    * a snapshot, `false` otherwise.
+    */
+  def eventSourcedDeleteOldSnapshots: Boolean
+
+  /** Returns the relative sequence number for determining old events and snapshots to be deleted.
+    *
+    * For more details, see the setting `lerna.akka.entityreplication.raft.eventsourced.persistence.delete-before-relative-sequence-nr`.
+    */
+  def eventSourcedDeleteBeforeRelativeSequenceNr: Long
+
   private[entityreplication] def withDisabledShards(disabledShards: Set[String]): RaftSettings
 
   private[entityreplication] def withStickyLeaders(stickyLeaders: Map[String, String]): RaftSettings

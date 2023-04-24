@@ -42,6 +42,9 @@ private[entityreplication] final case class RaftSettingsImpl(
     eventSourcedJournalPluginId: String,
     eventSourcedSnapshotStorePluginId: String,
     eventSourcedSnapshotEvery: Int,
+    eventSourcedDeleteOldEvents: Boolean,
+    eventSourcedDeleteOldSnapshots: Boolean,
+    eventSourcedDeleteBeforeRelativeSequenceNr: Long,
 ) extends RaftSettings {
 
   override private[raft] def randomizedElectionTimeout(): FiniteDuration =
@@ -234,6 +237,17 @@ private[entityreplication] object RaftSettingsImpl {
       s"snapshot-every ($eventSourcedSnapshotEvery) should be greater than 0.",
     )
 
+    val eventSourcedDeleteOldEvents: Boolean =
+      config.getBoolean("eventsourced.persistence.delete-old-events")
+    val eventSourcedDeleteOldSnapshots: Boolean =
+      config.getBoolean("eventsourced.persistence.delete-old-snapshots")
+    val eventSourcedDeleteBeforeRelativeSequenceNr: Long =
+      config.getLong("eventsourced.persistence.delete-before-relative-sequence-nr")
+    require(
+      eventSourcedDeleteBeforeRelativeSequenceNr >= 0,
+      s"eventsourced.persistence.delete-before-relative-sequence-nr ($eventSourcedDeleteBeforeRelativeSequenceNr) should be greater than or equal to 0.",
+    )
+
     RaftSettingsImpl(
       config = config,
       electionTimeout = electionTimeout,
@@ -268,6 +282,9 @@ private[entityreplication] object RaftSettingsImpl {
       eventSourcedJournalPluginId = eventSourcedJournalPluginId,
       eventSourcedSnapshotStorePluginId = eventSourcedSnapshotStorePluginId,
       eventSourcedSnapshotEvery = eventSourcedSnapshotEvery,
+      eventSourcedDeleteOldEvents = eventSourcedDeleteOldEvents,
+      eventSourcedDeleteOldSnapshots = eventSourcedDeleteOldSnapshots,
+      eventSourcedDeleteBeforeRelativeSequenceNr = eventSourcedDeleteBeforeRelativeSequenceNr,
     )
   }
 

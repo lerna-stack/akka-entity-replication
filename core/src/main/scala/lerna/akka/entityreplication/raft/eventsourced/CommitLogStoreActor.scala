@@ -4,14 +4,7 @@ import akka.Done
 import akka.actor.{ ActorLogging, ActorRef, ActorSystem, Props }
 import akka.cluster.sharding.ShardRegion.HashCodeMessageExtractor
 import akka.cluster.sharding.{ ClusterSharding, ClusterShardingSettings }
-import akka.persistence.{
-  PersistentActor,
-  Recovery,
-  RecoveryCompleted,
-  SaveSnapshotFailure,
-  SaveSnapshotSuccess,
-  SnapshotOffer,
-}
+import akka.persistence._
 import akka.util.ByteString
 import lerna.akka.entityreplication.{ ClusterReplicationSerializable, ClusterReplicationSettings }
 import lerna.akka.entityreplication.model.{ NormalizedShardId, TypeName }
@@ -192,17 +185,18 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
       )
       receiveAppendCommittedEntries(appendCommittedEntries)
 
-    case SaveSnapshotSuccess(metadata) =>
-      log.info("Succeeded to saveSnapshot given metadata [{}]", metadata)
-
-    case SaveSnapshotFailure(metadata, cause) =>
-      log.warning(
-        "Failed to saveSnapshot given metadata [{}] due to: [{}: {}]",
-        metadata,
-        cause.getClass.getCanonicalName,
-        cause.getMessage,
-      )
-
+    case success: SaveSnapshotSuccess =>
+      handleSaveSnapshotSuccess(success)
+    case failure: SaveSnapshotFailure =>
+      handleSaveSnapshotFailure(failure)
+    case success: DeleteMessagesSuccess =>
+      handleDeleteMessagesSuccess(success)
+    case failure: DeleteMessagesFailure =>
+      handleDeleteMessagesFailure(failure)
+    case success: DeleteSnapshotsSuccess =>
+      handleDeleteSnapshotsSuccess(success)
+    case failure: DeleteSnapshotsFailure =>
+      handleDeleteSnapshotsFailure(failure)
   }
 
   override def persistenceId: String = CommitLogStoreActor.persistenceId(typeName, shardId)
@@ -329,4 +323,81 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
       context.stop(self)
     }
   }
+
+  private def handleSaveSnapshotSuccess(success: SaveSnapshotSuccess): Unit = {
+    if (log.isInfoEnabled) {
+      log.info("Succeeded to saveSnapshot given metadata [{}]", success.metadata)
+    }
+    val deleteBeforeRelativeSequenceNr = settings.raftSettings.eventSourcedDeleteBeforeRelativeSequenceNr
+    if (settings.raftSettings.eventSourcedDeleteOldEvents) {
+      val deleteEventsToSequenceNr =
+        math.max(0, success.metadata.sequenceNr - deleteBeforeRelativeSequenceNr)
+      if (log.isInfoEnabled) {
+        log.info("Deleting events up to sequenceNr [{}]", deleteEventsToSequenceNr)
+      }
+      deleteMessages(deleteEventsToSequenceNr)
+    }
+    if (settings.raftSettings.eventSourcedDeleteOldSnapshots) {
+      val deletionCriteria = {
+        // Since this actor will use the snapshot with sequence number `metadata.sequenceNr` for recovery, it can delete
+        // snapshots with sequence numbers less than `metadata.sequenceNr`.
+        val deleteSnapshotsToSequenceNr =
+          math.max(
+            0,
+            success.metadata.sequenceNr - 1 - deleteBeforeRelativeSequenceNr,
+          )
+        SnapshotSelectionCriteria(minSequenceNr = 0, maxSequenceNr = deleteSnapshotsToSequenceNr)
+      }
+      if (log.isInfoEnabled) {
+        log.info("Deleting snapshots matching criteria [{}]", deletionCriteria)
+      }
+      deleteSnapshots(deletionCriteria)
+    }
+  }
+
+  private def handleSaveSnapshotFailure(failure: SaveSnapshotFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "Failed to saveSnapshot given metadata [{}] due to: [{}: {}]",
+        failure.metadata,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+  }
+
+  private def handleDeleteMessagesSuccess(success: DeleteMessagesSuccess): Unit = {
+    if (log.isInfoEnabled) {
+      log.info("Succeeded to deleteMessages up to sequenceNr [{}]", success.toSequenceNr)
+    }
+  }
+
+  private def handleDeleteMessagesFailure(failure: DeleteMessagesFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "Failed to deleteMessages given toSequenceNr [{}] due to: [{}: {}]",
+        failure.toSequenceNr,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+  }
+
+  private def handleDeleteSnapshotsSuccess(success: DeleteSnapshotsSuccess): Unit = {
+    if (log.isInfoEnabled) {
+      log.info("Succeeded to deleteSnapshots given criteria [{}]", success.criteria)
+    }
+  }
+
+  private def handleDeleteSnapshotsFailure(failure: DeleteSnapshotsFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "Failed to deleteSnapshots given criteria [{}] due to: [{}: {}]",
+        failure.criteria,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+  }
+
 }

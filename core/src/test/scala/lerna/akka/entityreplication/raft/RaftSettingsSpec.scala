@@ -50,6 +50,9 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.eventSourcedJournalPluginId shouldBe ""
       settings.eventSourcedSnapshotStorePluginId shouldBe ""
       settings.eventSourcedSnapshotEvery shouldBe 1_000
+      settings.eventSourcedDeleteOldEvents shouldBe false
+      settings.eventSourcedDeleteOldSnapshots shouldBe false
+      settings.eventSourcedDeleteBeforeRelativeSequenceNr shouldBe 1_000
     }
 
     "load the default journalPluginAdditionalConfig with non-empty journalPluginId" in {
@@ -306,6 +309,27 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       a[IllegalArgumentException] shouldBe thrownBy {
         RaftSettings(config)
       }
+    }
+
+    "not throw an IllegalArgumentException if the given eventsourced.persistence.delete-before-relative-sequence-nr is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+            |lerna.akka.entityreplication.raft.eventsourced.persistence.delete-before-relative-sequence-nr = 0
+            |""".stripMargin)
+        .withFallback(defaultConfig)
+      RaftSettings(config).eventSourcedDeleteBeforeRelativeSequenceNr shouldBe 0
+    }
+
+    "throw an IllegalArgumentException if the given eventsourced.persistence.delete-before-relative-sequence-nr is -1" in {
+      val config = ConfigFactory
+        .parseString("""
+            |lerna.akka.entityreplication.raft.eventsourced.persistence.delete-before-relative-sequence-nr = -1
+            |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: eventsourced.persistence.delete-before-relative-sequence-nr (-1) should be greater than or equal to 0."
     }
 
     "create new settings using withDisabledShards" in {
