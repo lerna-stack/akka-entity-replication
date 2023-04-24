@@ -40,6 +40,9 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.snapshotSyncPersistenceOperationTimeout shouldBe 10.seconds
       settings.snapshotSyncMaxSnapshotBatchSize shouldBe 1_000
       settings.snapshotStoreSnapshotEvery shouldBe 1
+      settings.snapshotStoreDeleteOldEvents shouldBe false
+      settings.snapshotStoreDeleteOldSnapshots shouldBe false
+      settings.snapshotStoreDeleteBeforeRelativeSequenceNr shouldBe 1
       settings.clusterShardingConfig shouldBe defaultConfig.getConfig("lerna.akka.entityreplication.raft.sharding")
       settings.raftActorAutoStartFrequency shouldBe 3.seconds
       settings.raftActorAutoStartNumberOfActors shouldBe 5
@@ -229,6 +232,27 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
           RaftSettings(config)
         }
       }
+    }
+
+    "not throw an IllegalArgumentException if the given entity-snapshot-store.delete-before-relative-sequence-nr is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+            |lerna.akka.entityreplication.raft.entity-snapshot-store.delete-before-relative-sequence-nr = 0
+            |""".stripMargin)
+        .withFallback(defaultConfig)
+      RaftSettings(config).snapshotStoreDeleteBeforeRelativeSequenceNr shouldBe 0
+    }
+
+    "throw an IllegalArgumentException if the given entity-snapshot-store.delete-before-relative-sequence-nr is -1" in {
+      val config = ConfigFactory
+        .parseString("""
+            |lerna.akka.entityreplication.raft.entity-snapshot-store.delete-before-relative-sequence-nr = -1
+            |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: entity-snapshot-store.delete-before-relative-sequence-nr (-1) should be greater than or equal to 0."
     }
 
     "throw an IllegalArgumentException if the given raft-actor-auto-start.frequency is 0 milli" in {

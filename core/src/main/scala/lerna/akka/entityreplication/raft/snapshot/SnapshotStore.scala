@@ -2,7 +2,7 @@ package lerna.akka.entityreplication.raft.snapshot
 
 import akka.actor.{ ActorLogging, ActorRef, Props, ReceiveTimeout }
 import akka.persistence
-import akka.persistence.PersistentActor
+import akka.persistence.{ PersistentActor, SnapshotSelectionCriteria }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, TypeName }
 import lerna.akka.entityreplication.raft.RaftSettings
 import lerna.akka.entityreplication.raft.routing.MemberIndex
@@ -172,19 +172,95 @@ private[entityreplication] class SnapshotStore(
           )
         }
         context.stop(self)
-      case _: persistence.SaveSnapshotSuccess =>
-        if (log.isDebugEnabled) {
-          log.debug("Saving EntitySnapshot as a snapshot succeeded.")
-        }
+
+      case success: persistence.SaveSnapshotSuccess =>
+        handleSaveSnapshotSuccess(success)
       case failure: persistence.SaveSnapshotFailure =>
-        if (log.isWarningEnabled) {
-          log.warning(
-            "Saving EntitySnapshot as a snapshot failed. - {}: {}",
-            failure.cause.getClass.getCanonicalName,
-            failure.cause.getMessage,
-          )
-        }
+        handleSaveSnapshotFailure(failure)
+      case success: persistence.DeleteMessagesSuccess =>
+        handleDeleteMessagesSuccess(success)
+      case failure: persistence.DeleteMessagesFailure =>
+        handleDeleteMessagesFailure(failure)
+      case success: persistence.DeleteSnapshotsSuccess =>
+        handleDeleteSnapshotsSuccess(success)
+      case failure: persistence.DeleteSnapshotsFailure =>
+        handleDeleteSnapshotsFailure(failure)
+
       case _ =>
         super.unhandled(message)
     }
+
+  private def handleSaveSnapshotSuccess(success: persistence.SaveSnapshotSuccess): Unit = {
+    if (log.isDebugEnabled) {
+      log.debug("Succeeded to saveSnapshot given metadata [{}]", success.metadata)
+    }
+    val deleteBeforeRelativeSequenceNr = settings.snapshotStoreDeleteBeforeRelativeSequenceNr
+    if (settings.snapshotStoreDeleteOldEvents) {
+      val deleteEventsToSequenceNr =
+        math.max(0, success.metadata.sequenceNr - deleteBeforeRelativeSequenceNr)
+      if (log.isDebugEnabled) {
+        log.debug("Deleting events up to sequenceNr [{}]", deleteEventsToSequenceNr)
+      }
+      deleteMessages(deleteEventsToSequenceNr)
+    }
+    if (settings.snapshotStoreDeleteOldSnapshots) {
+      val deletionCriteria = {
+        // Since this actor will use the snapshot with sequence number `metadata.sequenceNr` for recovery, it can delete
+        // snapshots with sequence numbers less than `metadata.sequenceNr`.
+        val deleteSnapshotsToSequenceNr =
+          math.max(0, success.metadata.sequenceNr - 1 - deleteBeforeRelativeSequenceNr)
+        SnapshotSelectionCriteria(minSequenceNr = 0, maxSequenceNr = deleteSnapshotsToSequenceNr)
+      }
+      if (log.isDebugEnabled) {
+        log.debug("Deleting snapshots matching criteria [{}]", deletionCriteria)
+      }
+      deleteSnapshots(deletionCriteria)
+    }
+  }
+
+  private def handleSaveSnapshotFailure(failure: persistence.SaveSnapshotFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "Failed to saveSnapshot given metadata [{}] due to: [{}: {}]",
+        failure.metadata,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+  }
+
+  private def handleDeleteMessagesSuccess(success: persistence.DeleteMessagesSuccess): Unit = {
+    if (log.isDebugEnabled) {
+      log.debug("Succeeded to deleteMessages up to sequenceNr [{}]", success.toSequenceNr)
+    }
+  }
+
+  private def handleDeleteMessagesFailure(failure: persistence.DeleteMessagesFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "Failed to deleteMessages given toSequenceNr [{}] due to: [{}: {}]",
+        failure.toSequenceNr,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+  }
+
+  private def handleDeleteSnapshotsSuccess(success: persistence.DeleteSnapshotsSuccess): Unit = {
+    if (log.isDebugEnabled) {
+      log.debug("Succeeded to deleteSnapshots given criteria [{}]", success.criteria)
+    }
+  }
+
+  private def handleDeleteSnapshotsFailure(failure: persistence.DeleteSnapshotsFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "Failed to deleteSnapshots given criteria [{}] due to: [{}: {}]",
+        failure.criteria,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+  }
+
 }

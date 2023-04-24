@@ -32,6 +32,9 @@ private[entityreplication] final case class RaftSettingsImpl(
     snapshotSyncPersistenceOperationTimeout: FiniteDuration,
     snapshotSyncMaxSnapshotBatchSize: Int,
     snapshotStoreSnapshotEvery: Int,
+    snapshotStoreDeleteOldEvents: Boolean,
+    snapshotStoreDeleteOldSnapshots: Boolean,
+    snapshotStoreDeleteBeforeRelativeSequenceNr: Long,
     clusterShardingConfig: Config,
     raftActorAutoStartFrequency: FiniteDuration,
     raftActorAutoStartNumberOfActors: Int,
@@ -191,6 +194,17 @@ private[entityreplication] object RaftSettingsImpl {
       s"entity-snapshot-store.snapshot-every ($snapshotStoreSnapshotEvery) should be larger than 0",
     )
 
+    val snapshotStoreDeleteOldEvents: Boolean =
+      config.getBoolean("entity-snapshot-store.delete-old-events")
+    val snapshotStoreDeleteOldSnapshots: Boolean =
+      config.getBoolean("entity-snapshot-store.delete-old-snapshots")
+    val snapshotStoreDeleteBeforeRelativeSequenceNr: Long =
+      config.getLong("entity-snapshot-store.delete-before-relative-sequence-nr")
+    require(
+      snapshotStoreDeleteBeforeRelativeSequenceNr >= 0,
+      s"entity-snapshot-store.delete-before-relative-sequence-nr ($snapshotStoreDeleteBeforeRelativeSequenceNr) should be greater than or equal to 0.",
+    )
+
     val clusterShardingConfig: Config = config.getConfig("sharding")
 
     val raftActorAutoStartFrequency: FiniteDuration =
@@ -286,6 +300,9 @@ private[entityreplication] object RaftSettingsImpl {
       snapshotSyncPersistenceOperationTimeout = snapshotSyncPersistenceOperationTimeout,
       snapshotSyncMaxSnapshotBatchSize = snapshotSyncMaxSnapshotBatchSize,
       snapshotStoreSnapshotEvery = snapshotStoreSnapshotEvery,
+      snapshotStoreDeleteOldEvents = snapshotStoreDeleteOldEvents,
+      snapshotStoreDeleteOldSnapshots = snapshotStoreDeleteOldSnapshots,
+      snapshotStoreDeleteBeforeRelativeSequenceNr = snapshotStoreDeleteBeforeRelativeSequenceNr,
       clusterShardingConfig = clusterShardingConfig,
       raftActorAutoStartFrequency = raftActorAutoStartFrequency,
       raftActorAutoStartNumberOfActors = raftActorAutoStartNumberOfActors,

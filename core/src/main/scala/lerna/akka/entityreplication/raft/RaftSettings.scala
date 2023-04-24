@@ -75,6 +75,22 @@ trait RaftSettings {
 
   def snapshotStoreSnapshotEvery: Int
 
+  /** Returns `true` if an EntitySnapshotStore (`raft.snapshot.SnapshotStore`) deletes old events when it successfully
+    * saves a snapshot, `false` otherwise.
+    */
+  def snapshotStoreDeleteOldEvents: Boolean
+
+  /** Returns `true` if an EntitySnapshotStore (`raft.snapshot.SnapshotStore`) deletes old snapshots when it successfully
+    * saves a snapshot, `false` otherwise.
+    */
+  def snapshotStoreDeleteOldSnapshots: Boolean
+
+  /** Returns the relative sequence number for determining old events and snapshots to be deleted.
+    *
+    * For more details, see the setting `lerna.akka.entityreplication.raft.entity-snapshot-store.delete-before-relative-sequence-nr`.
+    */
+  def snapshotStoreDeleteBeforeRelativeSequenceNr: Long
+
   def clusterShardingConfig: Config
 
   def raftActorAutoStartFrequency: FiniteDuration
