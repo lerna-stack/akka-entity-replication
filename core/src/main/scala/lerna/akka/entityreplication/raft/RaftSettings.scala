@@ -41,6 +41,22 @@ trait RaftSettings {
 
   def maxAppendEntriesBatchSize: Int
 
+  /** Returns `true` if a Raft actor (`RaftActor`) deletes old events when it successfully saves a
+    * snapshot, `false` otherwise.
+    */
+  def deleteOldEvents: Boolean
+
+  /** Returns `true` if a Raft actor (`RaftActor`) deletes old snapshots when it successfully saves
+    * a snapshot, `false` otherwise.
+    */
+  def deleteOldSnapshots: Boolean
+
+  /** Returns the relative sequence number for determining old events and snapshots to be deleted.
+    *
+    * For more details, see the setting `lerna.akka.entityreplication.raft.delete-before-relative-sequence-nr`.
+    */
+  def deleteBeforeRelativeSequenceNr: Long
+
   def compactionSnapshotCacheTimeToLive: FiniteDuration
 
   def compactionLogSizeThreshold: Int

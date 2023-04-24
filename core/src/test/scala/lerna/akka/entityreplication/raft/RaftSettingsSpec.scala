@@ -29,6 +29,9 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.disabledShards shouldBe Set.empty
       settings.maxAppendEntriesSize shouldBe 16
       settings.maxAppendEntriesBatchSize shouldBe 10
+      settings.deleteOldEvents shouldBe false
+      settings.deleteOldSnapshots shouldBe false
+      settings.deleteBeforeRelativeSequenceNr shouldBe 100_000
       settings.compactionSnapshotCacheTimeToLive shouldBe 10.seconds
       settings.compactionLogSizeThreshold shouldBe 50_000
       settings.compactionPreserveLogSize shouldBe 10_000
@@ -109,6 +112,27 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       a[IllegalArgumentException] shouldBe thrownBy {
         RaftSettings(config)
       }
+    }
+
+    "not throw an IllegalArgumentException if the given delete-before-relative-sequence-nr is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.delete-before-relative-sequence-nr = 0
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      RaftSettings(config).deleteBeforeRelativeSequenceNr shouldBe 0
+    }
+
+    "throw an IllegalArgumentException if the given delete-before-relative-sequence-nr is -1" in {
+      val config = ConfigFactory
+        .parseString("""
+                       |lerna.akka.entityreplication.raft.delete-before-relative-sequence-nr = -1
+                       |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: delete-before-relative-sequence-nr (-1) should be greater than or equal to 0."
     }
 
     "throw an IllegalArgumentException if the given compaction.preserve-log-size is 0" in {

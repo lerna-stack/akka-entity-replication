@@ -21,6 +21,9 @@ private[entityreplication] final case class RaftSettingsImpl(
     disabledShards: Set[String],
     maxAppendEntriesSize: Int,
     maxAppendEntriesBatchSize: Int,
+    deleteOldEvents: Boolean,
+    deleteOldSnapshots: Boolean,
+    deleteBeforeRelativeSequenceNr: Long,
     compactionSnapshotCacheTimeToLive: FiniteDuration,
     compactionLogSizeThreshold: Int,
     compactionPreserveLogSize: Int,
@@ -133,6 +136,17 @@ private[entityreplication] object RaftSettingsImpl {
     require(
       maxAppendEntriesBatchSize > 0,
       s"max-append-entries-batch-size ($maxAppendEntriesBatchSize) should be greater than 0",
+    )
+
+    val deleteOldEvents: Boolean =
+      config.getBoolean("delete-old-events")
+    val deleteOldSnapshots: Boolean =
+      config.getBoolean("delete-old-snapshots")
+    val deleteBeforeRelativeSequenceNr: Long =
+      config.getLong("delete-before-relative-sequence-nr")
+    require(
+      deleteBeforeRelativeSequenceNr >= 0,
+      s"delete-before-relative-sequence-nr ($deleteBeforeRelativeSequenceNr) should be greater than or equal to 0.",
     )
 
     val compactionSnapshotCacheTimeToLive: FiniteDuration =
@@ -261,6 +275,9 @@ private[entityreplication] object RaftSettingsImpl {
       disabledShards = disabledShards,
       maxAppendEntriesSize = maxAppendEntriesSize,
       maxAppendEntriesBatchSize = maxAppendEntriesBatchSize,
+      deleteOldEvents = deleteOldEvents,
+      deleteOldSnapshots = deleteOldSnapshots,
+      deleteBeforeRelativeSequenceNr = deleteBeforeRelativeSequenceNr,
       compactionSnapshotCacheTimeToLive = compactionSnapshotCacheTimeToLive,
       compactionLogSizeThreshold = compactionLogSizeThreshold,
       compactionPreserveLogSize = compactionPreserveLogSize,
