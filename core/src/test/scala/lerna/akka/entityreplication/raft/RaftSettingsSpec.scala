@@ -39,6 +39,9 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.snapshotSyncCopyingParallelism shouldBe 10
       settings.snapshotSyncPersistenceOperationTimeout shouldBe 10.seconds
       settings.snapshotSyncMaxSnapshotBatchSize shouldBe 1_000
+      settings.snapshotSyncDeleteOldEvents shouldBe false
+      settings.snapshotSyncDeleteOldSnapshots shouldBe false
+      settings.snapshotSyncDeleteBeforeRelativeSequenceNr shouldBe 1_000
       settings.snapshotStoreSnapshotEvery shouldBe 1
       settings.snapshotStoreDeleteOldEvents shouldBe false
       settings.snapshotStoreDeleteOldSnapshots shouldBe false
@@ -209,6 +212,27 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
           RaftSettings(config)
         }
       }
+    }
+
+    "not throw an IllegalArgumentException if the given snapshot-sync.delete-before-relative-sequence-nr is 0" in {
+      val config = ConfigFactory
+        .parseString("""
+            |lerna.akka.entityreplication.raft.snapshot-sync.delete-before-relative-sequence-nr = 0
+            |""".stripMargin)
+        .withFallback(defaultConfig)
+      RaftSettings(config).snapshotSyncDeleteBeforeRelativeSequenceNr shouldBe 0
+    }
+
+    "throw an IllegalArgumentException if the given snapshot-sync.delete-before-relative-sequence-nr is -1" in {
+      val config = ConfigFactory
+        .parseString("""
+            |lerna.akka.entityreplication.raft.snapshot-sync.delete-before-relative-sequence-nr = -1
+            |""".stripMargin)
+        .withFallback(defaultConfig)
+      val exception = intercept[IllegalArgumentException] {
+        RaftSettings(config)
+      }
+      exception.getMessage shouldBe "requirement failed: snapshot-sync.delete-before-relative-sequence-nr (-1) should be greater than or equal to 0."
     }
 
     "throw an IllegalArgumentException if the given entity-snapshot-store.snapshot-every is less than or equal to 0" in {

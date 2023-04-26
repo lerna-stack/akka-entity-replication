@@ -73,6 +73,22 @@ trait RaftSettings {
 
   def snapshotSyncMaxSnapshotBatchSize: Int
 
+  /** Returns `true` if a `SnapshotSyncManager` deletes old events when it successfully saves a
+    * snapshot, `false` otherwise.
+    */
+  def snapshotSyncDeleteOldEvents: Boolean
+
+  /** Returns `true` if a `SnapshotSyncManager` deletes old snapshots when it successfully saves
+    * a snapshot, `false` otherwise.
+    */
+  def snapshotSyncDeleteOldSnapshots: Boolean
+
+  /** Returns the relative sequence number for determining old events and snapshots to be deleted.
+    *
+    * For more details, see the setting `lerna.akka.entityreplication.raft.snapshot-sync.delete-before-relative-sequence-nr`.
+    */
+  def snapshotSyncDeleteBeforeRelativeSequenceNr: Long
+
   def snapshotStoreSnapshotEvery: Int
 
   /** Returns `true` if an EntitySnapshotStore (`raft.snapshot.SnapshotStore`) deletes old events when it successfully

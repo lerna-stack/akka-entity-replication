@@ -31,6 +31,9 @@ private[entityreplication] final case class RaftSettingsImpl(
     snapshotSyncCopyingParallelism: Int,
     snapshotSyncPersistenceOperationTimeout: FiniteDuration,
     snapshotSyncMaxSnapshotBatchSize: Int,
+    snapshotSyncDeleteOldEvents: Boolean,
+    snapshotSyncDeleteOldSnapshots: Boolean,
+    snapshotSyncDeleteBeforeRelativeSequenceNr: Long,
     snapshotStoreSnapshotEvery: Int,
     snapshotStoreDeleteOldEvents: Boolean,
     snapshotStoreDeleteOldSnapshots: Boolean,
@@ -188,6 +191,17 @@ private[entityreplication] object RaftSettingsImpl {
       s"snapshot-sync.max-snapshot-batch-size (${snapshotSyncMaxSnapshotBatchSize}) should be larger than 0",
     )
 
+    val snapshotSyncDeleteOldEvents: Boolean =
+      config.getBoolean("snapshot-sync.delete-old-events")
+    val snapshotSyncDeleteOldSnapshots: Boolean =
+      config.getBoolean("snapshot-sync.delete-old-snapshots")
+    val snapshotSyncDeleteBeforeRelativeSequenceNr: Long =
+      config.getLong("snapshot-sync.delete-before-relative-sequence-nr")
+    require(
+      snapshotSyncDeleteBeforeRelativeSequenceNr >= 0,
+      s"snapshot-sync.delete-before-relative-sequence-nr ($snapshotSyncDeleteBeforeRelativeSequenceNr) should be greater than or equal to 0.",
+    )
+
     val snapshotStoreSnapshotEvery: Int = config.getInt("entity-snapshot-store.snapshot-every")
     require(
       snapshotStoreSnapshotEvery > 0,
@@ -299,6 +313,9 @@ private[entityreplication] object RaftSettingsImpl {
       snapshotSyncCopyingParallelism = snapshotSyncCopyingParallelism,
       snapshotSyncPersistenceOperationTimeout = snapshotSyncPersistenceOperationTimeout,
       snapshotSyncMaxSnapshotBatchSize = snapshotSyncMaxSnapshotBatchSize,
+      snapshotSyncDeleteOldEvents = snapshotSyncDeleteOldEvents,
+      snapshotSyncDeleteOldSnapshots = snapshotSyncDeleteOldSnapshots,
+      snapshotSyncDeleteBeforeRelativeSequenceNr = snapshotSyncDeleteBeforeRelativeSequenceNr,
       snapshotStoreSnapshotEvery = snapshotStoreSnapshotEvery,
       snapshotStoreDeleteOldEvents = snapshotStoreDeleteOldEvents,
       snapshotStoreDeleteOldSnapshots = snapshotStoreDeleteOldSnapshots,
