@@ -37,6 +37,9 @@ private final class CassandraPersistentActorRollbackSettings private (
   private[cassandra] val query: CassandraQuerySettings =
     CassandraQuerySettings(pluginConfig)
 
+  private[cassandra] val eventsByTag: CassandraEventsByTagSettings =
+    CassandraEventsByTagSettings(pluginConfig)
+
   private[cassandra] val snapshot: CassandraSnapshotSettings =
     CassandraSnapshotSettings(pluginConfig)
 
