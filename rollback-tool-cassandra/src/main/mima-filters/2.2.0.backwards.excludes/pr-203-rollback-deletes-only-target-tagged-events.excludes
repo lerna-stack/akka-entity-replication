@@ -1,0 +1,2 @@
+# CassandraPersistentActorRollback is a private class.
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.rollback.cassandra.CassandraPersistentActorRollback.deleteTagView")
