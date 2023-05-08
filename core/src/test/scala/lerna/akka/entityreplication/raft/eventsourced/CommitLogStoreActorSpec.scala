@@ -637,204 +637,197 @@ final class CommitLogStoreActorSpec
     }
 
     "not delete events if event deletion is disabled" in new Fixture {
-      val config = configFor(
-        snapshotEvery = 10,
-        deleteOldEvents = false,
-        deleteBeforeRelativeSequenceNr = 5,
+      val commitLogStoreActor = spawnCommitLogStoreActor(
+        configFor(
+          snapshotEvery = 3,
+          deleteOldEvents = false,
+          deleteBeforeRelativeSequenceNr = 1,
+        ),
       )
-      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
-      val entries = Vector.tabulate(10) { i =>
-        val index       = LogEntryIndex(i + 1)
-        val domainEvent = s"Event with $index"
-        LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
-      }
-      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
+      // Act: save events, which will trigger a snapshot save but not event deletion.
+      appendCommittedEntriesTo(
+        commitLogStoreActor,
+        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "event-1"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-3"), Term(1)),
+      )
 
-      for (i <- 0 until 10) {
-        persistenceTestKit.expectNextPersisted(persistenceId, s"Event with ${i + 1}")
-      }
-      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(10)))
+      // Assert:
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(3)))
       assertForDuration(
         {
-          assert(
-            persistenceTestKit
-              .persistedInStorage(persistenceId).size === 10,
-          )
+          assert(persistenceTestKit.persistedInStorage(persistenceId).size === 3)
         },
         max = remainingOrDefault,
       )
     }
 
     "delete events matching the criteria if it successfully saves a snapshot" in new Fixture {
-      val config = configFor(
-        snapshotEvery = 10,
-        deleteOldEvents = true,
-        deleteBeforeRelativeSequenceNr = 5,
+      val commitLogStoreActor = spawnCommitLogStoreActor(
+        configFor(
+          snapshotEvery = 3,
+          deleteOldEvents = true,
+          deleteBeforeRelativeSequenceNr = 1,
+        ),
       )
-      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
-      val entries = Vector.tabulate(10) { i =>
-        val index       = LogEntryIndex(i + 1)
-        val domainEvent = s"Event with $index"
-        LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
-      }
-      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
+      // Act: save events, which will trigger a snapshot save and event deletion.
+      appendCommittedEntriesTo(
+        commitLogStoreActor,
+        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "event-1"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-3"), Term(1)),
+      )
 
-      for (i <- 0 until 10) {
-        persistenceTestKit.expectNextPersisted(persistenceId, s"Event with ${i + 1}")
-      }
-      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(10)))
+      // Assert:
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(3)))
       awaitAssert {
-        assert(
-          persistenceTestKit
-            .persistedInStorage(persistenceId).size === 10 - 5,
-        )
+        assert(persistenceTestKit.persistedInStorage(persistenceId) === Seq("event-3"))
       }
     }
 
     "not delete events if it successfully saves a snapshot, but no events match the criteria" in new Fixture {
-      val config = configFor(
-        snapshotEvery = 10,
-        deleteOldEvents = true,
-        deleteBeforeRelativeSequenceNr = 11,
+      val commitLogStoreActor = spawnCommitLogStoreActor(
+        configFor(
+          snapshotEvery = 3,
+          deleteOldEvents = true,
+          deleteBeforeRelativeSequenceNr = 4,
+        ),
       )
-      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
-      val entries = Vector.tabulate(10) { i =>
-        val index       = LogEntryIndex(i + 1)
-        val entityId    = NormalizedEntityId("entity1")
-        val domainEvent = s"Event with $index"
-        LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
-      }
-      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
+      // Act: save events, which will trigger a snapshot save and event deletion.
+      appendCommittedEntriesTo(
+        commitLogStoreActor,
+        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "event-1"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-3"), Term(1)),
+      )
 
-      for (i <- 0 until 10) {
-        persistenceTestKit.expectNextPersisted(persistenceId, s"Event with ${i + 1}")
-      }
-      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(10)))
+      // Assert:
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(3)))
       assertForDuration(
         {
-          assert(
-            persistenceTestKit
-              .persistedInStorage(persistenceId).size === 10,
-          )
+          assert(persistenceTestKit.persistedInStorage(persistenceId).size === 3)
         },
         max = remainingOrDefault,
       )
     }
 
     "continue its behavior if an event deletion fails" in new Fixture {
-      val config = configFor(
-        snapshotEvery = 10,
-        deleteOldEvents = true,
-        deleteBeforeRelativeSequenceNr = 5,
+      val commitLogStoreActor = spawnCommitLogStoreActor(
+        configFor(
+          snapshotEvery = 3,
+          deleteOldEvents = true,
+          deleteBeforeRelativeSequenceNr = 1,
+        ),
       )
-      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
-      val entries = Vector.tabulate(10) { i =>
-        val index       = LogEntryIndex(i + 1)
-        val entityId    = NormalizedEntityId("entity1")
-        val domainEvent = s"Event with $index"
-        LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
-      }
       // The actor fails an event deletion but continues to accept the next commands.
       // The actor should log a warning for the deletion failure.
       LoggingTestKit.warn("Failed to deleteMessages").expect {
         persistenceTestKit.failNextDelete(persistenceId)
-        appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
+        appendCommittedEntriesTo(
+          commitLogStoreActor,
+          LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "event-1"), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-2"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-3"), Term(1)),
+        )
       }
 
-      // The actor should handle the next command.
-      val nextEntries = {
-        val nextIndex = entries.last.index.next()
-        Seq(LogEntry(nextIndex, EntityEvent(None, NoOp), Term(2)))
-      }
-      commitLogStoreActor ! AppendCommittedEntries(shardId, nextEntries)
-      expectMsg(AppendCommittedEntriesResponse(nextEntries.last.index))
+      // Assert: the actor should handle the next command.
+      appendCommittedEntriesTo(
+        commitLogStoreActor,
+        LogEntry(LogEntryIndex(4), EntityEvent(None, NoOp), Term(2)),
+      )
     }
 
     "not delete snapshots if snapshot deletion is disabled" in new Fixture {
-      val config = configFor(
-        snapshotEvery = 5,
-        deleteOldSnapshots = false,
-        deleteBeforeRelativeSequenceNr = 5,
+      val commitLogStoreActor = spawnCommitLogStoreActor(
+        configFor(
+          snapshotEvery = 2,
+          deleteOldSnapshots = false,
+          deleteBeforeRelativeSequenceNr = 2,
+        ),
       )
-      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
-      val entries = Vector.tabulate(15) { i =>
-        val index       = LogEntryIndex(i + 1)
-        val entityId    = NormalizedEntityId("entity1")
-        val domainEvent = s"Event with $index"
-        LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
-      }
-      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
+      // Act: save snapshots, which will not trigger a snapshot deletion.
+      appendCommittedEntriesTo(
+        commitLogStoreActor,
+        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "event-1"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-3"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event-4"), Term(1)),
+        LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event-5"), Term(1)),
+        LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "event-6"), Term(1)),
+      )
 
-      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(5)))
-      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(10)))
-      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(15)))
+      // Assert:
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(2)))
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(4)))
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(6)))
       assertForDuration(
         {
-          assert(
-            snapshotTestKit
-              .persistedInStorage(persistenceId).size === 3,
-          )
+          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 3)
         },
         max = remainingOrDefault,
       )
     }
 
     "delete snapshots matching the criteria if it successfully saves a snapshot" in new Fixture {
-      val config = configFor(
-        snapshotEvery = 5,
-        deleteOldSnapshots = true,
-        deleteBeforeRelativeSequenceNr = 5,
+      val commitLogStoreActor = spawnCommitLogStoreActor(
+        configFor(
+          snapshotEvery = 2,
+          deleteOldSnapshots = true,
+          deleteBeforeRelativeSequenceNr = 2,
+        ),
       )
-      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
-      val entries = Vector.tabulate(15) { i =>
-        val index       = LogEntryIndex(i + 1)
-        val entityId    = NormalizedEntityId("entity1")
-        val domainEvent = s"Event with $index"
-        LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
-      }
-      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
+      // Act: save snapshots, which will trigger a snapshot deletion.
+      appendCommittedEntriesTo(
+        commitLogStoreActor,
+        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "event-1"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-3"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event-4"), Term(1)),
+        LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event-5"), Term(1)),
+        LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "event-6"), Term(1)),
+      )
 
-      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(5)))
-      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(10)))
-      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(15)))
+      // Assert:
       awaitAssert {
-        assert(
-          snapshotTestKit
-            .persistedInStorage(persistenceId).size === 2,
+        val snapshotsAfterDelete = Seq(
+          CommitLogStoreActor.State(LogEntryIndex(4)),
+          CommitLogStoreActor.State(LogEntryIndex(6)),
         )
+        assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === snapshotsAfterDelete)
       }
     }
 
     "not delete snapshots if it successfully saves a snapshot, but no snapshots match the criteria" in new Fixture {
-      val config = configFor(
-        snapshotEvery = 5,
-        deleteOldSnapshots = true,
-        deleteBeforeRelativeSequenceNr = 5,
+      val commitLogStoreActor = spawnCommitLogStoreActor(
+        configFor(
+          snapshotEvery = 2,
+          deleteOldSnapshots = true,
+          deleteBeforeRelativeSequenceNr = 2,
+        ),
       )
-      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
-      val entries = Vector.tabulate(10) { i =>
-        val index       = LogEntryIndex(i + 1)
-        val entityId    = NormalizedEntityId("entity1")
-        val domainEvent = s"Event with $index"
-        LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
-      }
-      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
+      // Act: save snapshots, which will trigger a snapshot deletion.
+      appendCommittedEntriesTo(
+        commitLogStoreActor,
+        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "event-1"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-3"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event-4"), Term(1)),
+      )
 
-      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(5)))
-      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(10)))
+      // Assert:
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(2)))
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(4)))
       assertForDuration(
         {
-          assert(
-            snapshotTestKit
-              .persistedInStorage(persistenceId).size === 2,
-          )
+          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 2)
         },
         max = remainingOrDefault,
       )
