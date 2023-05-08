@@ -447,7 +447,13 @@ final class RaftActorPersistenceDeletionSpec
       val newEntries = Seq.tabulate(20) { i =>
         LogEntry(LogEntryIndex(6 + i), EntityEvent(Option(entityId), s"event-${6 + i}"), Term(1))
       }
-      appendNewEntriesEachTo(raftActor, currentTerm = Term(1), prevLogTerm = Term(1), newEntries.head, newEntries.tail: _*)
+      appendNewEntriesEachTo(
+        raftActor,
+        currentTerm = Term(1),
+        prevLogTerm = Term(1),
+        newEntries.head,
+        newEntries.tail: _*,
+      )
 
       promoteBeforeDelete(this, raftActor)
 
