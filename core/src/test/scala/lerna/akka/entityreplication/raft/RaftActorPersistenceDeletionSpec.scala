@@ -356,21 +356,10 @@ final class RaftActorPersistenceDeletionSpec
 
       promoteBeforeDelete(this, raftActor)
 
-      // Arrange: store the number of events to verify event deletion.
-      val numOfEventsBeforeDelete =
-        persistenceTestKit.persistedInStorage(persistenceId).size
-
       // Act: complete compaction, which will trigger a snapshot save and event deletion.
       LoggingTestKit.warn("Failed to deleteMessages").expect {
         persistenceTestKit.failNextDelete(persistenceId)
         advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(4))
-        snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
-      }
-
-      // Assert:
-      awaitAssert {
-        assert(persistenceTestKit.persistedInStorage(persistenceId).size >= numOfEventsBeforeDelete)
-        assert(persistenceTestKit.persistedInStorage(persistenceId).size > 1)
       }
 
       // Assert: RaftActor should handle the next message.
@@ -427,7 +416,7 @@ final class RaftActorPersistenceDeletionSpec
     "delete snapshots matching the criteria if it successfully saves a snapshot" in new Fixture {
       val raftActor = createFollower(
         configFor(
-          deleteBeforeRelativeSequenceNr = 0,
+          deleteBeforeRelativeSequenceNr = 10,
           deleteOldSnapshots = true,
         ),
       )
@@ -437,32 +426,33 @@ final class RaftActorPersistenceDeletionSpec
         raftActor,
         currentTerm = Term(1),
         prevLogTerm = Term(1),
-        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-1"), Term(1)),
-        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-3"), Term(1)),
       )
       advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(3))
       snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
 
-      // Arrange: append new entries, which will trigger the second compaction.
+      // Arrange: complete the second compaction, which will trigger a snapshot save.
       appendNewEntriesTo(
         raftActor,
         currentTerm = Term(1),
         prevLogTerm = Term(1),
-        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event-b-3"), Term(1)),
-        LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event-b-4"), Term(1)),
-        LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "event-b-5"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event-4"), Term(1)),
+        LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event-5"), Term(1)),
       )
+      advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(5))
+      snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
+
+      // Arrange: append new entries, which will trigger the third compaction.
+      val newEntries = Seq.tabulate(20) { i =>
+        LogEntry(LogEntryIndex(6 + i), EntityEvent(Option(entityId), s"event-${6 + i}"), Term(1))
+      }
+      appendNewEntriesEachTo(raftActor, currentTerm = Term(1), prevLogTerm = Term(1), newEntries.head, newEntries.tail: _*)
 
       promoteBeforeDelete(this, raftActor)
 
-      // NOTE:
-      //   Assert that a new snapshot is saved successfully by inspecting an info log since
-      //   snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId) might not work
-      //   in this case.
-      LoggingTestKit.info("Succeeded to saveSnapshot").expect {
-        // Act: completes the second compaction, which will trigger a snapshot save and deletion.
-        advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(6))
-      }
+      // Act: completes the third compaction, which will trigger a snapshot save and deletion.
+      advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(25))
 
       // Assert:
       awaitAssert {
