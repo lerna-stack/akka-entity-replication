@@ -132,13 +132,6 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       */
     val NumOfNewEventsSynchronizationSaves: Int = 2
 
-    /** The number of new snapshots `runEntitySnapshotSynchronization` saves
-      *
-      * For clarification of test cases. This value should be updated if the implementation of
-      * `runEntitySnapshotSynchronization` changes. This value change doesn't affect `runEntitySnapshotSynchronization` behavior.
-      */
-    val NumOfNewSnapshotsSynchronizationSaves: Int = 1
-
     /** The offset of entity snapshot synchronization progress after `runEntitySnapshotSynchronization` runs
       *
       * For clarification of test cases. This value should be updated if the implementation of
@@ -200,17 +193,7 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
         SnapshotSyncManager.SyncSnapshotSucceeded(Term(1), LogEntryIndex(2), srcMemberIndex),
       )
 
-      // The entity snapshot synchronization result in two event saves:
-      persistenceTestKit.expectNextPersisted(
-        persistenceId,
-        SnapshotCopied(Offset.sequence(1), dstMemberIndex, shardId, Term(1), LogEntryIndex(2), Set(entityId)),
-      )
-      persistenceTestKit.expectNextPersisted(
-        persistenceId,
-        SyncCompleted(Offset.sequence(1)),
-      )
-      // The caller will assert the saved snapshot `SyncProgress(Offset.sequence(1))` (not the entity's),
-      // this method doesn't assert that.
+      // The entity snapshot synchronization result in two event saves and one snapshot save.
     }
 
   }
@@ -243,6 +226,7 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
 
       // Assert:
       snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(OffsetAfterSynchronizationCompletes))
+      assert(NumOfNewEventsSynchronizationSaves > 0)
       assertForDuration(
         {
           assert(persistenceTestKit.persistedInStorage(persistenceId).size === 2 + NumOfNewEventsSynchronizationSaves)
@@ -269,16 +253,15 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
         persistenceId,
         SnapshotMeta(sequenceNr = 2) -> SyncProgress(Offset.noOffset),
       )
-      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
 
       // Act: run entity snapshot synchronization, which will trigger a snapshot save and event deletion.
       val snapshotSyncManager = spawnSnapshotSyncManager(config)
       runEntitySnapshotSynchronization(snapshotSyncManager)
 
       // Assert:
-      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(OffsetAfterSynchronizationCompletes))
       awaitAssert {
-        assert(persistenceTestKit.persistedInStorage(persistenceId).size === 1)
+        val eventsAfterDelete = Seq(SyncCompleted(OffsetAfterSynchronizationCompletes))
+        assert(persistenceTestKit.persistedInStorage(persistenceId) === eventsAfterDelete)
       }
     }
 
@@ -308,6 +291,7 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
 
       // Assert:
       snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(OffsetAfterSynchronizationCompletes))
+      assert(NumOfNewEventsSynchronizationSaves > 0)
       assertForDuration(
         {
           assert(persistenceTestKit.persistedInStorage(persistenceId).size === 2 + NumOfNewEventsSynchronizationSaves)
@@ -334,7 +318,6 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
         persistenceId,
         SnapshotMeta(sequenceNr = 2) -> SyncProgress(Offset.noOffset),
       )
-      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
 
       // Act & Assert:
       val snapshotSyncManager = spawnSnapshotSyncManager(config)
@@ -342,7 +325,6 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
         persistenceTestKit.failNextDelete(persistenceId)
         // Act: run entity snapshot synchronization, which will trigger a snapshot save and event deletion.
         runEntitySnapshotSynchronization(snapshotSyncManager)
-        snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(OffsetAfterSynchronizationCompletes))
       }
     }
 
@@ -380,7 +362,7 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(OffsetAfterSynchronizationCompletes))
       assertForDuration(
         {
-          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 2 + NumOfNewSnapshotsSynchronizationSaves)
+          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 3)
         },
         max = remainingOrDefault,
       )
@@ -389,7 +371,7 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
     "delete snapshots matching the criteria if it successfully saves a snapshot" in new Fixture {
       val settings = RaftSettings(
         configFor(
-          deleteBeforeRelativeSequenceNumber = 2,
+          deleteBeforeRelativeSequenceNumber = 1,
           deleteOldSnapshots = true,
         ),
       )
@@ -400,35 +382,32 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
         Seq(
           SyncCompleted(Offset.noOffset),
           SyncCompleted(Offset.noOffset),
-          SyncCompleted(Offset.noOffset),
-          SyncCompleted(Offset.noOffset),
         ),
       )
       snapshotTestKit.persistForRecovery(
         persistenceId,
         Seq(
           SnapshotMeta(sequenceNr = 2) -> SyncProgress(Offset.noOffset),
-          SnapshotMeta(sequenceNr = 4) -> SyncProgress(Offset.noOffset),
         ),
       )
-      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
-      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
 
       // Act: run entity snapshot synchronization, which will trigger a snapshot save and deletion.
       val snapshotSyncManager = spawnSnapshotSyncManager(settings)
       runEntitySnapshotSynchronization(snapshotSyncManager)
 
       // Assert:
-      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(OffsetAfterSynchronizationCompletes))
+      assert(OffsetAfterSynchronizationCompletes !== Offset.noOffset)
       awaitAssert {
-        assume(settings.snapshotSyncDeleteBeforeRelativeSequenceNr === NumOfNewEventsSynchronizationSaves.toLong)
-        assert(snapshotTestKit.persistedInStorage(persistenceId).size === 1 + NumOfNewSnapshotsSynchronizationSaves)
+        val snapshotsAfterDelete = Seq(SyncProgress(OffsetAfterSynchronizationCompletes))
+        assert(
+          snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === snapshotsAfterDelete,
+        )
       }
     }
 
     "not delete snapshots if it successfully saves a snapshot, but no snapshots match the criteria" in new Fixture {
       val config = configFor(
-        deleteBeforeRelativeSequenceNumber = 10,
+        deleteBeforeRelativeSequenceNumber = 2,
         deleteOldSnapshots = true,
       )
 
@@ -438,18 +417,14 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
         Seq(
           SyncCompleted(Offset.noOffset),
           SyncCompleted(Offset.noOffset),
-          SyncCompleted(Offset.noOffset),
-          SyncCompleted(Offset.noOffset),
         ),
       )
       snapshotTestKit.persistForRecovery(
         persistenceId,
         Seq(
           SnapshotMeta(sequenceNr = 2) -> SyncProgress(Offset.noOffset),
-          SnapshotMeta(sequenceNr = 4) -> SyncProgress(Offset.noOffset),
         ),
       )
-      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
       snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
 
       // Act: run entity snapshot synchronization, which will trigger a snapshot and deletion.
@@ -460,7 +435,7 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(OffsetAfterSynchronizationCompletes))
       assertForDuration(
         {
-          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 2 + NumOfNewSnapshotsSynchronizationSaves)
+          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 2)
         },
         max = remainingOrDefault,
       )
