@@ -99,6 +99,7 @@ final class CommitLogStoreActorSpec
       ).withFallback(system.settings.config)
   }
 
+  // TODO Use Fixture.spawnCommitLogStoreActor instead.
   private def spawnCommitLogStoreActor(
       name: Option[String] = None,
       settings: ClusterReplicationSettings = ClusterReplicationSettings.create(system),
@@ -113,6 +114,7 @@ final class CommitLogStoreActorSpec
     (actor, shardId, persistenceId)
   }
 
+  // TODO Use Fixture.spawnCommitLogStoreActor instead.
   private def spawnCommitLogStoreActorWithConfig(
       config: Config,
       name: Option[String] = None,
@@ -121,6 +123,33 @@ final class CommitLogStoreActorSpec
     val settings: ClusterReplicationSettings =
       ClusterReplicationSettingsImpl(config, Cluster(system).settings.Roles)
     spawnCommitLogStoreActor(name, settings, beforeSpawn)
+  }
+
+  private trait Fixture {
+    val actorName: String          = UUID.randomUUID().toString
+    val shardId: NormalizedShardId = NormalizedShardId.from(actorName)
+    val persistenceId: String      = CommitLogStoreActor.persistenceId(typeName, shardId.raw)
+
+    val entityId: NormalizedEntityId = NormalizedEntityId("entity1")
+
+    def spawnCommitLogStoreActor(
+        settings: ClusterReplicationSettings = ClusterReplicationSettings.create(system),
+    ): ActorRef = {
+      val props = CommitLogStoreActor.props(typeName, settings)
+      planAutoKill(system.actorOf(props, actorName))
+    }
+
+    def spawnCommitLogStoreActor(config: Config): ActorRef = {
+      val settings = ClusterReplicationSettingsImpl(config, Cluster(system).settings.Roles)
+      spawnCommitLogStoreActor(settings)
+    }
+
+    def appendCommittedEntriesTo(commitLogStoreActor: ActorRef, firstEntry: LogEntry, entries: LogEntry*): Unit = {
+      val newEntries = firstEntry +: entries
+      commitLogStoreActor ! AppendCommittedEntries(shardId, newEntries)
+      expectMsg(AppendCommittedEntriesResponse(newEntries.last.index))
+    }
+
   }
 
   "CommitLogStoreActor.AppendCommittedEntries" should {
@@ -607,22 +636,20 @@ final class CommitLogStoreActorSpec
       expectTerminated(commitLogStoreActor)
     }
 
-    "not delete events if event deletion is disabled" in {
+    "not delete events if event deletion is disabled" in new Fixture {
       val config = configFor(
         snapshotEvery = 10,
         deleteOldEvents = false,
         deleteBeforeRelativeSequenceNr = 5,
       )
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
+      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
       val entries = Vector.tabulate(10) { i =>
         val index       = LogEntryIndex(i + 1)
-        val entityId    = NormalizedEntityId("entity1")
         val domainEvent = s"Event with $index"
         LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
       }
-      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
-      expectMsg(AppendCommittedEntriesResponse(entries.last.index))
+      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
 
       for (i <- 0 until 10) {
         persistenceTestKit.expectNextPersisted(persistenceId, s"Event with ${i + 1}")
@@ -639,22 +666,20 @@ final class CommitLogStoreActorSpec
       )
     }
 
-    "delete events matching the criteria if it successfully saves a snapshot" in {
+    "delete events matching the criteria if it successfully saves a snapshot" in new Fixture {
       val config = configFor(
         snapshotEvery = 10,
         deleteOldEvents = true,
         deleteBeforeRelativeSequenceNr = 5,
       )
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
+      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
       val entries = Vector.tabulate(10) { i =>
         val index       = LogEntryIndex(i + 1)
-        val entityId    = NormalizedEntityId("entity1")
         val domainEvent = s"Event with $index"
         LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
       }
-      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
-      expectMsg(AppendCommittedEntriesResponse(entries.last.index))
+      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
 
       for (i <- 0 until 10) {
         persistenceTestKit.expectNextPersisted(persistenceId, s"Event with ${i + 1}")
@@ -668,13 +693,13 @@ final class CommitLogStoreActorSpec
       }
     }
 
-    "not delete events if it successfully saves a snapshot, but no events match the criteria" in {
+    "not delete events if it successfully saves a snapshot, but no events match the criteria" in new Fixture {
       val config = configFor(
         snapshotEvery = 10,
         deleteOldEvents = true,
         deleteBeforeRelativeSequenceNr = 11,
       )
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
+      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
       val entries = Vector.tabulate(10) { i =>
         val index       = LogEntryIndex(i + 1)
@@ -682,8 +707,7 @@ final class CommitLogStoreActorSpec
         val domainEvent = s"Event with $index"
         LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
       }
-      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
-      expectMsg(AppendCommittedEntriesResponse(entries.last.index))
+      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
 
       for (i <- 0 until 10) {
         persistenceTestKit.expectNextPersisted(persistenceId, s"Event with ${i + 1}")
@@ -700,13 +724,13 @@ final class CommitLogStoreActorSpec
       )
     }
 
-    "continue its behavior if an event deletion fails" in {
+    "continue its behavior if an event deletion fails" in new Fixture {
       val config = configFor(
         snapshotEvery = 10,
         deleteOldEvents = true,
         deleteBeforeRelativeSequenceNr = 5,
       )
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
+      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
       val entries = Vector.tabulate(10) { i =>
         val index       = LogEntryIndex(i + 1)
@@ -718,8 +742,7 @@ final class CommitLogStoreActorSpec
       // The actor should log a warning for the deletion failure.
       LoggingTestKit.warn("Failed to deleteMessages").expect {
         persistenceTestKit.failNextDelete(persistenceId)
-        commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
-        expectMsg(AppendCommittedEntriesResponse(entries.last.index))
+        appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
       }
 
       // The actor should handle the next command.
@@ -731,13 +754,13 @@ final class CommitLogStoreActorSpec
       expectMsg(AppendCommittedEntriesResponse(nextEntries.last.index))
     }
 
-    "not delete snapshots if snapshot deletion is disabled" in {
+    "not delete snapshots if snapshot deletion is disabled" in new Fixture {
       val config = configFor(
         snapshotEvery = 5,
         deleteOldSnapshots = false,
         deleteBeforeRelativeSequenceNr = 5,
       )
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
+      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
       val entries = Vector.tabulate(15) { i =>
         val index       = LogEntryIndex(i + 1)
@@ -745,8 +768,7 @@ final class CommitLogStoreActorSpec
         val domainEvent = s"Event with $index"
         LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
       }
-      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
-      expectMsg(AppendCommittedEntriesResponse(entries.last.index))
+      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
 
       snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(5)))
       snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(10)))
@@ -762,13 +784,13 @@ final class CommitLogStoreActorSpec
       )
     }
 
-    "delete snapshots matching the criteria if it successfully saves a snapshot" in {
+    "delete snapshots matching the criteria if it successfully saves a snapshot" in new Fixture {
       val config = configFor(
         snapshotEvery = 5,
         deleteOldSnapshots = true,
         deleteBeforeRelativeSequenceNr = 5,
       )
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
+      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
       val entries = Vector.tabulate(15) { i =>
         val index       = LogEntryIndex(i + 1)
@@ -776,8 +798,7 @@ final class CommitLogStoreActorSpec
         val domainEvent = s"Event with $index"
         LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
       }
-      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
-      expectMsg(AppendCommittedEntriesResponse(entries.last.index))
+      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
 
       snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(5)))
       snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(10)))
@@ -790,13 +811,13 @@ final class CommitLogStoreActorSpec
       }
     }
 
-    "not delete snapshots if it successfully saves a snapshot, but no snapshots match the criteria" in {
+    "not delete snapshots if it successfully saves a snapshot, but no snapshots match the criteria" in new Fixture {
       val config = configFor(
         snapshotEvery = 5,
         deleteOldSnapshots = true,
         deleteBeforeRelativeSequenceNr = 5,
       )
-      val (commitLogStoreActor, shardId, persistenceId) = spawnCommitLogStoreActorWithConfig(config)
+      val commitLogStoreActor = spawnCommitLogStoreActor(config)
 
       val entries = Vector.tabulate(10) { i =>
         val index       = LogEntryIndex(i + 1)
@@ -804,8 +825,7 @@ final class CommitLogStoreActorSpec
         val domainEvent = s"Event with $index"
         LogEntry(index, EntityEvent(Option(entityId), domainEvent), Term(1))
       }
-      commitLogStoreActor ! AppendCommittedEntries(shardId, entries)
-      expectMsg(AppendCommittedEntriesResponse(entries.last.index))
+      appendCommittedEntriesTo(commitLogStoreActor, entries.head, entries.tail: _*)
 
       snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(5)))
       snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(10)))
