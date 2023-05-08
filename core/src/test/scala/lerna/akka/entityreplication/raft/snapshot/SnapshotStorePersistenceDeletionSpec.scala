@@ -134,12 +134,11 @@ final class SnapshotStorePersistenceDeletionSpec
     // Act: save the second event, which will trigger a snapshot save and event deletion.
     val entityState2 = createEntitySnapshotData(LogEntryIndex(2))
     saveEntitySnapshot(snapshotStore, entityState2)
-    persistenceTestKit.expectNextPersisted(persistenceId, entityState2)
 
     // Assert:
     snapshotTestKit.expectNextPersisted(persistenceId, entityState2)
     awaitAssert {
-      assert(persistenceTestKit.persistedInStorage(persistenceId).size === 1)
+      assert(persistenceTestKit.persistedInStorage(persistenceId) === Seq(entityState2))
     }
   }
 
@@ -187,17 +186,14 @@ final class SnapshotStorePersistenceDeletionSpec
     locally {
       val entityState1 = createEntitySnapshotData(LogEntryIndex(1))
       saveEntitySnapshot(snapshotStore, entityState1)
-      persistenceTestKit.expectNextPersisted(persistenceId, entityState1)
     }
 
     // Act & Assert:
-    val entityState2 = createEntitySnapshotData(LogEntryIndex(2))
     LoggingTestKit.warn("Failed to deleteMessages").expect {
       persistenceTestKit.failNextDelete(persistenceId)
       // Act: save the second event, which will trigger a snapshot save and event deletion.
+      val entityState2 = createEntitySnapshotData(LogEntryIndex(2))
       saveEntitySnapshot(snapshotStore, entityState2)
-      persistenceTestKit.expectNextPersisted(persistenceId, entityState2)
-      snapshotTestKit.expectNextPersisted(persistenceId, entityState2)
     }
   }
 
@@ -210,26 +206,23 @@ final class SnapshotStorePersistenceDeletionSpec
       ),
     )
 
-    // Arrange: save the first event and snapshot.
+    // Arrange: save the first snapshot.
     locally {
       val entityState1 = createEntitySnapshotData(LogEntryIndex(1))
       saveEntitySnapshot(snapshotStore, entityState1)
-      persistenceTestKit.expectNextPersisted(persistenceId, entityState1)
       snapshotTestKit.expectNextPersisted(persistenceId, entityState1)
     }
 
-    // Arrange: save the second event and snapshot.
+    // Arrange: save the second snapshot.
     locally {
       val entityState2 = createEntitySnapshotData(LogEntryIndex(2))
       saveEntitySnapshot(snapshotStore, entityState2)
-      persistenceTestKit.expectNextPersisted(persistenceId, entityState2)
       snapshotTestKit.expectNextPersisted(persistenceId, entityState2)
     }
 
-    // Act: save the third event and snapshot, which will not trigger a snapshot deletion.
+    // Act: save the third snapshot, which will not trigger a snapshot deletion.
     val entityState3 = createEntitySnapshotData(LogEntryIndex(3))
     saveEntitySnapshot(snapshotStore, entityState3)
-    persistenceTestKit.expectNextPersisted(persistenceId, entityState3)
 
     // Assert:
     snapshotTestKit.expectNextPersisted(persistenceId, entityState3)
@@ -250,31 +243,25 @@ final class SnapshotStorePersistenceDeletionSpec
       ),
     )
 
-    // Arrange: save the first event and snapshot.
+    // Arrange: save the first snapshot.
     locally {
       val entityState1 = createEntitySnapshotData(LogEntryIndex(1))
       saveEntitySnapshot(snapshotStore, entityState1)
-      persistenceTestKit.expectNextPersisted(persistenceId, entityState1)
       snapshotTestKit.expectNextPersisted(persistenceId, entityState1)
     }
 
-    // Arrange: save the second event and snapshot.
-    locally {
-      val entityState2 = createEntitySnapshotData(LogEntryIndex(2))
-      saveEntitySnapshot(snapshotStore, entityState2)
-      persistenceTestKit.expectNextPersisted(persistenceId, entityState2)
-      snapshotTestKit.expectNextPersisted(persistenceId, entityState2)
-    }
+    // Arrange: save the second snapshot.
+    val entityState2 = createEntitySnapshotData(LogEntryIndex(2))
+    saveEntitySnapshot(snapshotStore, entityState2)
+    snapshotTestKit.expectNextPersisted(persistenceId, entityState2)
 
-    // Act: save the third event and snapshot, which will trigger a snapshot deletion.
+    // Act: save the third snapshot, which will trigger a snapshot deletion.
     val entityState3 = createEntitySnapshotData(LogEntryIndex(3))
     saveEntitySnapshot(snapshotStore, entityState3)
-    persistenceTestKit.expectNextPersisted(persistenceId, entityState3)
 
     // Assert:
-    snapshotTestKit.expectNextPersisted(persistenceId, entityState3)
     awaitAssert {
-      assert(snapshotTestKit.persistedInStorage(persistenceId).size === 2)
+      assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === Seq(entityState2, entityState3))
     }
   }
 
@@ -287,26 +274,23 @@ final class SnapshotStorePersistenceDeletionSpec
       ),
     )
 
-    // Arrange: save the first event and snapshot.
+    // Arrange: save the first snapshot.
     locally {
       val entityState1 = createEntitySnapshotData(LogEntryIndex(1))
       saveEntitySnapshot(snapshotStore, entityState1)
-      persistenceTestKit.expectNextPersisted(persistenceId, entityState1)
       snapshotTestKit.expectNextPersisted(persistenceId, entityState1)
     }
 
-    // Arrange: save the second event and snapshot.
+    // Arrange: save the second snapshot.
     locally {
       val entityState2 = createEntitySnapshotData(LogEntryIndex(2))
       saveEntitySnapshot(snapshotStore, entityState2)
-      persistenceTestKit.expectNextPersisted(persistenceId, entityState2)
       snapshotTestKit.expectNextPersisted(persistenceId, entityState2)
     }
 
-    // Act: save the third event and snapshot, which will trigger a snapshot deletion.
+    // Act: save the third snapshot, which will trigger a snapshot deletion.
     val entityState3 = createEntitySnapshotData(LogEntryIndex(3))
     saveEntitySnapshot(snapshotStore, entityState3)
-    persistenceTestKit.expectNextPersisted(persistenceId, entityState3)
 
     // Assert:
     snapshotTestKit.expectNextPersisted(persistenceId, entityState3)
