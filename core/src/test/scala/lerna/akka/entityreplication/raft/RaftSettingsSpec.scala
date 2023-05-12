@@ -31,7 +31,7 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.maxAppendEntriesBatchSize shouldBe 10
       settings.deleteOldEvents shouldBe false
       settings.deleteOldSnapshots shouldBe false
-      settings.deleteBeforeRelativeSequenceNr shouldBe 100_000
+      settings.deleteBeforeRelativeSequenceNr shouldBe 250_000
       settings.compactionSnapshotCacheTimeToLive shouldBe 10.seconds
       settings.compactionLogSizeThreshold shouldBe 50_000
       settings.compactionPreserveLogSize shouldBe 10_000
@@ -41,11 +41,11 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.snapshotSyncMaxSnapshotBatchSize shouldBe 1_000
       settings.snapshotSyncDeleteOldEvents shouldBe false
       settings.snapshotSyncDeleteOldSnapshots shouldBe false
-      settings.snapshotSyncDeleteBeforeRelativeSequenceNr shouldBe 1_000
+      settings.snapshotSyncDeleteBeforeRelativeSequenceNr shouldBe 250_000
       settings.snapshotStoreSnapshotEvery shouldBe 1
       settings.snapshotStoreDeleteOldEvents shouldBe false
       settings.snapshotStoreDeleteOldSnapshots shouldBe false
-      settings.snapshotStoreDeleteBeforeRelativeSequenceNr shouldBe 1
+      settings.snapshotStoreDeleteBeforeRelativeSequenceNr shouldBe 5
       settings.clusterShardingConfig shouldBe defaultConfig.getConfig("lerna.akka.entityreplication.raft.sharding")
       settings.raftActorAutoStartFrequency shouldBe 3.seconds
       settings.raftActorAutoStartNumberOfActors shouldBe 5
@@ -61,7 +61,7 @@ final class RaftSettingsSpec extends TestKit(ActorSystem("RaftSettingsSpec")) wi
       settings.eventSourcedSnapshotEvery shouldBe 1_000
       settings.eventSourcedDeleteOldEvents shouldBe false
       settings.eventSourcedDeleteOldSnapshots shouldBe false
-      settings.eventSourcedDeleteBeforeRelativeSequenceNr shouldBe 1_000
+      settings.eventSourcedDeleteBeforeRelativeSequenceNr shouldBe 5_000
     }
 
     "load the default journalPluginAdditionalConfig with non-empty journalPluginId" in {
