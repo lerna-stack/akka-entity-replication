@@ -125,19 +125,26 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       }
     }
 
-    /** The number of new events `runEntitySnapshotSynchronization` saves
-      *
-      * For clarification of test cases. This value should be updated if the implementation of
-      * `runEntitySnapshotSynchronization` changes. This value change doesn't affect `runEntitySnapshotSynchronization` behavior.
-      */
-    val NumOfNewEventsSynchronizationSaves: Int = 2
+    val entityId: NormalizedEntityId =
+      NormalizedEntityId.from(s"entity:${UUID.randomUUID().toString}")
 
-    /** The offset of entity snapshot synchronization progress after `runEntitySnapshotSynchronization` runs
+    /** New events `runEntitySnapshotSynchronization` saves
       *
       * For clarification of test cases. This value should be updated if the implementation of
       * `runEntitySnapshotSynchronization` changes. This value change doesn't affect `runEntitySnapshotSynchronization` behavior.
       */
-    val OffsetAfterSynchronizationCompletes: Offset = Offset.sequence(1)
+    val NewEventsSynchronizationSaves: Seq[SnapshotSyncManager.Event] = Seq(
+      SnapshotCopied(Offset.sequence(1), dstMemberIndex, shardId, Term(1), LogEntryIndex(2), Set(entityId)),
+      SyncCompleted(Offset.sequence(1)),
+    )
+
+    /** New snapshots `runEntitySnapshotSynchronization` saves
+      *
+      * For clarification of test cases. This value should be updated if the implementation of
+      * `runEntitySnapshotSynchronization` changes. This value change doesn't affect `runEntitySnapshotSynchronization` behavior.
+      */
+    val NewSnapshotSynchronizationSaves: SnapshotSyncManager.State =
+      SyncProgress(Offset.sequence(1))
 
     def runEntitySnapshotSynchronization(snapshotSyncManager: ActorRef): Unit = {
       // Require: events and snapshots of the SnapshotSyncManager should have no offset.
@@ -163,8 +170,6 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       }
 
       // Prepare: source entity snapshots
-      val entityId =
-        NormalizedEntityId.from(s"entity:${UUID.randomUUID().toString}")
       persistenceTestKit.persistForRecovery(
         SnapshotStore.persistenceId(typeName, entityId, srcMemberIndex),
         Seq(EntitySnapshot(EntitySnapshotMetadata(entityId, LogEntryIndex(2)), EntityState("entity-1-state"))),
@@ -194,6 +199,7 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       )
 
       // The entity snapshot synchronization result in two event saves and one snapshot save.
+      // See: NewEventsSynchronizationSaves and NewSnapshotSynchronizationSaves
     }
 
   }
@@ -207,13 +213,11 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       )
 
       // Arrange: save events and snapshots of SnapshotSyncManager.
-      persistenceTestKit.persistForRecovery(
-        persistenceId,
-        Seq(
-          SyncCompleted(Offset.noOffset),
-          SyncCompleted(Offset.noOffset),
-        ),
+      val initialEvents = Seq(
+        SyncCompleted(Offset.noOffset),
+        SyncCompleted(Offset.noOffset),
       )
+      persistenceTestKit.persistForRecovery(persistenceId, initialEvents)
       snapshotTestKit.persistForRecovery(
         persistenceId,
         SnapshotMeta(sequenceNr = 2) -> SyncProgress(Offset.noOffset),
@@ -225,11 +229,11 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       runEntitySnapshotSynchronization(snapshotSyncManager)
 
       // Assert:
-      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(OffsetAfterSynchronizationCompletes))
-      assert(NumOfNewEventsSynchronizationSaves > 0)
+      snapshotTestKit.expectNextPersisted(persistenceId, NewSnapshotSynchronizationSaves)
       assertForDuration(
         {
-          assert(persistenceTestKit.persistedInStorage(persistenceId).size === 2 + NumOfNewEventsSynchronizationSaves)
+          val eventsAfterSynchronization = initialEvents ++ NewEventsSynchronizationSaves
+          assert(persistenceTestKit.persistedInStorage(persistenceId) === eventsAfterSynchronization)
         },
         max = remainingOrDefault,
       )
@@ -260,7 +264,7 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
 
       // Assert:
       awaitAssert {
-        val eventsAfterDelete = Seq(SyncCompleted(OffsetAfterSynchronizationCompletes))
+        val eventsAfterDelete = NewEventsSynchronizationSaves.lastOption.toSeq
         assert(persistenceTestKit.persistedInStorage(persistenceId) === eventsAfterDelete)
       }
     }
@@ -272,13 +276,11 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       )
 
       // Arrange: save events and snapshots of SnapshotSyncManager.
-      persistenceTestKit.persistForRecovery(
-        persistenceId,
-        Seq(
-          SyncCompleted(Offset.noOffset),
-          SyncCompleted(Offset.noOffset),
-        ),
+      val initialEvents = Seq(
+        SyncCompleted(Offset.noOffset),
+        SyncCompleted(Offset.noOffset),
       )
+      persistenceTestKit.persistForRecovery(persistenceId, initialEvents)
       snapshotTestKit.persistForRecovery(
         persistenceId,
         SnapshotMeta(sequenceNr = 2) -> SyncProgress(Offset.noOffset),
@@ -290,11 +292,11 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       runEntitySnapshotSynchronization(snapshotSyncManager)
 
       // Assert:
-      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(OffsetAfterSynchronizationCompletes))
-      assert(NumOfNewEventsSynchronizationSaves > 0)
+      snapshotTestKit.expectNextPersisted(persistenceId, NewSnapshotSynchronizationSaves)
       assertForDuration(
         {
-          assert(persistenceTestKit.persistedInStorage(persistenceId).size === 2 + NumOfNewEventsSynchronizationSaves)
+          val eventsAfterSynchronization = initialEvents ++ NewEventsSynchronizationSaves
+          assert(persistenceTestKit.persistedInStorage(persistenceId) === eventsAfterSynchronization)
         },
         max = remainingOrDefault,
       )
@@ -359,10 +361,15 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       runEntitySnapshotSynchronization(snapshotSyncManager)
 
       // Assert:
-      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(OffsetAfterSynchronizationCompletes))
+      snapshotTestKit.expectNextPersisted(persistenceId, NewSnapshotSynchronizationSaves)
       assertForDuration(
         {
-          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 3)
+          val snapshotsAfterSynchronization = Seq(
+            SyncProgress(Offset.noOffset),
+            SyncProgress(Offset.noOffset),
+            NewSnapshotSynchronizationSaves,
+          )
+          assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === snapshotsAfterSynchronization)
         },
         max = remainingOrDefault,
       )
@@ -396,12 +403,8 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       runEntitySnapshotSynchronization(snapshotSyncManager)
 
       // Assert:
-      assert(OffsetAfterSynchronizationCompletes !== Offset.noOffset)
       awaitAssert {
-        val snapshotsAfterDelete = Seq(SyncProgress(OffsetAfterSynchronizationCompletes))
-        assert(
-          snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === snapshotsAfterDelete,
-        )
+        assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === Seq(NewSnapshotSynchronizationSaves))
       }
     }
 
@@ -432,10 +435,14 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       runEntitySnapshotSynchronization(snapshotSyncManager)
 
       // Assert:
-      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(OffsetAfterSynchronizationCompletes))
+      snapshotTestKit.expectNextPersisted(persistenceId, NewSnapshotSynchronizationSaves)
       assertForDuration(
         {
-          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 2)
+          val snapshotsAfterSynchronization = Seq(
+            SyncProgress(Offset.noOffset),
+            NewSnapshotSynchronizationSaves,
+          )
+          assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === snapshotsAfterSynchronization)
         },
         max = remainingOrDefault,
       )

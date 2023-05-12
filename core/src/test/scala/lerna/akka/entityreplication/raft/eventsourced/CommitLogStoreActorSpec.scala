@@ -657,7 +657,7 @@ final class CommitLogStoreActorSpec
       snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(3)))
       assertForDuration(
         {
-          assert(persistenceTestKit.persistedInStorage(persistenceId).size === 3)
+          assert(persistenceTestKit.persistedInStorage(persistenceId) === Seq("event-1", "event-2", "event-3"))
         },
         max = remainingOrDefault,
       )
@@ -708,7 +708,7 @@ final class CommitLogStoreActorSpec
       snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(3)))
       assertForDuration(
         {
-          assert(persistenceTestKit.persistedInStorage(persistenceId).size === 3)
+          assert(persistenceTestKit.persistedInStorage(persistenceId) === Seq("event-1", "event-2", "event-3"))
         },
         max = remainingOrDefault,
       )
@@ -768,7 +768,12 @@ final class CommitLogStoreActorSpec
       snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(6)))
       assertForDuration(
         {
-          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 3)
+          val allSnapshots = Seq(
+            CommitLogStoreActor.State(LogEntryIndex(2)),
+            CommitLogStoreActor.State(LogEntryIndex(4)),
+            CommitLogStoreActor.State(LogEntryIndex(6)),
+          )
+          assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === allSnapshots)
         },
         max = remainingOrDefault,
       )
@@ -827,7 +832,11 @@ final class CommitLogStoreActorSpec
       snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(4)))
       assertForDuration(
         {
-          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 2)
+          val allSnapshots = Seq(
+            CommitLogStoreActor.State(LogEntryIndex(2)),
+            CommitLogStoreActor.State(LogEntryIndex(4)),
+          )
+          assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === allSnapshots)
         },
         max = remainingOrDefault,
       )

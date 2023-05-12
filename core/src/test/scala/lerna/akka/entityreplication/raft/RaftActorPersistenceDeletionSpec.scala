@@ -247,9 +247,9 @@ final class RaftActorPersistenceDeletionSpec
 
       promoteBeforeDelete(this, raftActor)
 
-      // Arrange: store the number of events to verify event deletion.
-      val numOfEventsBeforeDelete =
-        persistenceTestKit.persistedInStorage(persistenceId).size
+      // Arrange: store events to verify no event deletion.
+      val eventsBeforeCompaction = persistenceTestKit.persistedInStorage(persistenceId)
+      assert(eventsBeforeCompaction.nonEmpty)
 
       // Act: complete compaction, which will trigger a snapshot save and event deletion.
       advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(4))
@@ -258,7 +258,8 @@ final class RaftActorPersistenceDeletionSpec
       snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
       assertForDuration(
         {
-          assert(persistenceTestKit.persistedInStorage(persistenceId).size >= numOfEventsBeforeDelete)
+          val eventsAfterCompaction = persistenceTestKit.persistedInStorage(persistenceId)
+          assert(eventsAfterCompaction.take(eventsBeforeCompaction.size) === eventsBeforeCompaction)
         },
         max = remainingOrDefault,
       )
@@ -319,9 +320,9 @@ final class RaftActorPersistenceDeletionSpec
 
       promoteBeforeDelete(this, raftActor)
 
-      // Arrange: store the number of events to verify event deletion.
-      val numOfEventsBeforeDelete =
-        persistenceTestKit.persistedInStorage(persistenceId).size
+      // Arrange: store events to verify no event deletion.
+      val eventsBeforeCompaction = persistenceTestKit.persistedInStorage(persistenceId)
+      assert(eventsBeforeCompaction.nonEmpty)
 
       // Act: complete compaction, which will trigger a snapshot save and event deletion.
       advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(4))
@@ -330,7 +331,8 @@ final class RaftActorPersistenceDeletionSpec
       snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
       assertForDuration(
         {
-          assert(persistenceTestKit.persistedInStorage(persistenceId).size >= numOfEventsBeforeDelete)
+          val eventsAfterCompaction = persistenceTestKit.persistedInStorage(persistenceId)
+          assert(eventsAfterCompaction.take(eventsBeforeCompaction.size) === eventsBeforeCompaction)
         },
         max = remainingOrDefault,
       )
@@ -386,7 +388,7 @@ final class RaftActorPersistenceDeletionSpec
         LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-2"), Term(1)),
       )
       advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(3))
-      snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
+      val snapshot1 = snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
 
       // Arrange: append new entries, which will trigger the second compaction.
       appendNewEntriesTo(
@@ -404,10 +406,11 @@ final class RaftActorPersistenceDeletionSpec
       advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(6))
 
       // Assert:
-      snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
+      val snapshot2 = snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
       assertForDuration(
         {
-          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 2)
+          val snapshotsAfterCompaction = snapshotTestKit.persistedInStorage(persistenceId)
+          assert(snapshotsAfterCompaction.map(_._2) === Seq(snapshot1, snapshot2))
         },
         max = remainingOrDefault,
       )
@@ -483,7 +486,7 @@ final class RaftActorPersistenceDeletionSpec
         LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-2"), Term(1)),
       )
       advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(3))
-      snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
+      val snapshot1 = snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
 
       // Arrange: append new entries, which will trigger the second compaction.
       appendNewEntriesTo(
@@ -501,10 +504,10 @@ final class RaftActorPersistenceDeletionSpec
       advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(6))
 
       // Assert:
-      snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
+      val snapshot2 = snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
       assertForDuration(
         {
-          assert(snapshotTestKit.persistedInStorage(persistenceId).size === 2)
+          assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === Seq(snapshot1, snapshot2))
         },
         max = remainingOrDefault,
       )
