@@ -332,26 +332,26 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
     if (settings.raftSettings.eventSourcedDeleteOldEvents) {
       val deleteEventsToSequenceNr =
         math.max(0, success.metadata.sequenceNr - deleteBeforeRelativeSequenceNr)
-      if (log.isDebugEnabled) {
-        log.debug("Deleting events up to sequenceNr [{}]", deleteEventsToSequenceNr)
+      if (deleteEventsToSequenceNr > 0) {
+        if (log.isDebugEnabled) {
+          log.debug("Deleting events up to sequenceNr [{}]", deleteEventsToSequenceNr)
+        }
+        deleteMessages(deleteEventsToSequenceNr)
       }
-      deleteMessages(deleteEventsToSequenceNr)
     }
     if (settings.raftSettings.eventSourcedDeleteOldSnapshots) {
-      val deletionCriteria = {
-        // Since this actor will use the snapshot with sequence number `metadata.sequenceNr` for recovery, it can delete
-        // snapshots with sequence numbers less than `metadata.sequenceNr`.
-        val deleteSnapshotsToSequenceNr =
-          math.max(
-            0,
-            success.metadata.sequenceNr - 1 - deleteBeforeRelativeSequenceNr,
-          )
-        SnapshotSelectionCriteria(minSequenceNr = 0, maxSequenceNr = deleteSnapshotsToSequenceNr)
+      // Since this actor will use the snapshot with sequence number `metadata.sequenceNr` for recovery, it can delete
+      // snapshots with sequence numbers less than `metadata.sequenceNr`.
+      val deleteSnapshotsToSequenceNr =
+        math.max(0, success.metadata.sequenceNr - 1 - deleteBeforeRelativeSequenceNr)
+      if (deleteSnapshotsToSequenceNr > 0) {
+        val deletionCriteria =
+          SnapshotSelectionCriteria(minSequenceNr = 0, maxSequenceNr = deleteSnapshotsToSequenceNr)
+        if (log.isDebugEnabled) {
+          log.debug("Deleting snapshots matching criteria [{}]", deletionCriteria)
+        }
+        deleteSnapshots(deletionCriteria)
       }
-      if (log.isDebugEnabled) {
-        log.debug("Deleting snapshots matching criteria [{}]", deletionCriteria)
-      }
-      deleteSnapshots(deletionCriteria)
     }
   }
 

@@ -706,24 +706,34 @@ private[entityreplication] class SnapshotSyncManager(
   private def deleteOldEvents(upperSequenceNr: Long): Unit = {
     assert(shouldDeleteOldEvents, s"Old event deletion should be enabled but is disabled.")
     val deleteEventsToSequenceNr = math.max(0, upperSequenceNr)
-    if (log.isDebugEnabled) {
-      log.debug("Deleting events up to sequenceNr [{}]", deleteEventsToSequenceNr)
+    if (deleteEventsToSequenceNr > 0) {
+      if (log.isDebugEnabled) {
+        log.debug("Deleting events up to sequenceNr [{}]", deleteEventsToSequenceNr)
+      }
+      deleteMessages(deleteEventsToSequenceNr)
+    } else {
+      // Attempt to stop itself if it deletes no events.
+      // No event deletion means that it will also delete no snapshots.
+      self ! Stop
     }
-    deleteMessages(deleteEventsToSequenceNr)
   }
 
   private def deleteOldSnapshots(upperSequenceNr: Long): Unit = {
     assert(shouldDeleteOldSnapshots, "Old snapshot deletion should be enabled but is disabled.")
-    val deletionCriteria = {
-      // Since this actor will use the snapshot with sequence number `upperSequenceNr` for recovery,
-      // it can delete snapshots with sequence numbers less than `upperSequenceNr`.
-      val deleteSnapshotsToSequenceNr = math.max(0, upperSequenceNr - 1)
-      SnapshotSelectionCriteria(minSequenceNr = 0, maxSequenceNr = deleteSnapshotsToSequenceNr)
+    // Since this actor will use the snapshot with sequence number `upperSequenceNr` for recovery,
+    // it can delete snapshots with sequence numbers less than `upperSequenceNr`.
+    val deleteSnapshotsToSequenceNr = math.max(0, upperSequenceNr - 1)
+    if (deleteSnapshotsToSequenceNr > 0) {
+      val deletionCriteria =
+        SnapshotSelectionCriteria(minSequenceNr = 0, maxSequenceNr = deleteSnapshotsToSequenceNr)
+      if (log.isDebugEnabled) {
+        log.debug("Deleting snapshots matching criteria [{}]", deletionCriteria)
+      }
+      deleteSnapshots(deletionCriteria)
+    } else {
+      // Attempt to stop itself if it deletes no snapshots.
+      self ! Stop
     }
-    if (log.isDebugEnabled) {
-      log.debug("Deleting snapshots matching criteria [{}]", deletionCriteria)
-    }
-    deleteSnapshots(deletionCriteria)
   }
 
 }
