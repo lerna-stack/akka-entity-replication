@@ -987,8 +987,8 @@ private[raft] class RaftActor(
     if (settings.deleteOldEvents) {
       val deleteEventsToSequenceNr =
         math.max(0, success.metadata.sequenceNr - deleteBeforeRelativeSequenceNr)
-      if (log.isInfoEnabled) {
-        log.info("[{}] Deleting events up to sequenceNr [{}]", currentState, deleteEventsToSequenceNr)
+      if (log.isDebugEnabled) {
+        log.debug("[{}] Deleting events up to sequenceNr [{}]", currentState, deleteEventsToSequenceNr)
       }
       deleteMessages(deleteEventsToSequenceNr)
     }
@@ -1000,8 +1000,8 @@ private[raft] class RaftActor(
           math.max(0, success.metadata.sequenceNr - 1 - deleteBeforeRelativeSequenceNr)
         SnapshotSelectionCriteria(minSequenceNr = 0, maxSequenceNr = deleteSnapshotsToSequenceNr)
       }
-      if (log.isInfoEnabled) {
-        log.info("[{}] Deleting snapshots matching criteria [{}]", currentState, deletionCriteria)
+      if (log.isDebugEnabled) {
+        log.debug("[{}] Deleting snapshots matching criteria [{}]", currentState, deletionCriteria)
       }
       deleteSnapshots(deletionCriteria)
     }

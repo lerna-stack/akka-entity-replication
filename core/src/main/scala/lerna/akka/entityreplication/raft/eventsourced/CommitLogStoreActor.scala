@@ -332,8 +332,8 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
     if (settings.raftSettings.eventSourcedDeleteOldEvents) {
       val deleteEventsToSequenceNr =
         math.max(0, success.metadata.sequenceNr - deleteBeforeRelativeSequenceNr)
-      if (log.isInfoEnabled) {
-        log.info("Deleting events up to sequenceNr [{}]", deleteEventsToSequenceNr)
+      if (log.isDebugEnabled) {
+        log.debug("Deleting events up to sequenceNr [{}]", deleteEventsToSequenceNr)
       }
       deleteMessages(deleteEventsToSequenceNr)
     }
@@ -348,8 +348,8 @@ private[entityreplication] class CommitLogStoreActor(typeName: TypeName, setting
           )
         SnapshotSelectionCriteria(minSequenceNr = 0, maxSequenceNr = deleteSnapshotsToSequenceNr)
       }
-      if (log.isInfoEnabled) {
-        log.info("Deleting snapshots matching criteria [{}]", deletionCriteria)
+      if (log.isDebugEnabled) {
+        log.debug("Deleting snapshots matching criteria [{}]", deletionCriteria)
       }
       deleteSnapshots(deletionCriteria)
     }

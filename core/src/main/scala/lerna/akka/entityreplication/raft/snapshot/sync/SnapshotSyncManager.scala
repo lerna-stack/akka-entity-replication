@@ -706,8 +706,8 @@ private[entityreplication] class SnapshotSyncManager(
   private def deleteOldEvents(upperSequenceNr: Long): Unit = {
     assert(shouldDeleteOldEvents, s"Old event deletion should be enabled but is disabled.")
     val deleteEventsToSequenceNr = math.max(0, upperSequenceNr)
-    if (log.isInfoEnabled) {
-      log.info("Deleting events up to sequenceNr [{}]", deleteEventsToSequenceNr)
+    if (log.isDebugEnabled) {
+      log.debug("Deleting events up to sequenceNr [{}]", deleteEventsToSequenceNr)
     }
     deleteMessages(deleteEventsToSequenceNr)
   }
@@ -720,8 +720,8 @@ private[entityreplication] class SnapshotSyncManager(
       val deleteSnapshotsToSequenceNr = math.max(0, upperSequenceNr - 1)
       SnapshotSelectionCriteria(minSequenceNr = 0, maxSequenceNr = deleteSnapshotsToSequenceNr)
     }
-    if (log.isInfoEnabled) {
-      log.info("Deleting snapshots matching criteria [{}]", deletionCriteria)
+    if (log.isDebugEnabled) {
+      log.debug("Deleting snapshots matching criteria [{}]", deletionCriteria)
     }
     deleteSnapshots(deletionCriteria)
   }
