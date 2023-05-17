@@ -1,0 +1,2 @@
+# CassandraJournalSettings is a private class.
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.rollback.cassandra.CassandraJournalSettings.this")
