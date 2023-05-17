@@ -801,6 +801,31 @@ final class CassandraPersistenceQueriesSpec
       all(events.map(_.tags)) should be(empty)
     }
 
+    "return a source that emits current events before the given sequence number inclusive if old events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 25) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(25))
+      actor ! TestPersistentActor.DeleteEventsTo(15, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(15))
+
+      // Test:
+      val events =
+        queries.currentEventsBefore(persistenceId, SequenceNr(22)).runWith(Sink.seq).futureValue
+      all(events.map(_.persistenceId)) should be(persistenceId)
+      events.map(_.sequenceNr) should be((22 to 16 by -1).map(SequenceNr(_)))
+      events.map(_.event) should be((22 to 16 by -1).map(TestPersistentActor.Event(_)))
+      all(events.map(_.offset)) shouldBe a[TimeBasedUUID]
+    }
+
   }
 
   "CassandraPersistenceQueries.currentEventsBeforeOnPartition" should {

@@ -192,13 +192,19 @@ private final class CassandraPersistenceQueries(
       from: SequenceNr,
   ): Source[PersistenceQueries.TaggedEventEnvelope, NotUsed] = {
     val fromPartitionNr = PartitionNr.fromSequenceNr(from, journalSettings.targetPartitionSize)
-    val sources =
-      for (partitionNr <- fromPartitionNr.value + 1 to 0 by -1) yield {
-        currentEventsBeforeOnPartition(persistenceId, from, PartitionNr(partitionNr))
+    val futureSource = selectDeletedToSequenceNr(persistenceId).map { deletedToOption =>
+      val toPartitionNr = deletedToOption.fold(PartitionNr(0)) { deletedTo =>
+        PartitionNr.fromSequenceNr(deletedTo + 1, journalSettings.targetPartitionSize)
       }
-    sources
-      .fold(Source.empty)(_.concat(_))
-      .mapMaterializedValue(_ => NotUsed)
+      val sources =
+        for (partitionNr <- fromPartitionNr.value + 1 to toPartitionNr.value by -1) yield {
+          currentEventsBeforeOnPartition(persistenceId, from, PartitionNr(partitionNr))
+        }
+      sources
+        .fold(Source.empty)(_.concat(_))
+        .mapMaterializedValue(_ => NotUsed)
+    }
+    Source.futureSource(futureSource).mapMaterializedValue(_ => NotUsed)
   }
 
   /** Returns a `Source` that emits current events (before the given sequence number inclusive) of the given partition
