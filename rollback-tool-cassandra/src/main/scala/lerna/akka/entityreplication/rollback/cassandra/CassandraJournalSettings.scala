@@ -20,6 +20,8 @@ private object CassandraJournalSettings {
       pluginConfig.getString("journal.keyspace")
     val table =
       pluginConfig.getString("journal.table")
+    val metadataTable =
+      pluginConfig.getString("journal.metadata-table")
     val targetPartitionSize =
       pluginConfig.getLong("journal.target-partition-size")
     new CassandraJournalSettings(
@@ -27,6 +29,7 @@ private object CassandraJournalSettings {
       writeProfile,
       keyspace,
       table,
+      metadataTable,
       targetPartitionSize,
     )
   }
@@ -38,6 +41,7 @@ private final class CassandraJournalSettings private (
     val writeProfile: String,
     val keyspace: String,
     val table: String,
+    val metadataTable: String,
     val targetPartitionSize: Long,
 ) {
   require(
@@ -47,5 +51,8 @@ private final class CassandraJournalSettings private (
 
   /** The table name qualified with the keyspace name */
   def tableName: String = s"${keyspace}.${table}"
+
+  /** The metadata table name qualified with the keyspace name */
+  def metadataTableName: String = s"${keyspace}.${metadataTable}"
 
 }

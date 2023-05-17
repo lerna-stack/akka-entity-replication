@@ -14,6 +14,7 @@ final class CassandraJournalSettingsSpec extends WordSpec with Matchers {
       |journal {
       |  keyspace = "custom_akka"
       |  table = "custom_messages"
+      |  metadata-table = "custom_metadata"
       |  target-partition-size = 1000000
       |}
       |""".stripMargin)
@@ -26,6 +27,7 @@ final class CassandraJournalSettingsSpec extends WordSpec with Matchers {
       settings.writeProfile should be("akka-persistence-cassandra-profile")
       settings.keyspace should be("akka")
       settings.table should be("messages")
+      settings.metadataTable should be("metadata")
       settings.targetPartitionSize should be(500_000)
     }
 
@@ -35,6 +37,7 @@ final class CassandraJournalSettingsSpec extends WordSpec with Matchers {
       settings.writeProfile should be("custom_akka-persistence-cassandra-write-profile")
       settings.keyspace should be("custom_akka")
       settings.table should be("custom_messages")
+      settings.metadataTable should be("custom_metadata")
       settings.targetPartitionSize should be(1_000_000)
     }
 
@@ -77,6 +80,17 @@ final class CassandraJournalSettingsSpec extends WordSpec with Matchers {
       settings.keyspace should be("custom_akka")
       settings.table should be("custom_messages")
       settings.tableName should be("custom_akka.custom_messages")
+    }
+
+  }
+
+  "CassandraJournalSettings.metadataTableName" should {
+
+    "return the metadata table name qualified with the keyspace name" in {
+      val settings = CassandraJournalSettings(customPluginConfig)
+      settings.keyspace should be("custom_akka")
+      settings.metadataTable should be("custom_metadata")
+      settings.metadataTableName should be("custom_akka.custom_metadata")
     }
 
   }
