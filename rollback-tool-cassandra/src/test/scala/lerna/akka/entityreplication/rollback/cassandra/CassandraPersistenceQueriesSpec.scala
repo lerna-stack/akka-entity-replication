@@ -891,40 +891,41 @@ final class CassandraPersistenceQueriesSpec
       // Test:
       queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(None)
     }
-  }
 
-  "return None if no events are deleted" in {
-    val queries       = new CassandraPersistenceQueries(system, defaultSettings)
-    val probe         = TestProbe()
-    val persistenceId = nextPersistenceId()
+    "return None if no events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
 
-    // Prepare:
-    val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
-    actor ! TestPersistentActor.PersistEvent(probe.ref)
-    probe.expectMsg(TestPersistentActor.Ack(1))
-
-    // Test:
-    queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(None)
-  }
-
-  "return the highest deleted sequence number (`deleted_to`) if events are deleted" in {
-    val queries       = new CassandraPersistenceQueries(system, defaultSettings)
-    val probe         = TestProbe()
-    val persistenceId = nextPersistenceId()
-
-    // Prepare:
-    val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
-    for (sequenceNr <- 1 to 5) {
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
       actor ! TestPersistentActor.PersistEvent(probe.ref)
-      probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
-    }
-    actor ! TestPersistentActor.SaveSnapshot(probe.ref)
-    probe.expectMsg(TestPersistentActor.Ack(5))
+      probe.expectMsg(TestPersistentActor.Ack(1))
 
-    // Test:
-    actor ! TestPersistentActor.DeleteEventsTo(3, probe.ref)
-    probe.expectMsg(TestPersistentActor.Ack(3))
-    queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(3)))
+      // Test:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(None)
+    }
+
+    "return the highest deleted sequence number (`deleted_to`) if events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 5) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(5))
+
+      // Test:
+      actor ! TestPersistentActor.DeleteEventsTo(3, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(3))
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(3)))
+    }
+
   }
 
 }
