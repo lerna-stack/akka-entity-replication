@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 [Unreleased]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.2.0...master
 
+### Added
+- Support deleting old events and snapshots
+  [#201](https://github.com/lerna-stack/akka-entity-replication/issues/201),
+  [PR#204](https://github.com/lerna-stack/akka-entity-replication/pull/204)
+
 ### Changed
 - Rollback deletes only tagged events after the given sequence number
   [#202](https://github.com/lerna-stack/akka-entity-replication/issues/202),

@@ -14,6 +14,15 @@ All clock synchronization gaps among all nodes should be less than a certain per
 less than 10 seconds. To configure this period, see [Configure the rollback tool](#configure-the-rollback-tool) for
 details.
 
+## WARNING
+
+`akka-entity-replication` (v.2.3.0 or later) supports deleting old events and snapshots. Once events or snapshots
+are deleted, a rollback to a timestamp that requires such deleted events or snapshots is impossible. At the time of
+writing, the rollback tool can't detect such deletions yet. If such a timestamp is specified, the rollback tool will
+delete all events and snapshots of the target Raft shard, or persistent actors of the target Raft shard will be
+inconsistent state. Please ensure that a rollback is possible by inspecting data stores if either event or snapshot
+deletion is enabled.
+
 ## Rollback Procedures
 
 ### 1. Disable the target Raft shard

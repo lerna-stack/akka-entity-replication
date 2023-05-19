@@ -103,7 +103,7 @@ class ShardSnapshotStoreFailureSpec
       snapshotTestKit.failNextPersisted(snapshotStorePersistenceId)
 
       // Test:
-      LoggingTestKit.warn("Saving EntitySnapshot as a snapshot failed.").expect {
+      LoggingTestKit.warn("Failed to saveSnapshot").expect {
         shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
         persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
         expectMsg(SaveSnapshotSuccess(metadata))

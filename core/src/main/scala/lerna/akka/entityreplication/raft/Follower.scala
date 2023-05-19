@@ -31,8 +31,14 @@ private[raft] trait Follower { this: RaftActor =>
     case SnapshotTick                                    => handleSnapshotTick()
     case response: Snapshot                              => receiveEntitySnapshotResponse(response)
     case response: SnapshotProtocol.SaveSnapshotResponse => receiveSaveSnapshotResponse(response)
-    case _: akka.persistence.SaveSnapshotSuccess         => // ignore
-    case _: akka.persistence.SaveSnapshotFailure         => // ignore: no problem because events exist even if snapshot saving failed
+
+    // Akka Persistence protocol
+    case success: akka.persistence.SaveSnapshotSuccess    => handleSaveSnapshotSuccess(success)
+    case failure: akka.persistence.SaveSnapshotFailure    => handleSaveSnapshotFailure(failure)
+    case success: akka.persistence.DeleteMessagesSuccess  => handleDeleteMessagesSuccess(success)
+    case failure: akka.persistence.DeleteMessagesFailure  => handleDeleteMessagesFailure(failure)
+    case success: akka.persistence.DeleteSnapshotsSuccess => handleDeleteSnapshotsSuccess(success)
+    case failure: akka.persistence.DeleteSnapshotsFailure => handleDeleteSnapshotsFailure(failure)
 
     // Event sourcing protocol
     case response: CommitLogStoreActor.AppendCommittedEntriesResponse =>

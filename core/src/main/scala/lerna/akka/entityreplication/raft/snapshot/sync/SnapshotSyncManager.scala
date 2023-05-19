@@ -3,7 +3,13 @@ package lerna.akka.entityreplication.raft.snapshot.sync
 import akka.actor.{ ActorLogging, ActorRef, Props, Status }
 import akka.pattern.extended.ask
 import akka.pattern.pipe
-import akka.persistence.{ PersistentActor, RecoveryCompleted, RuntimePluginConfig, SnapshotOffer }
+import akka.persistence.{
+  PersistentActor,
+  RecoveryCompleted,
+  RuntimePluginConfig,
+  SnapshotOffer,
+  SnapshotSelectionCriteria,
+}
 import akka.persistence.query.{ EventEnvelope, Offset, PersistenceQuery }
 import akka.persistence.query.scaladsl.CurrentEventsByTagQuery
 import akka.stream.{ KillSwitches, UniqueKillSwitch }
@@ -69,6 +75,9 @@ private[entityreplication] object SnapshotSyncManager {
   ) extends Response
 
   final case class SyncSnapshotFailed() extends Response
+
+  /** A `SnapshotSyncManager` will stop if it receives a `Stop` message unless its synchronization is in progress. */
+  private final case object Stop extends Command
 
   sealed trait Event
 
@@ -213,6 +222,13 @@ private[entityreplication] class SnapshotSyncManager(
       shardId,
     )
 
+  private val shouldDeleteOldEvents: Boolean =
+    settings.snapshotSyncDeleteOldEvents
+  private val shouldDeleteOldSnapshots: Boolean =
+    settings.snapshotSyncDeleteOldSnapshots
+  private val deletionRelativeSequenceNr: Long =
+    settings.snapshotSyncDeleteBeforeRelativeSequenceNr
+
   private[this] val readJournal =
     PersistenceQuery(context.system)
       .readJournalFor[CurrentEventsByTagQuery](settings.queryPluginId)
@@ -264,7 +280,7 @@ private[entityreplication] class SnapshotSyncManager(
           s"(typeName: $typeName, memberIndex: $srcMemberIndex, snapshotLastLogTerm: ${srcLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $srcLatestSnapshotLastLogIndex)",
           s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
         )
-      context.stop(self)
+      stopSelf()
 
     case SyncSnapshot(
           srcLatestSnapshotLastLogTerm,
@@ -294,17 +310,12 @@ private[entityreplication] class SnapshotSyncManager(
           s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
         )
 
-    case akka.persistence.SaveSnapshotSuccess(metadata) =>
-      if (log.isInfoEnabled) {
-        log.info("Succeeded to save snapshot synchronization progress: metadata=[{}]", metadata)
-      }
-      context.stop(self)
+    case message if handleAkkaPersistenceMessage.isDefinedAt(message) =>
+      handleAkkaPersistenceMessage(message)
 
-    case akka.persistence.SaveSnapshotFailure(metadata, cause) =>
-      if (log.isWarningEnabled) {
-        log.warning("Failed to save snapshot synchronization progress: metadata=[{}], cause=[{}]", metadata, cause)
-      }
-      context.stop(self)
+    case Stop =>
+      stopSelf()
+
   }
 
   def synchronizing(
@@ -383,7 +394,7 @@ private[entityreplication] class SnapshotSyncManager(
               s"(typeName: $typeName, memberIndex: $srcMemberIndex)",
               s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
             )
-          context.stop(self)
+          stopSelf()
       }
 
     case Status.Failure(e) =>
@@ -396,19 +407,16 @@ private[entityreplication] class SnapshotSyncManager(
           s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
           e,
         )
-      context.stop(self)
+      stopSelf()
 
-    case saveSnapshotSuccess: akka.persistence.SaveSnapshotSuccess =>
-      // ignore: previous execution result
+    case message if handleAkkaPersistenceMessage.isDefinedAt(message) =>
+      handleAkkaPersistenceMessage(message)
+
+    case Stop =>
       if (log.isDebugEnabled) {
-        log.debug("Dropping [{}] of the previous synchronization.", saveSnapshotSuccess)
+        log.debug("Dropping Stop since the new snapshot synchronization is in progress.")
       }
 
-    case saveSnapshotFailure: akka.persistence.SaveSnapshotFailure =>
-      // ignore: previous execution result
-      if (log.isDebugEnabled) {
-        log.debug("Dropping [{}] of the previous synchronization.", saveSnapshotFailure)
-      }
   }
 
   def updateState(event: Event): Unit =
@@ -420,6 +428,13 @@ private[entityreplication] class SnapshotSyncManager(
         this.state = SyncProgress(offset)
         context.become(ready)
     }
+
+  private def stopSelf(): Unit = {
+    if (log.isInfoEnabled) {
+      log.info("Stopping itself.")
+    }
+    context.stop(self)
+  }
 
   override def postStop(): Unit = {
     try {
@@ -588,4 +603,137 @@ private[entityreplication] class SnapshotSyncManager(
       .toMat(Sink.last)(Keep.both)
       .run()
   }
+
+  /** Handles an Akka Persistence message
+    *
+    * This `SnapshotSyncManager` will attempt to stop after it handles a series of snapshot save, (optional) event
+    * deletion, and (optional) snapshot deletion. Attempt to stop is driven by sending and receiving a
+    * [[SnapshotSyncManager.Stop]] message.
+    *
+    * This `SnapshotSyncManager` will delete events first, then snapshot. It's because:
+    * There is a subtle timing at which the snapshot deletion completes before the event deletion completes. In this
+    * case, the manager doesn't log a message about completing the event deletion since it stops before receiving the
+    * completion message of the event deletion. To avoid such a case, the manager waits to complete the event deletion,
+    * then deletes the snapshot.
+    */
+  private def handleAkkaPersistenceMessage: Receive = {
+    case success: akka.persistence.SaveSnapshotSuccess =>
+      handleSaveSnapshotSuccess(success)
+    case failure: akka.persistence.SaveSnapshotFailure =>
+      handleSaveSnapshotFailure(failure)
+    case success: akka.persistence.DeleteMessagesSuccess =>
+      handleDeleteMessagesSuccess(success)
+    case failure: akka.persistence.DeleteMessagesFailure =>
+      handleDeleteMessagesFailure(failure)
+    case success: akka.persistence.DeleteSnapshotsSuccess =>
+      handleDeleteSnapshotsSuccess(success)
+    case failure: akka.persistence.DeleteSnapshotsFailure =>
+      handleDeleteSnapshotsFailure(failure)
+  }
+
+  private def handleSaveSnapshotSuccess(success: akka.persistence.SaveSnapshotSuccess): Unit = {
+    if (log.isInfoEnabled) {
+      log.info("Succeeded to saveSnapshot given metadata [{}]", success.metadata)
+    }
+    if (shouldDeleteOldEvents) {
+      deleteOldEvents(success.metadata.sequenceNr - deletionRelativeSequenceNr)
+      // This actor will delete old snapshots after the event deletion succeeds.
+    } else if (shouldDeleteOldSnapshots) {
+      deleteOldSnapshots(success.metadata.sequenceNr - deletionRelativeSequenceNr)
+    } else {
+      // Attempt to stop itself if no deletions are enabled.
+      // If any deletion is enabled, this actor will attempt to stop after the deletion completes (succeeds or fails).
+      self ! Stop
+    }
+  }
+
+  private def handleSaveSnapshotFailure(failure: akka.persistence.SaveSnapshotFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "Failed to saveSnapshot given metadata [{}] due to: [{}: {}]",
+        failure.metadata,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+    self ! Stop
+  }
+
+  private def handleDeleteMessagesSuccess(success: akka.persistence.DeleteMessagesSuccess): Unit = {
+    if (log.isInfoEnabled) {
+      log.info("Succeeded to deleteMessages up to sequenceNr [{}]", success.toSequenceNr)
+    }
+    if (shouldDeleteOldSnapshots) {
+      // Subtraction of `deletionRelativeSequenceNr` is not needed, since it's already subtracted at the event deletion.
+      deleteOldSnapshots(success.toSequenceNr)
+      // This actor will attempt to stop after the snapshot deletion completes (succeeds or fails).
+    } else {
+      self ! Stop
+    }
+  }
+
+  private def handleDeleteMessagesFailure(failure: akka.persistence.DeleteMessagesFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "Failed to deleteMessages given toSequenceNr [{}] due to: [{}: {}]",
+        failure.toSequenceNr,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+    self ! Stop
+  }
+
+  private def handleDeleteSnapshotsSuccess(success: akka.persistence.DeleteSnapshotsSuccess): Unit = {
+    if (log.isInfoEnabled) {
+      log.info("Succeeded to deleteSnapshots given criteria [{}]", success.criteria)
+    }
+    self ! Stop
+  }
+
+  private def handleDeleteSnapshotsFailure(failure: akka.persistence.DeleteSnapshotsFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "Failed to deleteSnapshots given criteria [{}] due to: [{}: {}]",
+        failure.criteria,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+    self ! Stop
+  }
+
+  private def deleteOldEvents(upperSequenceNr: Long): Unit = {
+    assert(shouldDeleteOldEvents, s"Old event deletion should be enabled but is disabled.")
+    val deleteEventsToSequenceNr = math.max(0, upperSequenceNr)
+    if (deleteEventsToSequenceNr > 0) {
+      if (log.isDebugEnabled) {
+        log.debug("Deleting events up to sequenceNr [{}]", deleteEventsToSequenceNr)
+      }
+      deleteMessages(deleteEventsToSequenceNr)
+    } else {
+      // Attempt to stop itself if it deletes no events.
+      // No event deletion means that it will also delete no snapshots.
+      self ! Stop
+    }
+  }
+
+  private def deleteOldSnapshots(upperSequenceNr: Long): Unit = {
+    assert(shouldDeleteOldSnapshots, "Old snapshot deletion should be enabled but is disabled.")
+    // Since this actor will use the snapshot with sequence number `upperSequenceNr` for recovery,
+    // it can delete snapshots with sequence numbers less than `upperSequenceNr`.
+    val deleteSnapshotsToSequenceNr = math.max(0, upperSequenceNr - 1)
+    if (deleteSnapshotsToSequenceNr > 0) {
+      val deletionCriteria =
+        SnapshotSelectionCriteria(minSequenceNr = 0, maxSequenceNr = deleteSnapshotsToSequenceNr)
+      if (log.isDebugEnabled) {
+        log.debug("Deleting snapshots matching criteria [{}]", deletionCriteria)
+      }
+      deleteSnapshots(deletionCriteria)
+    } else {
+      // Attempt to stop itself if it deletes no snapshots.
+      self ! Stop
+    }
+  }
+
 }
