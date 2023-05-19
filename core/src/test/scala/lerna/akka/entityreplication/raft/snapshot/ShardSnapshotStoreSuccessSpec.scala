@@ -135,7 +135,7 @@ class ShardSnapshotStoreSuccessSpec
       val metadata                   = EntitySnapshotMetadata(entityId, LogEntryIndex.initial())
       val snapshot                   = EntitySnapshot(metadata, dummyEntityState)
 
-      LoggingTestKit.debug("Saving EntitySnapshot as a snapshot succeeded.").expect {
+      LoggingTestKit.debug("Succeeded to saveSnapshot").expect {
         shardSnapshotStore ! SaveSnapshot(snapshot, replyTo = testActor)
         persistenceTestKit.expectNextPersisted(snapshotStorePersistenceId, snapshot)
         expectMsg(SaveSnapshotSuccess(metadata))

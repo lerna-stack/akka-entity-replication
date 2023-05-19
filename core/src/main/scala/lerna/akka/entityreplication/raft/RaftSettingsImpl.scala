@@ -21,6 +21,9 @@ private[entityreplication] final case class RaftSettingsImpl(
     disabledShards: Set[String],
     maxAppendEntriesSize: Int,
     maxAppendEntriesBatchSize: Int,
+    deleteOldEvents: Boolean,
+    deleteOldSnapshots: Boolean,
+    deleteBeforeRelativeSequenceNr: Long,
     compactionSnapshotCacheTimeToLive: FiniteDuration,
     compactionLogSizeThreshold: Int,
     compactionPreserveLogSize: Int,
@@ -28,7 +31,13 @@ private[entityreplication] final case class RaftSettingsImpl(
     snapshotSyncCopyingParallelism: Int,
     snapshotSyncPersistenceOperationTimeout: FiniteDuration,
     snapshotSyncMaxSnapshotBatchSize: Int,
+    snapshotSyncDeleteOldEvents: Boolean,
+    snapshotSyncDeleteOldSnapshots: Boolean,
+    snapshotSyncDeleteBeforeRelativeSequenceNr: Long,
     snapshotStoreSnapshotEvery: Int,
+    snapshotStoreDeleteOldEvents: Boolean,
+    snapshotStoreDeleteOldSnapshots: Boolean,
+    snapshotStoreDeleteBeforeRelativeSequenceNr: Long,
     clusterShardingConfig: Config,
     raftActorAutoStartFrequency: FiniteDuration,
     raftActorAutoStartNumberOfActors: Int,
@@ -42,6 +51,9 @@ private[entityreplication] final case class RaftSettingsImpl(
     eventSourcedJournalPluginId: String,
     eventSourcedSnapshotStorePluginId: String,
     eventSourcedSnapshotEvery: Int,
+    eventSourcedDeleteOldEvents: Boolean,
+    eventSourcedDeleteOldSnapshots: Boolean,
+    eventSourcedDeleteBeforeRelativeSequenceNr: Long,
 ) extends RaftSettings {
 
   override private[raft] def randomizedElectionTimeout(): FiniteDuration =
@@ -132,6 +144,17 @@ private[entityreplication] object RaftSettingsImpl {
       s"max-append-entries-batch-size ($maxAppendEntriesBatchSize) should be greater than 0",
     )
 
+    val deleteOldEvents: Boolean =
+      config.getBoolean("delete-old-events")
+    val deleteOldSnapshots: Boolean =
+      config.getBoolean("delete-old-snapshots")
+    val deleteBeforeRelativeSequenceNr: Long =
+      config.getLong("delete-before-relative-sequence-nr")
+    require(
+      deleteBeforeRelativeSequenceNr >= 0,
+      s"delete-before-relative-sequence-nr ($deleteBeforeRelativeSequenceNr) should be greater than or equal to 0.",
+    )
+
     val compactionSnapshotCacheTimeToLive: FiniteDuration =
       config.getDuration("compaction.snapshot-cache-time-to-live").toScala
 
@@ -168,10 +191,32 @@ private[entityreplication] object RaftSettingsImpl {
       s"snapshot-sync.max-snapshot-batch-size (${snapshotSyncMaxSnapshotBatchSize}) should be larger than 0",
     )
 
+    val snapshotSyncDeleteOldEvents: Boolean =
+      config.getBoolean("snapshot-sync.delete-old-events")
+    val snapshotSyncDeleteOldSnapshots: Boolean =
+      config.getBoolean("snapshot-sync.delete-old-snapshots")
+    val snapshotSyncDeleteBeforeRelativeSequenceNr: Long =
+      config.getLong("snapshot-sync.delete-before-relative-sequence-nr")
+    require(
+      snapshotSyncDeleteBeforeRelativeSequenceNr >= 0,
+      s"snapshot-sync.delete-before-relative-sequence-nr ($snapshotSyncDeleteBeforeRelativeSequenceNr) should be greater than or equal to 0.",
+    )
+
     val snapshotStoreSnapshotEvery: Int = config.getInt("entity-snapshot-store.snapshot-every")
     require(
       snapshotStoreSnapshotEvery > 0,
       s"entity-snapshot-store.snapshot-every ($snapshotStoreSnapshotEvery) should be larger than 0",
+    )
+
+    val snapshotStoreDeleteOldEvents: Boolean =
+      config.getBoolean("entity-snapshot-store.delete-old-events")
+    val snapshotStoreDeleteOldSnapshots: Boolean =
+      config.getBoolean("entity-snapshot-store.delete-old-snapshots")
+    val snapshotStoreDeleteBeforeRelativeSequenceNr: Long =
+      config.getLong("entity-snapshot-store.delete-before-relative-sequence-nr")
+    require(
+      snapshotStoreDeleteBeforeRelativeSequenceNr >= 0,
+      s"entity-snapshot-store.delete-before-relative-sequence-nr ($snapshotStoreDeleteBeforeRelativeSequenceNr) should be greater than or equal to 0.",
     )
 
     val clusterShardingConfig: Config = config.getConfig("sharding")
@@ -234,6 +279,17 @@ private[entityreplication] object RaftSettingsImpl {
       s"snapshot-every ($eventSourcedSnapshotEvery) should be greater than 0.",
     )
 
+    val eventSourcedDeleteOldEvents: Boolean =
+      config.getBoolean("eventsourced.persistence.delete-old-events")
+    val eventSourcedDeleteOldSnapshots: Boolean =
+      config.getBoolean("eventsourced.persistence.delete-old-snapshots")
+    val eventSourcedDeleteBeforeRelativeSequenceNr: Long =
+      config.getLong("eventsourced.persistence.delete-before-relative-sequence-nr")
+    require(
+      eventSourcedDeleteBeforeRelativeSequenceNr >= 0,
+      s"eventsourced.persistence.delete-before-relative-sequence-nr ($eventSourcedDeleteBeforeRelativeSequenceNr) should be greater than or equal to 0.",
+    )
+
     RaftSettingsImpl(
       config = config,
       electionTimeout = electionTimeout,
@@ -247,6 +303,9 @@ private[entityreplication] object RaftSettingsImpl {
       disabledShards = disabledShards,
       maxAppendEntriesSize = maxAppendEntriesSize,
       maxAppendEntriesBatchSize = maxAppendEntriesBatchSize,
+      deleteOldEvents = deleteOldEvents,
+      deleteOldSnapshots = deleteOldSnapshots,
+      deleteBeforeRelativeSequenceNr = deleteBeforeRelativeSequenceNr,
       compactionSnapshotCacheTimeToLive = compactionSnapshotCacheTimeToLive,
       compactionLogSizeThreshold = compactionLogSizeThreshold,
       compactionPreserveLogSize = compactionPreserveLogSize,
@@ -254,7 +313,13 @@ private[entityreplication] object RaftSettingsImpl {
       snapshotSyncCopyingParallelism = snapshotSyncCopyingParallelism,
       snapshotSyncPersistenceOperationTimeout = snapshotSyncPersistenceOperationTimeout,
       snapshotSyncMaxSnapshotBatchSize = snapshotSyncMaxSnapshotBatchSize,
+      snapshotSyncDeleteOldEvents = snapshotSyncDeleteOldEvents,
+      snapshotSyncDeleteOldSnapshots = snapshotSyncDeleteOldSnapshots,
+      snapshotSyncDeleteBeforeRelativeSequenceNr = snapshotSyncDeleteBeforeRelativeSequenceNr,
       snapshotStoreSnapshotEvery = snapshotStoreSnapshotEvery,
+      snapshotStoreDeleteOldEvents = snapshotStoreDeleteOldEvents,
+      snapshotStoreDeleteOldSnapshots = snapshotStoreDeleteOldSnapshots,
+      snapshotStoreDeleteBeforeRelativeSequenceNr = snapshotStoreDeleteBeforeRelativeSequenceNr,
       clusterShardingConfig = clusterShardingConfig,
       raftActorAutoStartFrequency = raftActorAutoStartFrequency,
       raftActorAutoStartNumberOfActors = raftActorAutoStartNumberOfActors,
@@ -268,6 +333,9 @@ private[entityreplication] object RaftSettingsImpl {
       eventSourcedJournalPluginId = eventSourcedJournalPluginId,
       eventSourcedSnapshotStorePluginId = eventSourcedSnapshotStorePluginId,
       eventSourcedSnapshotEvery = eventSourcedSnapshotEvery,
+      eventSourcedDeleteOldEvents = eventSourcedDeleteOldEvents,
+      eventSourcedDeleteOldSnapshots = eventSourcedDeleteOldSnapshots,
+      eventSourcedDeleteBeforeRelativeSequenceNr = eventSourcedDeleteBeforeRelativeSequenceNr,
     )
   }
 

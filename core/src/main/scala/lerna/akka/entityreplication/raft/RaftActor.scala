@@ -1,7 +1,7 @@
 package lerna.akka.entityreplication.raft
 
 import akka.actor.{ ActorRef, Cancellable, Props, Stash }
-import akka.persistence.{ Recovery, RuntimePluginConfig }
+import akka.persistence.{ Recovery, RuntimePluginConfig, SnapshotSelectionCriteria }
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.ClusterReplication.EntityPropsProvider
 import lerna.akka.entityreplication.ReplicationRegion.Msg
@@ -978,4 +978,84 @@ private[raft] class RaftActor(
     cancelEventSourcingTickTimer()
     super.postStop()
   }
+
+  protected def handleSaveSnapshotSuccess(success: akka.persistence.SaveSnapshotSuccess): Unit = {
+    if (log.isInfoEnabled) {
+      log.info("[{}] Succeeded to saveSnapshot given metadata [{}]", currentState, success.metadata)
+    }
+    val deleteBeforeRelativeSequenceNr = settings.deleteBeforeRelativeSequenceNr
+    if (settings.deleteOldEvents) {
+      val deleteEventsToSequenceNr =
+        math.max(0, success.metadata.sequenceNr - deleteBeforeRelativeSequenceNr)
+      if (deleteEventsToSequenceNr > 0) {
+        if (log.isDebugEnabled) {
+          log.debug("[{}] Deleting events up to sequenceNr [{}]", currentState, deleteEventsToSequenceNr)
+        }
+        deleteMessages(deleteEventsToSequenceNr)
+      }
+    }
+    if (settings.deleteOldSnapshots) {
+      // Since this actor will use the snapshot with sequence number `metadata.sequenceNr` for recovery, it can delete
+      // snapshots with sequence numbers less than `metadata.sequenceNr`.
+      val deleteSnapshotsToSequenceNr =
+        math.max(0, success.metadata.sequenceNr - 1 - deleteBeforeRelativeSequenceNr)
+      if (deleteSnapshotsToSequenceNr > 0) {
+        val deletionCriteria =
+          SnapshotSelectionCriteria(minSequenceNr = 0, maxSequenceNr = deleteSnapshotsToSequenceNr)
+        if (log.isDebugEnabled) {
+          log.debug("[{}] Deleting snapshots matching criteria [{}]", currentState, deletionCriteria)
+        }
+        deleteSnapshots(deletionCriteria)
+      }
+    }
+  }
+
+  protected def handleSaveSnapshotFailure(failure: akka.persistence.SaveSnapshotFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "[{}] Failed to saveSnapshot given metadata [{}] due to: [{}: {}]",
+        currentState,
+        failure.metadata,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+  }
+
+  protected def handleDeleteMessagesSuccess(success: akka.persistence.DeleteMessagesSuccess): Unit = {
+    if (log.isInfoEnabled) {
+      log.info("[{}] Succeeded to deleteMessages up to sequenceNr [{}]", currentState, success.toSequenceNr)
+    }
+  }
+
+  protected def handleDeleteMessagesFailure(failure: akka.persistence.DeleteMessagesFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "[{}] Failed to deleteMessages given toSequenceNr [{}] due to: [{}: {}]",
+        currentState,
+        failure.toSequenceNr,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+  }
+
+  protected def handleDeleteSnapshotsSuccess(success: akka.persistence.DeleteSnapshotsSuccess): Unit = {
+    if (log.isInfoEnabled) {
+      log.info("[{}] Succeeded to deleteSnapshots given criteria [{}]", currentState, success.criteria)
+    }
+  }
+
+  protected def handleDeleteSnapshotsFailure(failure: akka.persistence.DeleteSnapshotsFailure): Unit = {
+    if (log.isWarningEnabled) {
+      log.warning(
+        "[{}] Failed to deleteSnapshots given criteria [{}] due to: [{}: {}]",
+        currentState,
+        failure.criteria,
+        failure.cause.getClass.getCanonicalName,
+        failure.cause.getMessage,
+      )
+    }
+  }
+
 }
