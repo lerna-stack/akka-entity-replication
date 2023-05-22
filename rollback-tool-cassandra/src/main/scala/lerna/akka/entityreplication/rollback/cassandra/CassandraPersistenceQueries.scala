@@ -234,14 +234,13 @@ private final class CassandraPersistenceQueries(
       val bs = ps.bind(persistenceId)
       selectOne(bs)
         .map { rowOption =>
-          rowOption
-            .map(_.getLong("deleted_to"))
-        }.flatMap {
-          case None | Some(0) =>
-            Future.successful(None)
-          case Some(deletedToSequenceNr) =>
-            assert(deletedToSequenceNr > 0)
-            Future.successful(Some(SequenceNr(deletedToSequenceNr)))
+          rowOption.map(_.getLong("deleted_to")) match {
+            case None | Some(0) =>
+              None
+            case Some(deletedToSequenceNr) =>
+              assert(deletedToSequenceNr > 0)
+              Some(SequenceNr(deletedToSequenceNr))
+          }
         }
     }
   }
