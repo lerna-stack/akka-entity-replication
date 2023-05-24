@@ -16,6 +16,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rollback deletes only tagged events after the given sequence number
   [#202](https://github.com/lerna-stack/akka-entity-replication/issues/202),
   [PR#203](https://github.com/lerna-stack/akka-entity-replication/pull/203)
+- `CassandraPersistenceQueries` can find the highest sequence number even if deleted partition exists
+  [#207](https://github.com/lerna-stack/akka-entity-replication/issues/207),
+  [PR#209](https://github.com/lerna-stack/akka-entity-replication/pull/209)
+- `CassandraPersistenceQueries.currentEventsBefore` skips deleted partitions
+  [#208](https://github.com/lerna-stack/akka-entity-replication/issues/208),
+  [PR#209](https://github.com/lerna-stack/akka-entity-replication/pull/209)
 
 ### Fixed
 - Dead letters about ReplicationRegion$Passivate continue

@@ -38,6 +38,8 @@ private final class CassandraPersistenceQueries(
     session.prepare(statements.selectMessagesFromAsc)
   private lazy val selectMessagesFromDescPreparedStatement: Future[PreparedStatement] =
     session.prepare(statements.selectMessagesFromDesc)
+  private lazy val selectDeletedToPreparedStatement: Future[PreparedStatement] =
+    session.prepare(statements.selectDeletedTo)
 
   import system.dispatcher
 
@@ -89,7 +91,18 @@ private final class CassandraPersistenceQueries(
             }
         }
     }
-    find(from, None, 0)
+    selectDeletedToSequenceNr(persistenceId).flatMap {
+      case Some(deletedToSequenceNr) =>
+        val possibleFromPartitionNr =
+          PartitionNr.fromSequenceNr(deletedToSequenceNr + 1, journalSettings.targetPartitionSize)
+        if (from <= possibleFromPartitionNr) {
+          find(possibleFromPartitionNr, Some(deletedToSequenceNr), 0)
+        } else {
+          find(from, None, 0)
+        }
+      case None =>
+        find(from, None, 0)
+    }
   }
 
   /** Returns the highest sequence number of the given partition
@@ -179,13 +192,19 @@ private final class CassandraPersistenceQueries(
       from: SequenceNr,
   ): Source[PersistenceQueries.TaggedEventEnvelope, NotUsed] = {
     val fromPartitionNr = PartitionNr.fromSequenceNr(from, journalSettings.targetPartitionSize)
-    val sources =
-      for (partitionNr <- fromPartitionNr.value + 1 to 0 by -1) yield {
-        currentEventsBeforeOnPartition(persistenceId, from, PartitionNr(partitionNr))
+    val futureSource = selectDeletedToSequenceNr(persistenceId).map { deletedToOption =>
+      val toPartitionNr = deletedToOption.fold(PartitionNr(0)) { deletedTo =>
+        PartitionNr.fromSequenceNr(deletedTo + 1, journalSettings.targetPartitionSize)
       }
-    sources
-      .fold(Source.empty)(_.concat(_))
-      .mapMaterializedValue(_ => NotUsed)
+      val sources =
+        for (partitionNr <- fromPartitionNr.value + 1 to toPartitionNr.value by -1) yield {
+          currentEventsBeforeOnPartition(persistenceId, from, PartitionNr(partitionNr))
+        }
+      sources
+        .fold(Source.empty)(_.concat(_))
+        .mapMaterializedValue(_ => NotUsed)
+    }
+    Source.futureSource(futureSource).mapMaterializedValue(_ => NotUsed)
   }
 
   /** Returns a `Source` that emits current events (before the given sequence number inclusive) of the given partition
@@ -202,6 +221,28 @@ private final class CassandraPersistenceQueries(
       source(bs)
     }
     Source.futureSource(futureSource).mapMaterializedValue(_ => NotUsed)
+  }
+
+  /** Returns the highest deleted sequence number (called `deleted_to`)
+    *
+    * All events with sequence sequence numbers less than or equal to `deleted_to` have been deleted.
+    *
+    * If no events have been deleted, this method returns `Future.successful(None)`.
+    */
+  def selectDeletedToSequenceNr(persistenceId: String): Future[Option[SequenceNr]] = {
+    selectDeletedToPreparedStatement.flatMap { ps =>
+      val bs = ps.bind(persistenceId)
+      selectOne(bs)
+        .map { rowOption =>
+          rowOption.map(_.getLong("deleted_to")) match {
+            case None | Some(0) =>
+              None
+            case Some(deletedToSequenceNr) =>
+              assert(deletedToSequenceNr > 0)
+              Some(SequenceNr(deletedToSequenceNr))
+          }
+        }
+    }
   }
 
   private def selectOne[T <: Statement[T]](statement: Statement[T]): Future[Option[Row]] = {

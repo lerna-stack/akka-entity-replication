@@ -40,4 +40,11 @@ private final class CassandraPersistenceQueriesStatements(
        ORDER BY sequence_nr DESC
        """
 
+  val selectDeletedTo: String =
+    s"""
+       SELECT deleted_to FROM ${journalSettings.metadataTableName}
+       WHERE
+         persistence_id = ?
+     """
+
 }

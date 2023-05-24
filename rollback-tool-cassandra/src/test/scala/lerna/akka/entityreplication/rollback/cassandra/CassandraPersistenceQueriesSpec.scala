@@ -88,6 +88,114 @@ final class CassandraPersistenceQueriesSpec
       queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(22)).futureValue should be(None)
     }
 
+    "find the highest sequence number after the given sequence number if all events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 15) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(15))
+      actor ! TestPersistentActor.DeleteEventsTo(15, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(15))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(15)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(None)
+
+      // Test:
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(1)).futureValue should be(Some(SequenceNr(15)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(10)).futureValue should be(Some(SequenceNr(15)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(11)).futureValue should be(Some(SequenceNr(15)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(14)).futureValue should be(Some(SequenceNr(15)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(15)).futureValue should be(Some(SequenceNr(15)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(16)).futureValue should be(None)
+    }
+
+    "find the highest sequence number after the given sequence number if old events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 25) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(25))
+      actor ! TestPersistentActor.DeleteEventsTo(22, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(22))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(22)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(Some(SequenceNr(25)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(3)).futureValue should be(None)
+
+      // Test:
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(1)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(10)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(11)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(20)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(21)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(22)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(23)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(24)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(25)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(26)).futureValue should be(None)
+    }
+
+    "find the highest sequence number after the given sequence number " +
+    "if old events are deleted, and an empty partition exists" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 30) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(30))
+      actor ! TestPersistentActor.DeleteEventsTo(30, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(30))
+      actor ! TestPersistentActor.PersistEventsAtomically(numOfEvents = 11, replyTo = probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(41))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(30)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(3)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(4)).futureValue should be(Some(SequenceNr(41)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(5)).futureValue should be(None)
+
+      // Test:
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(1)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(10)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(11)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(20)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(21)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(30)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(31)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(40)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(41)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNrAfter(persistenceId, SequenceNr(42)).futureValue should be(None)
+    }
+
   }
 
   "CassandraPersistenceQueries.findHighestSequenceNr" should {
@@ -142,6 +250,101 @@ final class CassandraPersistenceQueriesSpec
       queries.findHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(Some(SequenceNr(21)))
       queries.findHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(Some(SequenceNr(21)))
       queries.findHighestSequenceNr(persistenceId, PartitionNr(3)).futureValue should be(None)
+    }
+
+    "find the highest sequence number from the given partition or above if all events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 15) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(15))
+      actor ! TestPersistentActor.DeleteEventsTo(15, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(15))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(15)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(None)
+
+      // Test:
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(Some(SequenceNr(15)))
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(Some(SequenceNr(15)))
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(None)
+    }
+
+    "find the highest sequence number from the given partition or above if old events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 25) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(25))
+      actor ! TestPersistentActor.DeleteEventsTo(22, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(22))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(22)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(Some(SequenceNr(25)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(3)).futureValue should be(None)
+
+      // Test:
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(Some(SequenceNr(25)))
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(3)).futureValue should be(None)
+    }
+
+    "find the highest sequence number from the given partition or above " +
+    "if old events are deleted, and an empty partition exists" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 30) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(30))
+      actor ! TestPersistentActor.DeleteEventsTo(30, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(30))
+      actor ! TestPersistentActor.PersistEventsAtomically(numOfEvents = 11, replyTo = probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(41))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(30)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(3)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(4)).futureValue should be(Some(SequenceNr(41)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(5)).futureValue should be(None)
+
+      // Test:
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(3)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(4)).futureValue should be(Some(SequenceNr(41)))
+      queries.findHighestSequenceNr(persistenceId, PartitionNr(5)).futureValue should be(None)
     }
 
   }
@@ -220,6 +423,101 @@ final class CassandraPersistenceQueriesSpec
       queries.findHighestPartitionNr(persistenceId, PartitionNr(3)).futureValue should be(None)
     }
 
+    "find the highest partition number after the given partition if all events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 15) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(15))
+      actor ! TestPersistentActor.DeleteEventsTo(15, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(15))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(15)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(None)
+
+      // Test:
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(0)).futureValue should be(Some(PartitionNr(1)))
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(1)).futureValue should be(Some(PartitionNr(1)))
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(2)).futureValue should be(None)
+    }
+
+    "find the highest partition number after the given partition if old events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 25) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(25))
+      actor ! TestPersistentActor.DeleteEventsTo(22, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(22))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(22)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(Some(SequenceNr(25)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(3)).futureValue should be(None)
+
+      // Test:
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(0)).futureValue should be(Some(PartitionNr(2)))
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(1)).futureValue should be(Some(PartitionNr(2)))
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(2)).futureValue should be(Some(PartitionNr(2)))
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(3)).futureValue should be(None)
+    }
+
+    "find the highest partition number after the given partition " +
+    "if old events are deleted, and an empty partition exists" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 30) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(30))
+      actor ! TestPersistentActor.DeleteEventsTo(30, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(30))
+      actor ! TestPersistentActor.PersistEventsAtomically(numOfEvents = 11, replyTo = probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(41))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(30)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(3)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(4)).futureValue should be(Some(SequenceNr(41)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(5)).futureValue should be(None)
+
+      // Test:
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(0)).futureValue should be(Some(PartitionNr(4)))
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(1)).futureValue should be(Some(PartitionNr(4)))
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(2)).futureValue should be(Some(PartitionNr(4)))
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(3)).futureValue should be(Some(PartitionNr(4)))
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(4)).futureValue should be(Some(PartitionNr(4)))
+      queries.findHighestPartitionNr(persistenceId, PartitionNr(5)).futureValue should be(None)
+    }
+
   }
 
   "CassandraPersistenceQueries.currentEventsAfter" should {
@@ -285,6 +583,104 @@ final class CassandraPersistenceQueriesSpec
       all(events.map(_.persistenceId)) should be(persistenceId)
       events.map(_.sequenceNr) should be((9 to 21).map(SequenceNr(_)))
       events.map(_.event) should be((9 to 21).map(TestPersistentActor.Event(_)))
+      all(events.map(_.offset)) shouldBe a[TimeBasedUUID]
+      all(events.map(_.tags)) should be(empty)
+    }
+
+    "return an empty source if all events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 15) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(15))
+      actor ! TestPersistentActor.DeleteEventsTo(15, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(15))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(15)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(None)
+
+      // Test:
+      queries.currentEventsAfter(persistenceId, SequenceNr(9)).runWith(Sink.seq).futureValue should be(empty)
+    }
+
+    "return a source that emits current events after th given sequence number inclusive " +
+    "if old events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 25) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(25))
+      actor ! TestPersistentActor.DeleteEventsTo(22, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(22))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(22)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(Some(SequenceNr(25)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(3)).futureValue should be(None)
+
+      // Test:
+      val events =
+        queries.currentEventsAfter(persistenceId, SequenceNr(9)).runWith(Sink.seq).futureValue
+      all(events.map(_.persistenceId)) should be(persistenceId)
+      events.map(_.sequenceNr) should be((23 to 25).map(SequenceNr(_)))
+      events.map(_.event) should be((23 to 25).map(TestPersistentActor.Event(_)))
+      all(events.map(_.offset)) shouldBe a[TimeBasedUUID]
+      all(events.map(_.tags)) should be(empty)
+    }
+
+    "return a source that emits current events after th given sequence number inclusive " +
+    "if old events are deleted, and an empty partition exists" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 30) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(30))
+      actor ! TestPersistentActor.DeleteEventsTo(30, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(30))
+      actor ! TestPersistentActor.PersistEventsAtomically(numOfEvents = 11, replyTo = probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(41))
+
+      // Test prerequisites:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(30)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(0)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(1)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(2)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(3)).futureValue should be(None)
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(4)).futureValue should be(Some(SequenceNr(41)))
+      queries.selectHighestSequenceNr(persistenceId, PartitionNr(5)).futureValue should be(None)
+
+      // Test:
+      val events =
+        queries.currentEventsAfter(persistenceId, SequenceNr(9)).runWith(Sink.seq).futureValue
+      all(events.map(_.persistenceId)) should be(persistenceId)
+      events.map(_.sequenceNr) should be((31 to 41).map(SequenceNr(_)))
+      events.map(_.event) should be((31 to 41).map(TestPersistentActor.Event(_)))
       all(events.map(_.offset)) shouldBe a[TimeBasedUUID]
       all(events.map(_.tags)) should be(empty)
     }
@@ -405,6 +801,31 @@ final class CassandraPersistenceQueriesSpec
       all(events.map(_.tags)) should be(empty)
     }
 
+    "return a source that emits current events before the given sequence number inclusive if old events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 25) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(25))
+      actor ! TestPersistentActor.DeleteEventsTo(15, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(15))
+
+      // Test:
+      val events =
+        queries.currentEventsBefore(persistenceId, SequenceNr(22)).runWith(Sink.seq).futureValue
+      all(events.map(_.persistenceId)) should be(persistenceId)
+      events.map(_.sequenceNr) should be((22 to 16 by -1).map(SequenceNr(_)))
+      events.map(_.event) should be((22 to 16 by -1).map(TestPersistentActor.Event(_)))
+      all(events.map(_.offset)) shouldBe a[TimeBasedUUID]
+    }
+
   }
 
   "CassandraPersistenceQueries.currentEventsBeforeOnPartition" should {
@@ -454,6 +875,55 @@ final class CassandraPersistenceQueriesSpec
       val eventsOfPartition2 = queries
         .currentEventsBeforeOnPartition(persistenceId, SequenceNr(12), PartitionNr(2)).runWith(Sink.seq).futureValue
       eventsOfPartition2 should be(empty)
+    }
+
+  }
+
+  "CassandraPersistenceQueries.selectDeletedToSequenceNr" should {
+
+    "return None if no events are persisted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val _: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+
+      // Test:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(None)
+    }
+
+    "return None if no events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      actor ! TestPersistentActor.PersistEvent(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(1))
+
+      // Test:
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(None)
+    }
+
+    "return the highest deleted sequence number (`deleted_to`) if events are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 5) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(5))
+
+      // Test:
+      actor ! TestPersistentActor.DeleteEventsTo(3, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(3))
+      queries.selectDeletedToSequenceNr(persistenceId).futureValue should be(Some(SequenceNr(3)))
     }
 
   }

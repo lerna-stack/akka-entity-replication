@@ -19,7 +19,9 @@ object TestPersistentActor {
   final case class PersistEventsAtomically(numOfEvents: Int, replyTo: ActorRef) extends Command {
     require(numOfEvents >= 1)
   }
-  final case class SaveSnapshot(replyTo: ActorRef) extends Command
+  final case class SaveSnapshot(replyTo: ActorRef)                          extends Command
+  final case class DeleteEventsTo(toSequenceNr: Long, replyTo: ActorRef)    extends Command
+  final case class DeleteSnapshotsTo(toSequenceNr: Long, replyTo: ActorRef) extends Command
 
   final case class Event(sequenceNr: Long)    extends JsonSerializable
   final case class Snapshot(sequenceNr: Long) extends JsonSerializable
@@ -38,8 +40,10 @@ object TestPersistentActor {
 final class TestPersistentActor private (val persistenceId: String) extends PersistentActor with ActorLogging {
   import TestPersistentActor._
 
-  var recoveryTracking: RecoveryTracking        = RecoveryTracking(None, Vector.empty)
-  var lastSaveSnapshotReplyTo: Option[ActorRef] = None
+  var recoveryTracking: RecoveryTracking           = RecoveryTracking(None, Vector.empty)
+  var lastSaveSnapshotReplyTo: Option[ActorRef]    = None
+  var lastDeleteEventsReplyTo: Option[ActorRef]    = None
+  var lastDeleteSnapshotsReplyTo: Option[ActorRef] = None
 
   override def receiveRecover: Receive = {
     case event: Event =>
@@ -90,5 +94,27 @@ final class TestPersistentActor private (val persistenceId: String) extends Pers
     case SaveSnapshotFailure(metadata, cause) =>
       log.info("SaveSnapshotFailure: metadata=[{}], cause=[{}]", metadata, cause)
       lastSaveSnapshotReplyTo = None
+    case DeleteEventsTo(toSequenceNr: Long, replyTo) =>
+      log.debug("Deleting events up to sequenceNr [{}]", toSequenceNr)
+      lastDeleteEventsReplyTo = Some(replyTo)
+      deleteMessages(toSequenceNr)
+    case DeleteMessagesSuccess(toSequenceNr) =>
+      log.debug("DeleteMessagesSuccess: toSequenceNr=[{}]", toSequenceNr)
+      lastDeleteEventsReplyTo.foreach(_.tell(Ack(toSequenceNr), self))
+      lastDeleteEventsReplyTo = None
+    case DeleteMessagesFailure(cause, toSequenceNr) =>
+      log.info("DeleteMessagesFailure: cause=[{}], toSequenceNr=[{}]", cause, toSequenceNr)
+      lastDeleteEventsReplyTo = None
+    case DeleteSnapshotsTo(toSequenceNr, replyTo) =>
+      log.debug("Deleting snapshots up to sequenceNr [{}]", toSequenceNr)
+      lastDeleteSnapshotsReplyTo = Some(replyTo)
+      deleteSnapshots(SnapshotSelectionCriteria(maxSequenceNr = toSequenceNr))
+    case DeleteSnapshotsSuccess(criteria) =>
+      log.debug("DeleteSnapshotsSuccess: criteria=[{}]", criteria)
+      lastDeleteSnapshotsReplyTo.foreach(_.tell(Ack(criteria.maxSequenceNr), self))
+      lastDeleteSnapshotsReplyTo = None
+    case DeleteSnapshotsFailure(criteria, cause) =>
+      log.info("DeleteSnapshotsFailure: criteria=[{}], cause=[{}]", criteria, cause)
+      lastDeleteSnapshotsReplyTo = None
   }
 }
