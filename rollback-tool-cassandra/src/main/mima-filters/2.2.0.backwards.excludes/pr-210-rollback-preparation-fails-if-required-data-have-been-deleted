@@ -1,0 +1,20 @@
+# PersistenceQueries#TaggedEventEnvelope is private:
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.rollback.PersistenceQueries#TaggedEventEnvelope.copy")
+ProblemFilters.exclude[IncompatibleResultTypeProblem]("lerna.akka.entityreplication.rollback.PersistenceQueries#TaggedEventEnvelope.copy$default$5")
+ProblemFilters.exclude[IncompatibleResultTypeProblem]("lerna.akka.entityreplication.rollback.PersistenceQueries#TaggedEventEnvelope.copy$default$6")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.rollback.PersistenceQueries#TaggedEventEnvelope.this")
+ProblemFilters.exclude[MissingTypesProblem]("lerna.akka.entityreplication.rollback.PersistenceQueries$TaggedEventEnvelope$")
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.rollback.PersistenceQueries#TaggedEventEnvelope.apply")
+ProblemFilters.exclude[IncompatibleSignatureProblem]("lerna.akka.entityreplication.rollback.PersistenceQueries#TaggedEventEnvelope.unapply")
+
+# PersistentActorRollback is private:
+ProblemFilters.exclude[ReversedMissingMethodProblem]("lerna.akka.entityreplication.rollback.PersistentActorRollback.findRollbackRequirements")
+
+# RaftEventSourcedPersistence is private:
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.rollback.RaftEventSourcedPersistence.this")
+
+# RaftPersistence is private:
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.rollback.RaftPersistence.this")
+
+# CassandraSnapshotSettings is private:
+ProblemFilters.exclude[DirectMissingMethodProblem]("lerna.akka.entityreplication.rollback.cassandra.CassandraSnapshotSettings.this")
