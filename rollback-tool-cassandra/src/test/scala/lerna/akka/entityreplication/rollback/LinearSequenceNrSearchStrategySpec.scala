@@ -1,36 +1,55 @@
 package lerna.akka.entityreplication.rollback
 
 import akka.actor.ActorSystem
+import akka.persistence.query.Offset
 import akka.testkit.TestKitBase
 import lerna.akka.entityreplication.rollback.PersistenceQueries.TaggedEventEnvelope
-import lerna.akka.entityreplication.rollback.testkit.{
-  ConstantPersistenceQueries,
-  PatienceConfigurationForTestKitBase,
-  TimeBasedUuids,
-}
+import lerna.akka.entityreplication.rollback.testkit.{ ConstantPersistenceQueries, PatienceConfigurationForTestKitBase }
 import org.scalatest.concurrent.ScalaFutures
-import org.scalatest.{ Matchers, WordSpecLike }
+import org.scalatest.{ BeforeAndAfterAll, Matchers, WordSpecLike }
 
-import java.time.{ ZoneOffset, ZonedDateTime }
+import java.time.{ Instant, ZoneOffset, ZonedDateTime }
 import java.util.UUID
-
-object LinearSequenceNrSearchStrategySpec {
-
-  def nextWriterUuid(): String =
-    UUID.randomUUID().toString
-
-}
 
 final class LinearSequenceNrSearchStrategySpec
     extends TestKitBase
     with WordSpecLike
+    with BeforeAndAfterAll
     with Matchers
     with ScalaFutures
     with PatienceConfigurationForTestKitBase {
-  import LinearSequenceNrSearchStrategySpec._
 
   override implicit val system: ActorSystem =
     ActorSystem(getClass.getSimpleName)
+
+  override def afterAll(): Unit = {
+    shutdown(system)
+    super.afterAll()
+  }
+
+  private trait Fixture {
+    val defaultWriterUuid: String = nextWriterUuid()
+
+    def nextWriterUuid(): String =
+      UUID.randomUUID().toString
+
+    def createEventEnvelope(
+        persistenceId: String,
+        sequenceNr: SequenceNr,
+        timestamp: Instant,
+        writerUuid: String = defaultWriterUuid,
+    ): TaggedEventEnvelope = {
+      TaggedEventEnvelope(
+        persistenceId,
+        sequenceNr,
+        s"event-$persistenceId-${sequenceNr.value}",
+        Offset.sequence(sequenceNr.value),
+        timestamp.toEpochMilli,
+        Set.empty,
+        writerUuid,
+      )
+    }
+  }
 
   "LinearSequenceNrSearchStrategy.findUpperBound" should {
 
@@ -40,32 +59,24 @@ final class LinearSequenceNrSearchStrategySpec
       strategy.findUpperBound("pid1", timestamp).futureValue should be(None)
     }
 
-    "return None if there is no event before the given timestamp inclusive" in {
+    "return None if there is no event before the given timestamp inclusive" in new Fixture {
       val baseTimestamp = ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant
-      val events = {
-        val timeBasedUuids = new TimeBasedUuids(baseTimestamp)
-        val writerUuid     = nextWriterUuid()
-        IndexedSeq(
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", timeBasedUuids.create(+1), Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", timeBasedUuids.create(+2), Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", timeBasedUuids.create(+3), Set.empty, writerUuid),
-        )
-      }
+      val events = IndexedSeq(
+        createEventEnvelope("pid1", SequenceNr(1), baseTimestamp.plusMillis(+1)),
+        createEventEnvelope("pid1", SequenceNr(2), baseTimestamp.plusMillis(+2)),
+        createEventEnvelope("pid1", SequenceNr(3), baseTimestamp.plusMillis(+3)),
+      )
       val strategy = new LinearSequenceNrSearchStrategy(system, new ConstantPersistenceQueries(events))
       strategy.findUpperBound("pid1", baseTimestamp).futureValue should be(None)
     }
 
-    "return the highest sequence number of events before the given timestamp inclusive" in {
+    "return the highest sequence number of events before the given timestamp inclusive" in new Fixture {
       val baseTimestamp = ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant
-      val events = {
-        val timeBasedUuids = new TimeBasedUuids(baseTimestamp)
-        val writer         = nextWriterUuid()
-        IndexedSeq(
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", timeBasedUuids.create(+1), Set.empty, writer),
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", timeBasedUuids.create(+2), Set.empty, writer),
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", timeBasedUuids.create(+3), Set.empty, writer),
-        )
-      }
+      val events = IndexedSeq(
+        createEventEnvelope("pid1", SequenceNr(1), baseTimestamp.plusMillis(+1)),
+        createEventEnvelope("pid1", SequenceNr(2), baseTimestamp.plusMillis(+2)),
+        createEventEnvelope("pid1", SequenceNr(3), baseTimestamp.plusMillis(+3)),
+      )
       val strategy = new LinearSequenceNrSearchStrategy(system, new ConstantPersistenceQueries(events))
 
       // Test:
@@ -75,44 +86,38 @@ final class LinearSequenceNrSearchStrategySpec
       strategy.findUpperBound("pid1", baseTimestamp.plusMillis(4)).futureValue should be(Some(SequenceNr(3)))
     }
 
-    "return None if the source contains no event envelopes for the given persistence ID" in {
+    "return None if the source contains no event envelopes for the given persistence ID" in new Fixture {
       val baseTimestamp = ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant
-      val events = {
-        val timeBasedUuids = new TimeBasedUuids(baseTimestamp)
-        val writerUuid     = nextWriterUuid()
-        IndexedSeq(
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", timeBasedUuids.create(+1), Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", timeBasedUuids.create(+2), Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", timeBasedUuids.create(+3), Set.empty, writerUuid),
-        )
-      }
+      val events = IndexedSeq(
+        createEventEnvelope("pid1", SequenceNr(1), baseTimestamp.plusMillis(+1)),
+        createEventEnvelope("pid1", SequenceNr(2), baseTimestamp.plusMillis(+2)),
+        createEventEnvelope("pid1", SequenceNr(3), baseTimestamp.plusMillis(+3)),
+      )
       val strategy = new LinearSequenceNrSearchStrategy(system, new ConstantPersistenceQueries(events))
       strategy.findUpperBound("pid2", baseTimestamp.plusMillis(4)).futureValue should be(None)
     }
 
-    "return the highest sequence number of events before the given timestamp inclusive if there is a clock out-of-sync" in {
+    "return the highest sequence number of events before the given timestamp inclusive if there is a clock out-of-sync" in new Fixture {
       // Suppose that writer B runs on a different Akka node other than the one writer A runs on.
       // Each Akka nodes has its own clock, which might be out of sync sometimes.
       val baseTimestamp = ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant
       val eventsFromWriterA = {
-        val timeBasedUuids = new TimeBasedUuids(baseTimestamp)
-        val writerUuidA    = nextWriterUuid()
+        val writerUuidA = nextWriterUuid()
         IndexedSeq(
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", timeBasedUuids.create(+1), Set.empty, writerUuidA),
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", timeBasedUuids.create(+2), Set.empty, writerUuidA),
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", timeBasedUuids.create(+3), Set.empty, writerUuidA),
+          createEventEnvelope("pid1", SequenceNr(1), baseTimestamp.plusMillis(+1), writerUuidA),
+          createEventEnvelope("pid1", SequenceNr(2), baseTimestamp.plusMillis(+2), writerUuidA),
+          createEventEnvelope("pid1", SequenceNr(3), baseTimestamp.plusMillis(+3), writerUuidA),
         )
       }
       val eventsFromWriterB = {
-        val timeBasedUuids = new TimeBasedUuids(baseTimestamp)
-        val writerUuidB    = nextWriterUuid()
+        val writerUuidB = nextWriterUuid()
         IndexedSeq(
-          TaggedEventEnvelope("pid1", SequenceNr(4), "event4", timeBasedUuids.create(-1), Set.empty, writerUuidB),
-          TaggedEventEnvelope("pid1", SequenceNr(5), "event5", timeBasedUuids.create(0), Set.empty, writerUuidB),
-          TaggedEventEnvelope("pid1", SequenceNr(6), "event6", timeBasedUuids.create(+1), Set.empty, writerUuidB),
-          TaggedEventEnvelope("pid1", SequenceNr(7), "event7", timeBasedUuids.create(+2), Set.empty, writerUuidB),
-          TaggedEventEnvelope("pid1", SequenceNr(8), "event8", timeBasedUuids.create(+3), Set.empty, writerUuidB),
-          TaggedEventEnvelope("pid1", SequenceNr(9), "event9", timeBasedUuids.create(+4), Set.empty, writerUuidB),
+          createEventEnvelope("pid1", SequenceNr(4), baseTimestamp.plusMillis(-1), writerUuidB),
+          createEventEnvelope("pid1", SequenceNr(5), baseTimestamp.plusMillis(+0), writerUuidB),
+          createEventEnvelope("pid1", SequenceNr(6), baseTimestamp.plusMillis(+1), writerUuidB),
+          createEventEnvelope("pid1", SequenceNr(7), baseTimestamp.plusMillis(+2), writerUuidB),
+          createEventEnvelope("pid1", SequenceNr(8), baseTimestamp.plusMillis(+3), writerUuidB),
+          createEventEnvelope("pid1", SequenceNr(9), baseTimestamp.plusMillis(+4), writerUuidB),
         )
       }
       val strategy = new LinearSequenceNrSearchStrategy(

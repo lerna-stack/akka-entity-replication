@@ -3,9 +3,13 @@ package lerna.akka.entityreplication.rollback.cassandra
 import akka.actor.ActorSystem
 import akka.testkit.TestKitBase
 import com.typesafe.config.{ Config, ConfigFactory }
-import org.scalatest.{ Matchers, WordSpecLike }
+import org.scalatest.{ BeforeAndAfterAll, Matchers, WordSpecLike }
 
-final class CassandraPersistenceQueriesSettingsSpec extends TestKitBase with WordSpecLike with Matchers {
+final class CassandraPersistenceQueriesSettingsSpec
+    extends TestKitBase
+    with WordSpecLike
+    with BeforeAndAfterAll
+    with Matchers {
 
   private val config: Config = ConfigFactory
     .parseString(s"""
@@ -15,6 +19,10 @@ final class CassandraPersistenceQueriesSettingsSpec extends TestKitBase with Wor
       |  query {
       |    read-profile = "custom_akka-persistence-cassandra-query-profile"
       |  }
+      |  snapshot {
+      |    read-profile = "custom_akka-persistence-cassandra-snapshot-read-profile"
+      |    write-profile = "custom_akka-persistence-cassandra-snapshot-write-profile"
+      |  }
       |}
       |""".stripMargin)
     .withFallback(ConfigFactory.load())
@@ -22,6 +30,11 @@ final class CassandraPersistenceQueriesSettingsSpec extends TestKitBase with Wor
 
   override implicit val system: ActorSystem =
     ActorSystem(getClass.getSimpleName, config)
+
+  override def afterAll(): Unit = {
+    shutdown(system)
+    super.afterAll()
+  }
 
   "CassandraPersistenceQueriesSettings.resolveJournalSettings" should {
 
@@ -40,6 +53,17 @@ final class CassandraPersistenceQueriesSettingsSpec extends TestKitBase with Wor
       val settings      = new CassandraPersistenceQueriesSettings("custom.akka.persistence.cassandra")
       val querySettings = settings.resolveQuerySettings(system)
       querySettings.readProfile should be("custom_akka-persistence-cassandra-query-profile")
+    }
+
+  }
+
+  "CassandraPersistenceQueriesSettings.resolveSnapshotSettings" should {
+
+    "resolve the plugin location and then return the snapshot plugin settings" in {
+      val settings         = new CassandraPersistenceQueriesSettings("custom.akka.persistence.cassandra")
+      val snapshotSettings = settings.resolveSnapshotSettings(system)
+      snapshotSettings.readProfile should be("custom_akka-persistence-cassandra-snapshot-read-profile")
+      snapshotSettings.writeProfile should be("custom_akka-persistence-cassandra-snapshot-write-profile")
     }
 
   }

@@ -928,4 +928,98 @@ final class CassandraPersistenceQueriesSpec
 
   }
 
+  "CassandraPersistenceQueries.selectLowestSnapshotSequenceNr" should {
+
+    "return None if no snapshots are persisted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 3) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+
+      // Test:
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(1)).futureValue should be(None)
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(2)).futureValue should be(None)
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(3)).futureValue should be(None)
+    }
+
+    "return the lowest snapshot sequence number greater than or equal to the lower sequence number" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 3) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(3))
+      for (sequenceNr <- 4 to 6) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(6))
+
+      // Test:
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(1)).futureValue should be(Some(SequenceNr(3)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(2)).futureValue should be(Some(SequenceNr(3)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(3)).futureValue should be(Some(SequenceNr(3)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(4)).futureValue should be(Some(SequenceNr(6)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(5)).futureValue should be(Some(SequenceNr(6)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(6)).futureValue should be(Some(SequenceNr(6)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(7)).futureValue should be(None)
+    }
+
+    "return the lowest snapshot sequence number greater than or equal to the lower sequence number " +
+    "if old snapshots are deleted" in {
+      val queries       = new CassandraPersistenceQueries(system, defaultSettings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+      for (sequenceNr <- 1 to 3) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(3))
+      for (sequenceNr <- 4 to 6) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(6))
+      for (sequenceNr <- 7 to 9) {
+        actor ! TestPersistentActor.PersistEvent(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+      }
+      actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(9))
+      actor ! TestPersistentActor.DeleteSnapshotsTo(4, probe.ref)
+      probe.expectMsg(TestPersistentActor.Ack(4))
+
+      // Test:
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(1)).futureValue should be(Some(SequenceNr(6)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(2)).futureValue should be(Some(SequenceNr(6)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(3)).futureValue should be(Some(SequenceNr(6)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(4)).futureValue should be(Some(SequenceNr(6)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(5)).futureValue should be(Some(SequenceNr(6)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(6)).futureValue should be(Some(SequenceNr(6)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(7)).futureValue should be(Some(SequenceNr(9)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(8)).futureValue should be(Some(SequenceNr(9)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(9)).futureValue should be(Some(SequenceNr(9)))
+      queries.selectLowestSnapshotSequenceNr(persistenceId, SequenceNr(10)).futureValue should be(None)
+    }
+
+  }
+
 }

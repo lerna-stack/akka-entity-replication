@@ -14,6 +14,7 @@ private object PersistenceQueries {
       sequenceNr: SequenceNr,
       event: Any,
       offset: Offset,
+      timestamp: Long,
       tags: Set[String],
       writerUuid: String,
   )

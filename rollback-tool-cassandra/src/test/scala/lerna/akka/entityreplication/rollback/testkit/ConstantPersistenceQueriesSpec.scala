@@ -1,25 +1,23 @@
 package lerna.akka.entityreplication.rollback.testkit
 
 import akka.actor.ActorSystem
+import akka.persistence.query.Offset
 import akka.stream.scaladsl.Sink
 import akka.testkit.TestKitBase
 import lerna.akka.entityreplication.rollback.PersistenceQueries.TaggedEventEnvelope
 import lerna.akka.entityreplication.rollback.SequenceNr
 import org.scalatest.concurrent.ScalaFutures
-import org.scalatest.{ Matchers, WordSpecLike }
+import org.scalatest.{ BeforeAndAfterAll, Matchers, WordSpecLike }
 
-import java.time.{ ZoneOffset, ZonedDateTime }
+import java.time.{ Instant, ZoneOffset, ZonedDateTime }
 import java.util.UUID
 
-object ConstantPersistenceQueriesSpec {
-
-  private def nextWriterUuid(): String =
-    UUID.randomUUID().toString
-
-}
-
-final class ConstantPersistenceQueriesSpec extends TestKitBase with WordSpecLike with Matchers with ScalaFutures {
-  import ConstantPersistenceQueriesSpec._
+final class ConstantPersistenceQueriesSpec
+    extends TestKitBase
+    with WordSpecLike
+    with BeforeAndAfterAll
+    with Matchers
+    with ScalaFutures {
 
   override implicit val system: ActorSystem =
     ActorSystem(getClass.getSimpleName)
@@ -30,19 +28,42 @@ final class ConstantPersistenceQueriesSpec extends TestKitBase with WordSpecLike
   )
   override implicit def patienceConfig: PatienceConfig = customPatienceConfig
 
+  override def afterAll(): Unit = {
+    shutdown(system)
+    super.afterAll()
+  }
+
+  private trait Fixture {
+    val writerUuid: String     = UUID.randomUUID().toString
+    val baseTimestamp: Instant = ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant
+
+    def createEventEnvelope(
+        persistenceId: String,
+        sequenceNr: SequenceNr,
+    ): TaggedEventEnvelope = {
+      TaggedEventEnvelope(
+        persistenceId,
+        sequenceNr,
+        s"event-$persistenceId-${sequenceNr.value}",
+        Offset.sequence(sequenceNr.value),
+        baseTimestamp.plusMillis(sequenceNr.value).toEpochMilli,
+        Set.empty,
+        writerUuid,
+      )
+    }
+  }
+
   "ConstantPersistenceQueries" should {
 
     "throw no exception if the given event envelopes are empty" in {
       new ConstantPersistenceQueries(IndexedSeq.empty)
     }
 
-    "throw an IllegalArgumentException if event envelopes have a different persistence ID" in {
-      val timeBasedUuids =
-        new TimeBasedUuids(ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant)
+    "throw an IllegalArgumentException if event envelopes have a different persistence ID" in new Fixture {
       val eventEnvelopes = IndexedSeq(
-        TaggedEventEnvelope("pid1", SequenceNr(1), "event1", timeBasedUuids.create(+1), Set.empty, nextWriterUuid()),
-        TaggedEventEnvelope("pid1", SequenceNr(2), "event2", timeBasedUuids.create(+2), Set.empty, nextWriterUuid()),
-        TaggedEventEnvelope("pid2", SequenceNr(3), "event1", timeBasedUuids.create(+3), Set.empty, nextWriterUuid()),
+        createEventEnvelope("pid1", SequenceNr(1)),
+        createEventEnvelope("pid1", SequenceNr(2)),
+        createEventEnvelope("pid2", SequenceNr(3)),
       )
       val exception = intercept[IllegalArgumentException] {
         new ConstantPersistenceQueries(eventEnvelopes)
@@ -53,13 +74,11 @@ final class ConstantPersistenceQueriesSpec extends TestKitBase with WordSpecLike
       )
     }
 
-    "throw an IllegalArgumentException if an event envelope's sequence number is less than the previous one" in {
-      val timeBasedUuids =
-        new TimeBasedUuids(ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant)
+    "throw an IllegalArgumentException if an event envelope's sequence number is less than the previous one" in new Fixture {
       val eventEnvelopes = IndexedSeq(
-        TaggedEventEnvelope("pid1", SequenceNr(1), "event1", timeBasedUuids.create(+1), Set.empty, nextWriterUuid()),
-        TaggedEventEnvelope("pid1", SequenceNr(2), "event2", timeBasedUuids.create(+2), Set.empty, nextWriterUuid()),
-        TaggedEventEnvelope("pid1", SequenceNr(1), "event3", timeBasedUuids.create(+3), Set.empty, nextWriterUuid()),
+        createEventEnvelope("pid1", SequenceNr(1)),
+        createEventEnvelope("pid1", SequenceNr(2)),
+        createEventEnvelope("pid1", SequenceNr(1)),
       )
       val exception = intercept[IllegalArgumentException] {
         new ConstantPersistenceQueries(eventEnvelopes)
@@ -73,19 +92,14 @@ final class ConstantPersistenceQueriesSpec extends TestKitBase with WordSpecLike
 
   "ConstantPersistenceQueries.findHighestSequenceNrAfter" should {
 
-    "return the highest sequence number after the given sequence number inclusive" in {
-      val timeBasedUuids =
-        new TimeBasedUuids(ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant)
-      val eventEnvelopes = {
-        val writerUuid = nextWriterUuid()
-        IndexedSeq(
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", timeBasedUuids.create(+1), Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", timeBasedUuids.create(+2), Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", timeBasedUuids.create(+3), Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(4), "event4", timeBasedUuids.create(+4), Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(5), "event5", timeBasedUuids.create(+5), Set.empty, writerUuid),
-        )
-      }
+    "return the highest sequence number after the given sequence number inclusive" in new Fixture {
+      val eventEnvelopes = IndexedSeq(
+        createEventEnvelope("pid1", SequenceNr(1)),
+        createEventEnvelope("pid1", SequenceNr(2)),
+        createEventEnvelope("pid1", SequenceNr(3)),
+        createEventEnvelope("pid1", SequenceNr(4)),
+        createEventEnvelope("pid1", SequenceNr(5)),
+      )
       val queries = new ConstantPersistenceQueries(eventEnvelopes)
 
       // Test:
@@ -97,11 +111,9 @@ final class ConstantPersistenceQueriesSpec extends TestKitBase with WordSpecLike
       queries.findHighestSequenceNrAfter("pid1", SequenceNr(6)).futureValue should be(None)
     }
 
-    "return None if the source of queries doesn't contain any event envelope for the given persistence ID" in {
-      val timeBasedUuids =
-        new TimeBasedUuids(ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant)
+    "return None if the source of queries doesn't contain any event envelope for the given persistence ID" in new Fixture {
       val eventEnvelopes = IndexedSeq(
-        TaggedEventEnvelope("pid1", SequenceNr(1), "event1", timeBasedUuids.create(+1), Set.empty, nextWriterUuid()),
+        createEventEnvelope("pid1", SequenceNr(1)),
       )
       val queries = new ConstantPersistenceQueries(eventEnvelopes)
       queries.findHighestSequenceNrAfter("pid2", SequenceNr(1)).futureValue should be(None)
@@ -111,49 +123,39 @@ final class ConstantPersistenceQueriesSpec extends TestKitBase with WordSpecLike
 
   "ConstantPersistenceQueries.currentEventsAfter" should {
 
-    "return a source that emits event envelopes after the given sequence number inclusive" in {
-      val timeBasedUuids =
-        new TimeBasedUuids(ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant)
-      val writerUuid = nextWriterUuid()
-      val offset1    = timeBasedUuids.create(+1)
-      val offset2    = timeBasedUuids.create(+2)
-      val offset3    = timeBasedUuids.create(+3)
-      val eventEnvelopes = {
-        IndexedSeq(
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", offset1, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", offset2, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", offset3, Set.empty, writerUuid),
-        )
-      }
+    "return a source that emits event envelopes after the given sequence number inclusive" in new Fixture {
+      val eventEnvelopes = IndexedSeq(
+        createEventEnvelope("pid1", SequenceNr(1)),
+        createEventEnvelope("pid1", SequenceNr(2)),
+        createEventEnvelope("pid1", SequenceNr(3)),
+      )
       val queries = new ConstantPersistenceQueries(eventEnvelopes)
 
       // Test:
       queries.currentEventsAfter("pid1", SequenceNr(1)).runWith(Sink.seq).futureValue should be(
         Seq(
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", offset1, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", offset2, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", offset3, Set.empty, writerUuid),
+          createEventEnvelope("pid1", SequenceNr(1)),
+          createEventEnvelope("pid1", SequenceNr(2)),
+          createEventEnvelope("pid1", SequenceNr(3)),
         ),
       )
       queries.currentEventsAfter("pid1", SequenceNr(2)).runWith(Sink.seq).futureValue should be(
         Seq(
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", offset2, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", offset3, Set.empty, writerUuid),
+          createEventEnvelope("pid1", SequenceNr(2)),
+          createEventEnvelope("pid1", SequenceNr(3)),
         ),
       )
       queries.currentEventsAfter("pid1", SequenceNr(3)).runWith(Sink.seq).futureValue should be(
         Seq(
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", offset3, Set.empty, writerUuid),
+          createEventEnvelope("pid1", SequenceNr(3)),
         ),
       )
       queries.currentEventsAfter("pid1", SequenceNr(4)).runWith(Sink.seq).futureValue should be(empty)
     }
 
-    "return an empty source if the source of queries doesn't contain any event envelope for the given persistence ID" in {
-      val timeBasedUuids =
-        new TimeBasedUuids(ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant)
+    "return an empty source if the source of queries doesn't contain any event envelope for the given persistence ID" in new Fixture {
       val envelopes = IndexedSeq(
-        TaggedEventEnvelope("pid1", SequenceNr(1), "event1", timeBasedUuids.create(+1), Set.empty, nextWriterUuid()),
+        createEventEnvelope("pid1", SequenceNr(1)),
       )
       val queries = new ConstantPersistenceQueries(envelopes)
       queries.currentEventsAfter("pid2", SequenceNr(1)).runWith(Sink.seq).futureValue should be(empty)
@@ -163,55 +165,45 @@ final class ConstantPersistenceQueriesSpec extends TestKitBase with WordSpecLike
 
   "ConstantPersistenceQueries.currentEventsBefore" should {
 
-    "return a source that emits event envelopes before the given sequence number inclusive in the descending order of the sequence number" in {
-      val timeBasedUuids =
-        new TimeBasedUuids(ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant)
-      val writerUuid = nextWriterUuid()
-      val offset1    = timeBasedUuids.create(+1)
-      val offset2    = timeBasedUuids.create(+2)
-      val offset3    = timeBasedUuids.create(+3)
-      val eventEnvelopes = {
-        IndexedSeq(
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", offset1, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", offset2, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", offset3, Set.empty, writerUuid),
-        )
-      }
+    "return a source that emits event envelopes before the given sequence number inclusive in the descending order of the sequence number" in new Fixture {
+      val eventEnvelopes = IndexedSeq(
+        createEventEnvelope("pid1", SequenceNr(1)),
+        createEventEnvelope("pid1", SequenceNr(2)),
+        createEventEnvelope("pid1", SequenceNr(3)),
+      )
       val queries = new ConstantPersistenceQueries(eventEnvelopes)
 
       // Test:
       queries.currentEventsBefore("pid1", SequenceNr(1)).runWith(Sink.seq).futureValue should be(
         Seq(
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", offset1, Set.empty, writerUuid),
+          createEventEnvelope("pid1", SequenceNr(1)),
         ),
       )
       queries.currentEventsBefore("pid1", SequenceNr(2)).runWith(Sink.seq).futureValue should be(
         Seq(
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", offset2, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", offset1, Set.empty, writerUuid),
+          createEventEnvelope("pid1", SequenceNr(2)),
+          createEventEnvelope("pid1", SequenceNr(1)),
         ),
       )
       queries.currentEventsBefore("pid1", SequenceNr(3)).runWith(Sink.seq).futureValue should be(
         Seq(
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", offset3, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", offset2, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", offset1, Set.empty, writerUuid),
+          createEventEnvelope("pid1", SequenceNr(3)),
+          createEventEnvelope("pid1", SequenceNr(2)),
+          createEventEnvelope("pid1", SequenceNr(1)),
         ),
       )
       queries.currentEventsBefore("pid1", SequenceNr(4)).runWith(Sink.seq).futureValue should be(
         Seq(
-          TaggedEventEnvelope("pid1", SequenceNr(3), "event3", offset3, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(2), "event2", offset2, Set.empty, writerUuid),
-          TaggedEventEnvelope("pid1", SequenceNr(1), "event1", offset1, Set.empty, writerUuid),
+          createEventEnvelope("pid1", SequenceNr(3)),
+          createEventEnvelope("pid1", SequenceNr(2)),
+          createEventEnvelope("pid1", SequenceNr(1)),
         ),
       )
     }
 
-    "return an empty source if the source of queries doesn't contain any event envelope for the given persistence ID" in {
-      val timeBasedUuids =
-        new TimeBasedUuids(ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant)
+    "return an empty source if the source of queries doesn't contain any event envelope for the given persistence ID" in new Fixture {
       val envelopes = IndexedSeq(
-        TaggedEventEnvelope("pid1", SequenceNr(1), "event1", timeBasedUuids.create(+1), Set.empty, nextWriterUuid()),
+        createEventEnvelope("pid1", SequenceNr(1)),
       )
       val queries = new ConstantPersistenceQueries(envelopes)
       queries.currentEventsBefore("pid2", SequenceNr(4)).runWith(Sink.seq).futureValue should be(empty)

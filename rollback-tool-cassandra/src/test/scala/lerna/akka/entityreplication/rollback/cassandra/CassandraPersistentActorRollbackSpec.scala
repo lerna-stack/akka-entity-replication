@@ -10,7 +10,7 @@ import akka.persistence.query.{ Offset, PersistenceQuery }
 import akka.stream.scaladsl.Sink
 import akka.testkit.TestProbe
 import com.typesafe.config.{ Config, ConfigFactory }
-import lerna.akka.entityreplication.rollback.SequenceNr
+import lerna.akka.entityreplication.rollback._
 import lerna.akka.entityreplication.rollback.testkit.TestPersistentActor
 
 object CassandraPersistentActorRollbackSpec {
@@ -56,6 +56,155 @@ final class CassandraPersistentActorRollbackSpec
     "return false if this rollback is not in dry-run mode" in {
       val rollback = new CassandraPersistentActorRollback(system, settings)
       rollback.isDryRun should be(false)
+    }
+
+  }
+
+  "CassandraPersistentActorRollback.findRollbackRequirements" should {
+
+    "return a Future containing rollback requirements if no events are deleted" in {
+      val rollback      = new CassandraPersistentActorRollback(system, settings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      locally {
+        val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+        // Prepare: save events
+        for (sequenceNr <- 1 to 5) {
+          actor ! TestPersistentActor.PersistEvent(probe.ref)
+          probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+        }
+        // Prepare: stop the actor
+        probe.watch(actor)
+        system.stop(actor)
+        probe.expectTerminated(actor)
+      }
+
+      // Test:
+      val expectedRequirements = PersistentActorRollback.RollbackRequirements(persistenceId, SequenceNr(1))
+      rollback.findRollbackRequirements(persistenceId).futureValue should be(expectedRequirements)
+    }
+
+    "return a Future containing rollback requirements if old events are deleted and a snapshot is available" in {
+      val rollback      = new CassandraPersistentActorRollback(system, settings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      locally {
+        val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+
+        // Prepare: save events and the first snapshot
+        for (sequenceNr <- 1 to 5) {
+          actor ! TestPersistentActor.PersistEvent(probe.ref)
+          probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+        }
+        actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(5))
+        // Prepare: save events and the second snapshot
+        for (sequenceNr <- 6 to 10) {
+          actor ! TestPersistentActor.PersistEvent(probe.ref)
+          probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+        }
+        actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(10))
+        // Prepare: save events
+        for (sequenceNr <- 11 to 14) {
+          actor ! TestPersistentActor.PersistEvent(probe.ref)
+          probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+        }
+        // Prepare: delete old events
+        actor ! TestPersistentActor.DeleteEventsTo(6, probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(6))
+
+        // Prepare: stop the actor
+        probe.watch(actor)
+        system.stop(actor)
+        probe.expectTerminated(actor)
+      }
+
+      // Test:
+      val expectedRequirements = PersistentActorRollback.RollbackRequirements(persistenceId, SequenceNr(10))
+      rollback.findRollbackRequirements(persistenceId).futureValue should be(expectedRequirements)
+    }
+
+    "return a Future containing rollback requirements if old events are deleted and a snapshot with the same sequence number as deleted_to is available" in {
+      val rollback      = new CassandraPersistentActorRollback(system, settings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      locally {
+        val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+
+        // Prepare: save events and the first snapshot
+        for (sequenceNr <- 1 to 5) {
+          actor ! TestPersistentActor.PersistEvent(probe.ref)
+          probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+        }
+        actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(5))
+        // Prepare: save events and the second snapshot
+        for (sequenceNr <- 6 to 9) {
+          actor ! TestPersistentActor.PersistEvent(probe.ref)
+          probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+        }
+        // Prepare: delete old events
+        actor ! TestPersistentActor.DeleteEventsTo(5, probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(5))
+
+        // Prepare: stop the actor
+        probe.watch(actor)
+        system.stop(actor)
+        probe.expectTerminated(actor)
+      }
+
+      // Test:
+      val expectedRequirements = PersistentActorRollback.RollbackRequirements(persistenceId, SequenceNr(5))
+      rollback.findRollbackRequirements(persistenceId).futureValue should be(expectedRequirements)
+    }
+
+    "return a failed Future if old events are deleted and no snapshot is available" in {
+      val rollback      = new CassandraPersistentActorRollback(system, settings)
+      val probe         = TestProbe()
+      val persistenceId = nextPersistenceId()
+
+      // Prepare:
+      locally {
+        val actor: ActorRef = system.actorOf(TestPersistentActor.props(persistenceId))
+
+        // Prepare: save events and the first snapshot
+        for (sequenceNr <- 1 to 5) {
+          actor ! TestPersistentActor.PersistEvent(probe.ref)
+          probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+        }
+        actor ! TestPersistentActor.SaveSnapshot(probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(5))
+        // Prepare: save events and the second snapshot
+        for (sequenceNr <- 6 to 9) {
+          actor ! TestPersistentActor.PersistEvent(probe.ref)
+          probe.expectMsg(TestPersistentActor.Ack(sequenceNr))
+        }
+        // Prepare: delete old events, which is supposed not to happen in practice.
+        actor ! TestPersistentActor.DeleteEventsTo(6, probe.ref)
+        probe.expectMsg(TestPersistentActor.Ack(6))
+
+        // Prepare: stop the actor
+        probe.watch(actor)
+        system.stop(actor)
+        probe.expectTerminated(actor)
+      }
+
+      // Test:
+      val exception = rollback.findRollbackRequirements(persistenceId).failed.futureValue
+      exception should be(a[RollbackRequirementsNotFound])
+      exception.getMessage should be(
+        s"Rollback requirements not found:" +
+        s" Rollback for the persistent actor [$persistenceId] is impossible since it results in an inconsistent state." +
+        " Events up to deleted_to sequence number [6] have been deleted," +
+        " but a snapshot with a sequence number greater than or equal to deleted_to is unavailable.",
+      )
     }
 
   }

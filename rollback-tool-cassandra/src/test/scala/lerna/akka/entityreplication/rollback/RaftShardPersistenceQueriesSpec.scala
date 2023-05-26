@@ -15,7 +15,7 @@ import lerna.akka.entityreplication.rollback.testkit.{
   TimeBasedUuids,
 }
 import org.scalatest.concurrent.ScalaFutures
-import org.scalatest.{ Matchers, WordSpecLike }
+import org.scalatest.{ BeforeAndAfterAll, Matchers, WordSpecLike }
 
 import java.time.{ Instant, ZoneOffset, ZonedDateTime }
 
@@ -33,11 +33,13 @@ object RaftShardPersistenceQueriesSpec {
     val writerUuid     = nextWriterUuid()
     events.zipWithIndex.map {
       case (event, index) =>
+        val offset = timeBasedUuids.create(deltaMillis = index)
         PersistenceQueries.TaggedEventEnvelope(
           persistenceId,
           SequenceNr(value = index + 1), // 1-based indexing
           event,
-          timeBasedUuids.create(deltaMillis = index),
+          offset,
+          Uuids.unixTimestamp(offset.value),
           Set.empty,
           writerUuid,
         )
@@ -49,6 +51,7 @@ object RaftShardPersistenceQueriesSpec {
 final class RaftShardPersistenceQueriesSpec
     extends TestKitBase
     with WordSpecLike
+    with BeforeAndAfterAll
     with Matchers
     with ScalaFutures
     with PatienceConfigurationForTestKitBase {
@@ -56,6 +59,11 @@ final class RaftShardPersistenceQueriesSpec
 
   override implicit val system: ActorSystem =
     ActorSystem(getClass.getSimpleName)
+
+  override def afterAll(): Unit = {
+    shutdown(system)
+    super.afterAll()
+  }
 
   "RaftShardPersistenceQueries.entityIdsAfter" should {
 

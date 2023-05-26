@@ -48,6 +48,11 @@ abstract class CassandraSpecBase(
     PersistenceInitializationAwaiter(system).awaitInit()
   }
 
+  override def afterAll(): Unit = {
+    shutdown(system)
+    super.afterAll()
+  }
+
   private val currentPersistenceId: AtomicLong = new AtomicLong(0)
 
   /** Returns the next (unique) persistence ID */

@@ -9,6 +9,8 @@ private final class CassandraPersistenceQueriesStatements(
 
   private val journalSettings: CassandraJournalSettings =
     settings.resolveJournalSettings(system)
+  private val snapshotSettings: CassandraSnapshotSettings =
+    settings.resolveSnapshotSettings(system)
 
   val selectHighestSequenceNr: String =
     s"""
@@ -46,5 +48,15 @@ private final class CassandraPersistenceQueriesStatements(
        WHERE
          persistence_id = ?
      """
+
+  val selectLowestSnapshotSequenceNrFrom: String =
+    s"""
+       SELECT sequence_nr FROM ${snapshotSettings.tableName}
+       WHERE
+         persistence_id = ? AND
+         sequence_nr >= ?
+       ORDER BY sequence_nr ASC
+       LIMIT 1
+       """
 
 }

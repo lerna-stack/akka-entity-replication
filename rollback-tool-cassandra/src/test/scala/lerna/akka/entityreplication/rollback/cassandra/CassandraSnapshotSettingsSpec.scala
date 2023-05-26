@@ -10,6 +10,7 @@ final class CassandraSnapshotSettingsSpec extends WordSpec with Matchers {
 
   private val customPluginConfig: Config = ConfigFactory.parseString("""
       |snapshot {
+      |  read-profile = "custom_akka-persistence-cassandra-snapshot-read-profile"
       |  write-profile = "custom_akka-persistence-cassandra-snapshot-write-profile"
       |  keyspace = "custom_akka_snapshot"
       |  table = "custom_snapshots"
@@ -20,6 +21,7 @@ final class CassandraSnapshotSettingsSpec extends WordSpec with Matchers {
 
     "load the default config" in {
       val settings = CassandraSnapshotSettings(defaultPluginConfig)
+      settings.readProfile should be("akka-persistence-cassandra-snapshot-profile")
       settings.writeProfile should be("akka-persistence-cassandra-snapshot-profile")
       settings.keyspace should be("akka_snapshot")
       settings.table should be("snapshots")
@@ -27,6 +29,7 @@ final class CassandraSnapshotSettingsSpec extends WordSpec with Matchers {
 
     "load the given custom config" in {
       val settings = CassandraSnapshotSettings(customPluginConfig)
+      settings.readProfile should be("custom_akka-persistence-cassandra-snapshot-read-profile")
       settings.writeProfile should be("custom_akka-persistence-cassandra-snapshot-write-profile")
       settings.keyspace should be("custom_akka_snapshot")
       settings.table should be("custom_snapshots")
