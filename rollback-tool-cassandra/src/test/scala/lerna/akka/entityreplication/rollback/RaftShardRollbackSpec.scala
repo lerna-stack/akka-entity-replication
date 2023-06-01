@@ -754,6 +754,45 @@ final class RaftShardRollbackSpec
       )
     }
 
+    "return a CommitLogStoreActor's rollback setup (indicates all data delete) for the given Raft shard" +
+    " if the leader's rollback setup indicates deleting all data" in {
+      val rollback = createRaftShardRollback(settings)
+
+      val memberIndex1 = MemberIndex("replica-group-1")
+      val memberIndex2 = MemberIndex("replica-group-2")
+      val memberIndex3 = MemberIndex("replica-group-3")
+
+      val leadersTimestamp =
+        ZonedDateTime.of(2022, 1, 1, 0, 0, 0, 0, ZoneOffset.UTC).toInstant
+
+      val parameters =
+        RaftShardRollbackParameters(
+          defaultTypeName,
+          defaultShardId,
+          Set(memberIndex1, memberIndex2, memberIndex3),
+          memberIndex1,
+          leadersTimestamp,
+        )
+      val raftActorRollbackSetups = Seq(
+        RaftActorRollbackSetup(RaftActorId(defaultTypeName, defaultShardId, memberIndex1), None),
+        RaftActorRollbackSetup(RaftActorId(defaultTypeName, defaultShardId, memberIndex2), Some(SequenceNr(4))),
+        RaftActorRollbackSetup(RaftActorId(defaultTypeName, defaultShardId, memberIndex3), Some(SequenceNr(5))),
+      )
+
+      val commitLogStoreActorId = CommitLogStoreActorId(defaultTypeName, defaultShardId)
+
+      // Expectations:
+      (rollback.raftEventSourcedPersistence.requirementsVerifier.verify _)
+        .expects(commitLogStoreActorId.persistenceId, None, None)
+        .returns(Future.successful(Done))
+        .once()
+
+      // Test:
+      rollback.prepareCommitLogStoreActorRollback(parameters, raftActorRollbackSetups).futureValue should be(
+        CommitLogStoreActorRollbackSetup(commitLogStoreActorId, None),
+      )
+    }
+
     "return a failed Future if the rollback request doesn't meet requirements" in {
       val rollback = createRaftShardRollback(settings)
 
