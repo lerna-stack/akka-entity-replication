@@ -31,6 +31,9 @@ private[rollback] final class RaftShardRollback(
     * Note that this method doesn't execute actual rollback. [[rollback]] takes the rollback setup returned by this
     * method and then executes the actual rollback. The setup can be used to review how rollback is executed.
     *
+    * If the rollback is impossible (for example, required data have already been deleted), this method returns a failed
+    * `Future` containing a [[RollbackException]].
+    *
     * @see [[rollback]]
     */
   def prepareRollback(parameters: RaftShardRollbackParameters): Future[RaftShardRollbackSetup] = {
@@ -58,18 +61,20 @@ private[rollback] final class RaftShardRollback(
   ): Future[Seq[RaftActorRollbackSetup]] = {
     Source(parameters.allMemberIndices)
       .mapAsyncUnordered(settings.readParallelism) { memberIndex =>
-        val raftActorId = RaftActorId(parameters.typeName, parameters.shardId, memberIndex)
-        val toTimestamp = toTimestampFor(parameters, memberIndex)
-        raftPersistence.sequenceNrSearchStrategy
-          .findUpperBound(raftActorId.persistenceId, toTimestamp)
-          .map { sequenceNr =>
-            log.info(
-              "Calculated RaftActor rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
-              raftActorId.persistenceId,
-              sequenceNr.fold(0L)(_.value),
-            )
-            RaftActorRollbackSetup(raftActorId, sequenceNr)
-          }
+        val raftActorId   = RaftActorId(parameters.typeName, parameters.shardId, memberIndex)
+        val toTimestamp   = toTimestampFor(parameters, memberIndex)
+        val persistenceId = raftActorId.persistenceId
+        for {
+          sequenceNr <- raftPersistence.sequenceNrSearchStrategy.findUpperBound(persistenceId, toTimestamp)
+          _          <- raftPersistence.requirementsVerifier.verify(persistenceId, sequenceNr, Some(toTimestamp))
+        } yield {
+          log.info(
+            "Calculated RaftActor rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
+            persistenceId,
+            sequenceNr.fold(0L)(_.value),
+          )
+          RaftActorRollbackSetup(raftActorId, sequenceNr)
+        }
       }
       .runWith(Sink.seq)
   }
@@ -97,17 +102,19 @@ private[rollback] final class RaftShardRollback(
     Source
       .futureSource(snapshotStoreIds.map(Source(_)))
       .mapAsyncUnordered(settings.readParallelism) { snapshotStoreId =>
-        val toTimestamp = toTimestampFor(parameters, snapshotStoreId.memberIndex)
-        raftPersistence.sequenceNrSearchStrategy
-          .findUpperBound(snapshotStoreId.persistenceId, toTimestamp)
-          .map { sequenceNr =>
-            log.info(
-              "Calculated SnapshotStore rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
-              snapshotStoreId.persistenceId,
-              sequenceNr.fold(0L)(_.value),
-            )
-            SnapshotStoreRollbackSetup(snapshotStoreId, sequenceNr)
-          }
+        val toTimestamp   = toTimestampFor(parameters, snapshotStoreId.memberIndex)
+        val persistenceId = snapshotStoreId.persistenceId
+        for {
+          sequenceNr <- raftPersistence.sequenceNrSearchStrategy.findUpperBound(persistenceId, toTimestamp)
+          _          <- raftPersistence.requirementsVerifier.verify(persistenceId, sequenceNr, Some(toTimestamp))
+        } yield {
+          log.info(
+            "Calculated SnapshotStore rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
+            persistenceId,
+            sequenceNr.fold(0L)(_.value),
+          )
+          SnapshotStoreRollbackSetup(snapshotStoreId, sequenceNr)
+        }
       }
       .runWith(Sink.seq)
   }
@@ -125,17 +132,19 @@ private[rollback] final class RaftShardRollback(
     } yield SnapshotSyncManagerId(parameters.typeName, parameters.shardId, sourceMemberIndex, destinationMemberIndex)
     Source(snapshotSyncManagerIds)
       .mapAsyncUnordered(settings.readParallelism) { snapshotSyncManagerId =>
-        val toTimestamp = toTimestampFor(parameters, snapshotSyncManagerId.destinationMemberIndex)
-        raftPersistence.sequenceNrSearchStrategy
-          .findUpperBound(snapshotSyncManagerId.persistenceId, toTimestamp)
-          .map { sequenceNr =>
-            log.info(
-              "Calculated SnapshotSyncManager rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
-              snapshotSyncManagerId.persistenceId,
-              sequenceNr.fold(0L)(_.value),
-            )
-            SnapshotSyncManagerRollbackSetup(snapshotSyncManagerId, sequenceNr)
-          }
+        val toTimestamp   = toTimestampFor(parameters, snapshotSyncManagerId.destinationMemberIndex)
+        val persistenceId = snapshotSyncManagerId.persistenceId
+        for {
+          sequenceNr <- raftPersistence.sequenceNrSearchStrategy.findUpperBound(persistenceId, toTimestamp)
+          _          <- raftPersistence.requirementsVerifier.verify(persistenceId, sequenceNr, Some(toTimestamp))
+        } yield {
+          log.info(
+            "Calculated SnapshotSyncManager rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
+            persistenceId,
+            sequenceNr.fold(0L)(_.value),
+          )
+          SnapshotSyncManagerRollbackSetup(snapshotSyncManagerId, sequenceNr)
+        }
       }
       .runWith(Sink.seq)
   }
@@ -157,32 +166,34 @@ private[rollback] final class RaftShardRollback(
           s"whose id is equal to leader id [$leaderRaftActorId]",
         )
       }
-    val commitLogStoreActorId =
-      CommitLogStoreActorId(parameters.typeName, parameters.shardId)
-    leaderRaftActorRollbackSetup.to match {
-      case Some(leadersRollbackTo) =>
-        raftPersistence.raftShardPersistenceQueries
-          .findLastTruncatedLogEntryIndex(
-            leaderRaftActorRollbackSetup.id,
-            leadersRollbackTo,
-          ).map { logEntryIndexOption =>
-            // LogEntryIndex is equal to SequenceNr in CommitLogStoreActor
-            val sequenceNrOption = logEntryIndexOption.map { logEntryIndex =>
-              SequenceNr(logEntryIndex.underlying)
+    def findSequenceNrFromLeaderEvents: Future[Option[SequenceNr]] =
+      leaderRaftActorRollbackSetup.to match {
+        case Some(leadersRollbackTo) =>
+          raftPersistence.raftShardPersistenceQueries
+            .findLastTruncatedLogEntryIndex(
+              leaderRaftActorRollbackSetup.id,
+              leadersRollbackTo,
+            ).map { logEntryIndexOption =>
+              // LogEntryIndex is equal to SequenceNr in CommitLogStoreActor
+              logEntryIndexOption.map { logEntryIndex =>
+                SequenceNr(logEntryIndex.underlying)
+              }
             }
-            log.info(
-              "Calculated CommitLogStoreActor rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
-              commitLogStoreActorId.persistenceId,
-              sequenceNrOption.fold(0L)(_.value),
-            )
-            CommitLogStoreActorRollbackSetup(commitLogStoreActorId, sequenceNrOption)
-          }
-      case None =>
-        log.info(
-          "Calculated CommitLogStoreActor rollback setup: persistence_id=[{}], to_sequence_nr=[0]",
-          commitLogStoreActorId.persistenceId,
-        )
-        Future.successful(CommitLogStoreActorRollbackSetup(commitLogStoreActorId, None))
+        case None =>
+          Future.successful(None)
+      }
+    val commitLogStoreActorId = CommitLogStoreActorId(parameters.typeName, parameters.shardId)
+    val persistenceId         = commitLogStoreActorId.persistenceId
+    for {
+      sequenceNr <- findSequenceNrFromLeaderEvents
+      _          <- raftEventSourcedPersistence.requirementsVerifier.verify(persistenceId, sequenceNr, None)
+    } yield {
+      log.info(
+        "Calculated CommitLogStoreActor rollback setup: persistence_id=[{}], to_sequence_nr=[{}]",
+        persistenceId,
+        sequenceNr.fold(0L)(_.value),
+      )
+      CommitLogStoreActorRollbackSetup(commitLogStoreActorId, sequenceNr)
     }
   }
 

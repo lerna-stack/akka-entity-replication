@@ -9,6 +9,7 @@
   <logger name="akka" level="ERROR" />
   <logger name="lerna.akka.entityreplication" level="WARN" />
   <logger name="lerna.akka.entityreplication.rollback" level="DEBUG" />
+  <logger name="lerna.akka.entityreplication.rollback.testkit" level="INFO" />
   <root level="INFO">
     <appender-ref ref="STDOUT"/>
   </root>

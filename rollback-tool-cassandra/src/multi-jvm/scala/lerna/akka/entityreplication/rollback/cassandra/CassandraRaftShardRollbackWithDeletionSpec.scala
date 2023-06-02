@@ -10,7 +10,7 @@ import akka.remote.testconductor.RoleName
 import akka.remote.testkit.{ MultiNodeConfig, MultiNodeSpec }
 import akka.stream.scaladsl.Sink
 import akka.util.Timeout
-import com.typesafe.config.{ ConfigFactory, ConfigValueFactory }
+import com.typesafe.config.{ Config, ConfigFactory, ConfigValueFactory }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.rollback.cassandra.testkit.PersistenceCassandraConfigProvider
 import lerna.akka.entityreplication.rollback.testkit.{ CatalogReplicatedEntity, PersistenceInitializationAwaiter }
@@ -21,7 +21,9 @@ import java.time.{ Instant, ZonedDateTime }
 import scala.concurrent.duration.{ DurationInt, FiniteDuration }
 import scala.jdk.CollectionConverters._
 
-object CassandraRaftShardRollbackSpecConfig extends MultiNodeConfig with PersistenceCassandraConfigProvider {
+object CassandraRaftShardRollbackWithDeletionSpecConfig
+    extends MultiNodeConfig
+    with PersistenceCassandraConfigProvider {
   val node1: RoleName = role("node1")
   val node2: RoleName = role("node2")
   val node3: RoleName = role("node3")
@@ -51,12 +53,37 @@ object CassandraRaftShardRollbackSpecConfig extends MultiNodeConfig with Persist
   /** Each JVM node should sync its clock in this tolerance */
   val clockOutOfSyncTolerance: FiniteDuration = 500.millis
 
+  private val deletionConfig: Config = ConfigFactory.parseString(
+    """
+      |lerna.akka.entityreplication.raft {
+      |  delete-old-events = on
+      |  delete-old-snapshots = on
+      |  delete-before-relative-sequence-nr = 200
+      |
+      |  compaction.log-size-check-interval = 3s
+      |  compaction.log-size-threshold = 100
+      |  compaction.preserve-log-size = 25
+      |
+      |  entity-snapshot-store.snapshot-every = 1
+      |  entity-snapshot-store.delete-old-events = on
+      |  entity-snapshot-store.delete-old-snapshots = on
+      |  entity-snapshot-store.delete-before-relative-sequence-nr = 5
+      |
+      |  eventsourced.persistence.snapshot-every = 100
+      |  eventsourced.persistence.delete-old-events = on
+      |  eventsourced.persistence.delete-old-snapshots = on
+      |  eventsourced.persistence.delete-before-relative-sequence-nr = 200
+      |}
+      |""".stripMargin,
+  )
+
   commonConfig(
     debugConfig(false)
       .withValue(
         "lerna.akka.entityreplication.raft.multi-raft-roles",
         ConfigValueFactory.fromIterable(memberIndexes.values.map(_.role).toSet.asJava),
       )
+      .withFallback(deletionConfig)
       .withFallback(ConfigFactory.parseString(s"""
           |akka.persistence.cassandra.journal {
           |  ${CatalogReplicatedEntity.EventAdapter.config}
@@ -93,20 +120,22 @@ object CassandraRaftShardRollbackSpecConfig extends MultiNodeConfig with Persist
 
 }
 
-final class CassandraRaftShardRollbackSpecMultiJvmNode1 extends CassandraRaftShardRollbackSpec
-final class CassandraRaftShardRollbackSpecMultiJvmNode2 extends CassandraRaftShardRollbackSpec
-final class CassandraRaftShardRollbackSpecMultiJvmNode3 extends CassandraRaftShardRollbackSpec
-final class CassandraRaftShardRollbackSpecMultiJvmNode4 extends CassandraRaftShardRollbackSpec
-final class CassandraRaftShardRollbackSpecMultiJvmNode5 extends CassandraRaftShardRollbackSpec
-final class CassandraRaftShardRollbackSpecMultiJvmNode6 extends CassandraRaftShardRollbackSpec
-final class CassandraRaftShardRollbackSpecMultiJvmNode7 extends CassandraRaftShardRollbackSpec
+final class CassandraRaftShardRollbackWithDeletionSpecMultiJvmNode1 extends CassandraRaftShardRollbackWithDeletionSpec
+final class CassandraRaftShardRollbackWithDeletionSpecMultiJvmNode2 extends CassandraRaftShardRollbackWithDeletionSpec
+final class CassandraRaftShardRollbackWithDeletionSpecMultiJvmNode3 extends CassandraRaftShardRollbackWithDeletionSpec
+final class CassandraRaftShardRollbackWithDeletionSpecMultiJvmNode4 extends CassandraRaftShardRollbackWithDeletionSpec
+final class CassandraRaftShardRollbackWithDeletionSpecMultiJvmNode5 extends CassandraRaftShardRollbackWithDeletionSpec
+final class CassandraRaftShardRollbackWithDeletionSpecMultiJvmNode6 extends CassandraRaftShardRollbackWithDeletionSpec
+final class CassandraRaftShardRollbackWithDeletionSpecMultiJvmNode7 extends CassandraRaftShardRollbackWithDeletionSpec
 
-class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRollbackSpecConfig) with STMultiNodeSpec {
+class CassandraRaftShardRollbackWithDeletionSpec
+    extends MultiNodeSpec(CassandraRaftShardRollbackWithDeletionSpecConfig)
+    with STMultiNodeSpec {
 
-  import CassandraRaftShardRollbackSpecConfig._
+  import CassandraRaftShardRollbackWithDeletionSpecConfig._
   import CatalogReplicatedEntity._
 
-  override def initialParticipants: Int = 3
+  override def initialParticipants: Int = 7
 
   private implicit val typedSystem: ActorSystem[Nothing] = system.toTyped
 
@@ -114,7 +143,9 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
   private val targetShardId: String                = Rollback.targetShardId
   private val entityIdA                            = "entity-A"
   private val entityIdB                            = "entity-B"
-  private val numOfEventsPerRound                  = 100
+  private val numOfEventsOnRound1                  = 300
+  private val numOfEventsOnRound2                  = 25
+  private val numOfEventsOnRound3                  = 25
 
   private lazy val clusterReplication =
     ClusterReplication(typedSystem)
@@ -181,53 +212,25 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
         assert(clusterReplication.shardIdOf(typeKey, entityIdA) == targetShardId)
         assert(clusterReplication.shardIdOf(typeKey, entityIdB) != targetShardId)
       }
-      implicit val timeout: Timeout = 2000.millis
+      implicit val timeout: Timeout = 3000.millis
       runOn(node2) {
-        for (i <- 0 until numOfEventsPerRound) {
+        for (i <- 0 until numOfEventsOnRound1) {
           val entityA = clusterReplication.entityRefFor(typeKey, entityIdA)
-          AtLeastOnceComplete.askTo(entityA, Add(i, _), 500.millis).await should be(Done)
+          AtLeastOnceComplete.askTo(entityA, Add(i, _), 1000.millis).await should be(Done)
         }
       }
       runOn(node3) {
-        for (i <- 0 until numOfEventsPerRound) {
+        for (i <- 0 until numOfEventsOnRound1) {
           val entityB = clusterReplication.entityRefFor(typeKey, entityIdB)
-          AtLeastOnceComplete.askTo(entityB, Add(i, _), 500.millis).await should be(Done)
+          AtLeastOnceComplete.askTo(entityB, Add(i, _), 1000.millis).await should be(Done)
         }
       }
       val totalPersistTimeout =
-        clusterReplicationSettings.raftSettings.heartbeatInterval * numOfEventsPerRound
+        clusterReplicationSettings.raftSettings.heartbeatInterval * numOfEventsOnRound1
       enterBarrier(max = totalPersistTimeout, "Persisted Events (round 1)")
     }
 
-    "store a rollback timestamp" in {
-      Thread.sleep(clockOutOfSyncTolerance.toMillis)
-      runOn(node1) {
-        rollbackTimestamp = Option(ZonedDateTime.now().toInstant)
-      }
-      enterBarrier("Stored the rollback timestamp")
-    }
-
-    "persist events (round 2)" in {
-      implicit val timeout: Timeout = 2000.millis
-      val baseValue                 = numOfEventsPerRound
-      runOn(node2) {
-        for (i <- 0 until numOfEventsPerRound) {
-          val entityA = clusterReplication.entityRefFor(typeKey, entityIdA)
-          AtLeastOnceComplete.askTo(entityA, Add(baseValue + i, _), 500.millis).await should be(Done)
-        }
-      }
-      runOn(node3) {
-        for (i <- 0 until numOfEventsPerRound) {
-          val entityB = clusterReplication.entityRefFor(typeKey, entityIdB)
-          AtLeastOnceComplete.askTo(entityB, Add(baseValue + i, _), 500.millis).await should be(Done)
-        }
-      }
-      val totalPersistTimeout =
-        clusterReplicationSettings.raftSettings.heartbeatInterval * numOfEventsPerRound
-      enterBarrier(max = totalPersistTimeout, "Persisted events (round 2)")
-    }
-
-    "wait for the completion of the event sourcing" in {
+    "wait for the completion of the event sourcing (round 1)" in {
       runOn(node2, node3, node4) {
         awaitAssert(
           {
@@ -237,17 +240,69 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
               case EventEnvelope(_, _, _, event: Event) => event
             }
             val expectedEventsOfEntityA =
-              (0 until 2 * numOfEventsPerRound).map(i => Added(entityIdA, i))
+              (0 until numOfEventsOnRound1).map(i => Added(entityIdA, i))
             events.filter(_.entityId == entityIdA) should be(expectedEventsOfEntityA)
             val expectedEventsOfEntityB =
-              (0 until 2 * numOfEventsPerRound).map(i => Added(entityIdB, i))
+              (0 until numOfEventsOnRound1).map(i => Added(entityIdB, i))
             events.filter(_.entityId == entityIdB) should be(expectedEventsOfEntityB)
           },
           max = propagationTimeout,
           interval = 500.millis,
         )
       }
-      enterBarrier(max = propagationTimeout, "Completed the event sourcing")
+      enterBarrier(max = propagationTimeout, "Completed the event sourcing (round 1)")
+    }
+
+    "store a rollback timestamp" in {
+      Thread.sleep(clockOutOfSyncTolerance.toMillis)
+      runOn(node1) {
+        rollbackTimestamp = Option(ZonedDateTime.now().toInstant)
+        log.info("Node [{}] stored timestamp [{}] for rollback", node1, rollbackTimestamp)
+      }
+      enterBarrier("Stored the rollback timestamp")
+    }
+
+    "persist events (round 2)" in {
+      implicit val timeout: Timeout = 3000.millis
+      val baseValue                 = numOfEventsOnRound1
+      runOn(node2) {
+        for (i <- 0 until numOfEventsOnRound2) {
+          val entityA = clusterReplication.entityRefFor(typeKey, entityIdA)
+          AtLeastOnceComplete.askTo(entityA, Add(baseValue + i, _), 1000.millis).await should be(Done)
+        }
+      }
+      runOn(node3) {
+        for (i <- 0 until numOfEventsOnRound2) {
+          val entityB = clusterReplication.entityRefFor(typeKey, entityIdB)
+          AtLeastOnceComplete.askTo(entityB, Add(baseValue + i, _), 1000.millis).await should be(Done)
+        }
+      }
+      val totalPersistTimeout =
+        clusterReplicationSettings.raftSettings.heartbeatInterval * numOfEventsOnRound2
+      enterBarrier(max = totalPersistTimeout, "Persisted events (round 2)")
+    }
+
+    "wait for the completion of the event sourcing (round 2)" in {
+      runOn(node2, node3, node4) {
+        awaitAssert(
+          {
+            val source = queries
+              .currentEventsByTag(EventAdapter.tag, Offset.noOffset)
+            val events = source.runWith(Sink.seq).await.collect {
+              case EventEnvelope(_, _, _, event: Event) => event
+            }
+            val expectedEventsOfEntityA =
+              (0 until numOfEventsOnRound1 + numOfEventsOnRound2).map(i => Added(entityIdA, i))
+            events.filter(_.entityId == entityIdA) should be(expectedEventsOfEntityA)
+            val expectedEventsOfEntityB =
+              (0 until numOfEventsOnRound1 + numOfEventsOnRound2).map(i => Added(entityIdB, i))
+            events.filter(_.entityId == entityIdB) should be(expectedEventsOfEntityB)
+          },
+          max = propagationTimeout,
+          interval = 500.millis,
+        )
+      }
+      enterBarrier(max = propagationTimeout, "Completed the event sourcing (round 2)")
     }
 
     "shut down the cluster (nodes: [2,3,4])" in {
@@ -299,12 +354,12 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
 
     "read the rolled-back data from entities" in {
       runOn(node5, node6, node7) {
-        implicit val timeout: Timeout = 2000.millis
+        implicit val timeout: Timeout = 3000.millis
         awaitAssert(
           {
             val entityA  = clusterReplication.entityRefFor(typeKey, entityIdA)
-            val response = AtLeastOnceComplete.askTo(entityA, Get(_), 500.millis).await
-            response.values should contain theSameElementsAs (0 until numOfEventsPerRound)
+            val response = AtLeastOnceComplete.askTo(entityA, Get(_), 1000.millis).await
+            response.values should contain theSameElementsAs (0 until numOfEventsOnRound1)
           },
           max = initializationTimeout,
           interval = 500.millis,
@@ -312,8 +367,8 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
         awaitAssert(
           {
             val entityB  = clusterReplication.entityRefFor(typeKey, entityIdB)
-            val response = AtLeastOnceComplete.askTo(entityB, Get(_), 500.millis).await
-            response.values should contain theSameElementsAs (0 until 2 * numOfEventsPerRound)
+            val response = AtLeastOnceComplete.askTo(entityB, Get(_), 1000.millis).await
+            response.values should contain theSameElementsAs (0 until numOfEventsOnRound1 + numOfEventsOnRound2)
           },
           max = initializationTimeout,
           interval = 500.millis,
@@ -334,10 +389,10 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
               case EventEnvelope(_, _, _, event: Event) => event
             }
             val expectedEventsOfEntityA =
-              (0 until numOfEventsPerRound).map(i => Added(entityIdA, i))
+              (0 until numOfEventsOnRound1).map(i => Added(entityIdA, i))
             events.filter(_.entityId == entityIdA) should be(expectedEventsOfEntityA)
             val expectedEventsOfEntityB =
-              (0 until 2 * numOfEventsPerRound).map(i => Added(entityIdB, i))
+              (0 until numOfEventsOnRound1 + numOfEventsOnRound2).map(i => Added(entityIdB, i))
             events.filter(_.entityId == entityIdB) should be(expectedEventsOfEntityB)
           },
           max = propagationTimeout,
@@ -350,22 +405,22 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
     }
 
     "persist events (round 3) after the rollback" in {
-      implicit val timeout: Timeout = 2000.millis
-      val baseValue                 = 2 * numOfEventsPerRound
+      implicit val timeout: Timeout = 3000.millis
+      val baseValue                 = numOfEventsOnRound1 + numOfEventsOnRound2
       runOn(node5) {
-        for (i <- 0 until numOfEventsPerRound) {
+        for (i <- 0 until numOfEventsOnRound3) {
           val entityA = clusterReplication.entityRefFor(typeKey, entityIdA)
-          AtLeastOnceComplete.askTo(entityA, Add(baseValue + i, _), 500.millis).await should be(Done)
+          AtLeastOnceComplete.askTo(entityA, Add(baseValue + i, _), 1000.millis).await should be(Done)
         }
       }
       runOn(node6) {
-        for (i <- 0 until numOfEventsPerRound) {
+        for (i <- 0 until numOfEventsOnRound3) {
           val entityB = clusterReplication.entityRefFor(typeKey, entityIdB)
-          AtLeastOnceComplete.askTo(entityB, Add(baseValue + i, _), 500.millis).await should be(Done)
+          AtLeastOnceComplete.askTo(entityB, Add(baseValue + i, _), 1000.millis).await should be(Done)
         }
       }
       val totalPersistTimeout =
-        clusterReplicationSettings.raftSettings.heartbeatInterval * numOfEventsPerRound
+        clusterReplicationSettings.raftSettings.heartbeatInterval * numOfEventsOnRound3
       runOn(node1, node5, node6, node7) {
         enterBarrier(max = totalPersistTimeout, "Persisted events (round 3)")
       }
@@ -373,14 +428,14 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
 
     "read the newly persisted data after the rollback from entities" in {
       runOn(node5, node6, node7) {
-        implicit val timeout: Timeout = 2000.millis
+        implicit val timeout: Timeout = 3000.millis
         awaitAssert(
           {
             val entityA  = clusterReplication.entityRefFor(typeKey, entityIdA)
-            val response = AtLeastOnceComplete.askTo(entityA, Get(_), 500.millis).await
+            val response = AtLeastOnceComplete.askTo(entityA, Get(_), 1000.millis).await
             val expectedValuesOfEntityA =
-              (0 until numOfEventsPerRound) ++
-              (2 * numOfEventsPerRound until 3 * numOfEventsPerRound)
+              (0 until numOfEventsOnRound1) ++
+              (0 until numOfEventsOnRound3).map(numOfEventsOnRound1 + numOfEventsOnRound2 + _)
             response.values should contain theSameElementsAs expectedValuesOfEntityA
           },
           max = initializationTimeout,
@@ -389,8 +444,8 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
         awaitAssert(
           {
             val entityB  = clusterReplication.entityRefFor(typeKey, entityIdB)
-            val response = AtLeastOnceComplete.askTo(entityB, Get(_), 500.millis).await
-            response.values should contain theSameElementsAs (0 until 3 * numOfEventsPerRound)
+            val response = AtLeastOnceComplete.askTo(entityB, Get(_), 1000.millis).await
+            response.values should contain theSameElementsAs (0 until numOfEventsOnRound1 + numOfEventsOnRound2 + numOfEventsOnRound3)
           },
           max = initializationTimeout,
           interval = 500.millis,
@@ -411,11 +466,11 @@ class CassandraRaftShardRollbackSpec extends MultiNodeSpec(CassandraRaftShardRol
               case EventEnvelope(_, _, _, event: Event) => event
             }
             val expectedEventsOfEntityA =
-              (0 until numOfEventsPerRound).map(i => Added(entityIdA, i)) ++
-              (2 * numOfEventsPerRound until 3 * numOfEventsPerRound).map(i => Added(entityIdA, i))
+              (0 until numOfEventsOnRound1).map(i => Added(entityIdA, i)) ++
+              (0 until numOfEventsOnRound3).map(i => Added(entityIdA, numOfEventsOnRound1 + numOfEventsOnRound2 + i))
             events.filter(_.entityId == entityIdA) should be(expectedEventsOfEntityA)
             val expectedEventsOfEntityB =
-              (0 until 3 * numOfEventsPerRound).map(i => Added(entityIdB, i))
+              (0 until numOfEventsOnRound1 + numOfEventsOnRound2 + numOfEventsOnRound3).map(i => Added(entityIdB, i))
             events.filter(_.entityId == entityIdB) should be(expectedEventsOfEntityB)
           },
           max = propagationTimeout,

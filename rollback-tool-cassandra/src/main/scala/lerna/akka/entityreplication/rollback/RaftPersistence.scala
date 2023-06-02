@@ -5,4 +5,5 @@ private class RaftPersistence(
     val persistentActorRollback: PersistentActorRollback,
     val raftShardPersistenceQueries: RaftShardPersistenceQueries,
     val sequenceNrSearchStrategy: SequenceNrSearchStrategy,
+    val requirementsVerifier: RollbackRequirementsVerifier,
 )

@@ -22,6 +22,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `CassandraPersistenceQueries.currentEventsBefore` skips deleted partitions
   [#208](https://github.com/lerna-stack/akka-entity-replication/issues/208),
   [PR#209](https://github.com/lerna-stack/akka-entity-replication/pull/209)
+- Rollback preparation fails if required data have been deleted
+  [#206](https://github.com/lerna-stack/akka-entity-replication/issues/206),
+  [PR#210](https://github.com/lerna-stack/akka-entity-replication/pull/210)
 
 ### Fixed
 - Dead letters about ReplicationRegion$Passivate continue

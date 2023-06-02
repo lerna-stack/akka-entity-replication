@@ -19,4 +19,10 @@ private final class CassandraPersistenceQueriesSettings(
     CassandraQuerySettings(pluginConfig)
   }
 
+  /** Resolves `pluginLocation` on the given system and then returns the snapshot plugin settings */
+  def resolveSnapshotSettings(system: ActorSystem): CassandraSnapshotSettings = {
+    val pluginConfig = system.settings.config.getConfig(pluginLocation)
+    CassandraSnapshotSettings(pluginConfig)
+  }
+
 }

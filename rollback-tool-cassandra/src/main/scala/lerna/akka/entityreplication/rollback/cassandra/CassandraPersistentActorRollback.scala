@@ -7,7 +7,7 @@ import akka.persistence.cassandra.cleanup.Cleanup
 import akka.persistence.cassandra.reconciler.Reconciliation
 import akka.stream.alpakka.cassandra.scaladsl.{ CassandraSession, CassandraSessionRegistry }
 import com.datastax.oss.driver.api.core.cql.{ PreparedStatement, Statement }
-import lerna.akka.entityreplication.rollback.{ PersistenceQueries, PersistentActorRollback, SequenceNr }
+import lerna.akka.entityreplication.rollback._
 
 import scala.concurrent.Future
 
@@ -59,15 +59,41 @@ private final class CassandraPersistentActorRollback(
   /** @inheritdoc */
   override def persistenceQueries: PersistenceQueries = queries
 
+  /** @inheritdoc */
+  override def findRollbackRequirements(
+      persistenceId: String,
+  ): Future[PersistentActorRollback.RollbackRequirements] = {
+    queries
+      .selectDeletedToSequenceNr(persistenceId).flatMap {
+        case Some(deletedTo) =>
+          queries.selectLowestSnapshotSequenceNr(persistenceId, deletedTo).flatMap {
+            case Some(lowestSequenceNr) =>
+              assert(lowestSequenceNr >= deletedTo)
+              Future.successful(lowestSequenceNr)
+            case None =>
+              Future.failed(
+                new RollbackRequirementsNotFound(
+                  s"Rollback for the persistent actor [$persistenceId] is impossible since it results in an inconsistent state." +
+                  s" Events up to deleted_to sequence number [${deletedTo.value}] have been deleted," +
+                  " but a snapshot with a sequence number greater than or equal to deleted_to is unavailable.",
+                ),
+              )
+          }
+        case None =>
+          // No events have been deleted; Rollback to any sequence number is possible.
+          Future.successful(SequenceNr(1))
+      }.map { lowestSequenceNr =>
+        PersistentActorRollback.RollbackRequirements(persistenceId, lowestSequenceNr)
+      }
+  }
+
   /** Rolls back events, snapshots, and tag views to the given sequence number for the persistence ID
     *
-    * Internally, this method deletes events and snapshots after the given sequence number (exclusive). Furthermore, it
-    * deletes tag views entirely and then rebuild them. Note that this method requires that all events are available in
-    * the past. This method cannot rebuild tag views if an event has been deleted.
+    * This method doesn't verify that the rollback is actually possible. Use [[findRollbackRequirements]] to confirm that.
     *
     * If dry-run mode, this method logs INFO messages and does not execute actual writes(deletes,inserts,updates).
     */
-  def rollbackTo(persistenceId: String, to: SequenceNr): Future[Done] = {
+  override def rollbackTo(persistenceId: String, to: SequenceNr): Future[Done] = {
     if (settings.dryRun) {
       log.info("dry-run: roll back to sequence_nr [{}] for persistenceId [{}]", to.value, persistenceId)
       // NOTE: continue to run the following, which logs info messages describing what action will be executed.

@@ -10,6 +10,8 @@ private object CassandraSnapshotSettings {
     * (`akka.persistence.cassandra`).
     */
   def apply(pluginConfig: Config): CassandraSnapshotSettings = {
+    val readProfile: String =
+      pluginConfig.getString("snapshot.read-profile")
     val writeProfile: String =
       pluginConfig.getString("snapshot.write-profile")
     val keyspace: String =
@@ -17,6 +19,7 @@ private object CassandraSnapshotSettings {
     val table: String =
       pluginConfig.getString("snapshot.table")
     new CassandraSnapshotSettings(
+      readProfile,
       writeProfile,
       keyspace,
       table,
@@ -26,6 +29,7 @@ private object CassandraSnapshotSettings {
 }
 
 private final class CassandraSnapshotSettings private (
+    val readProfile: String,
     val writeProfile: String,
     val keyspace: String,
     val table: String,

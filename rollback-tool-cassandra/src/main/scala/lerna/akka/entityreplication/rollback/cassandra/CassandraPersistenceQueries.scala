@@ -6,6 +6,7 @@ import akka.persistence.cassandra.lerna.Extractor
 import akka.stream.alpakka.cassandra.scaladsl.{ CassandraSession, CassandraSessionRegistry, CassandraSource }
 import akka.stream.scaladsl.Source
 import com.datastax.oss.driver.api.core.cql.{ PreparedStatement, Row, Statement }
+import com.datastax.oss.driver.api.core.uuid.Uuids
 import lerna.akka.entityreplication.rollback.PersistenceQueries.TaggedEventEnvelope
 import lerna.akka.entityreplication.rollback.{ PersistenceQueries, SequenceNr }
 
@@ -24,6 +25,8 @@ private final class CassandraPersistenceQueries(
     settings.resolveJournalSettings(system)
   private val querySettings: CassandraQuerySettings =
     settings.resolveQuerySettings(system)
+  private val snapshotSettings: CassandraSnapshotSettings =
+    settings.resolveSnapshotSettings(system)
 
   private val extractor: Extractor =
     new Extractor(system)
@@ -40,6 +43,8 @@ private final class CassandraPersistenceQueries(
     session.prepare(statements.selectMessagesFromDesc)
   private lazy val selectDeletedToPreparedStatement: Future[PreparedStatement] =
     session.prepare(statements.selectDeletedTo)
+  private lazy val selectLowestSnapshotSequenceNrFromPreparedStatement: Future[PreparedStatement] =
+    session.prepare(statements.selectLowestSnapshotSequenceNrFrom)
 
   import system.dispatcher
 
@@ -245,8 +250,32 @@ private final class CassandraPersistenceQueries(
     }
   }
 
+  /** Returns the lowest snapshot sequence number greater than or equal to the given `lower` sequence number
+    *
+    * If there is no snapshot meeting such criteria, this method returns `Future.successful(None)`.
+    */
+  def selectLowestSnapshotSequenceNr(persistenceId: String, lower: SequenceNr): Future[Option[SequenceNr]] = {
+    selectLowestSnapshotSequenceNrFromPreparedStatement.flatMap { ps =>
+      val bs = ps.bind(persistenceId, lower.value)
+      selectOneFromSnapshot(bs)
+        .map { rowOption =>
+          rowOption.map(_.getLong("sequence_nr")) match {
+            case None | Some(0) =>
+              None
+            case Some(lowestSnapshotSequenceNr) =>
+              assert(lowestSnapshotSequenceNr > 0)
+              Some(SequenceNr(lowestSnapshotSequenceNr))
+          }
+        }
+    }
+  }
+
   private def selectOne[T <: Statement[T]](statement: Statement[T]): Future[Option[Row]] = {
     session.selectOne(statement.setExecutionProfileName(journalSettings.readProfile))
+  }
+
+  private def selectOneFromSnapshot[T <: Statement[T]](statement: Statement[T]): Future[Option[Row]] = {
+    session.selectOne(statement.setExecutionProfileName(snapshotSettings.readProfile))
   }
 
   private def source[T <: Statement[T]](statement: Statement[T]): Source[TaggedEventEnvelope, NotUsed] = {
@@ -264,6 +293,7 @@ private final class CassandraPersistenceQueries(
           SequenceNr(repr.repr.sequenceNr),
           repr.repr.payload,
           repr.offset,
+          Uuids.unixTimestamp(repr.offset.value),
           repr.tags,
           repr.repr.writerUuid,
         )

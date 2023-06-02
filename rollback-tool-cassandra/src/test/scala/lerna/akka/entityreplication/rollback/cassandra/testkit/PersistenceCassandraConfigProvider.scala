@@ -18,6 +18,14 @@ trait PersistenceCassandraConfigProvider {
       snapshotKeyspace: String,
       autoCreate: Boolean = false,
   ): Config = {
+    require(
+      journalKeyspace.length <= 48,
+      s"journalKeyspace.length [${journalKeyspace.length}] should be less than or equal to 48. See https://docs.datastax.com/en/cql-oss/3.3/cql/cql_reference/refLimits.html.",
+    )
+    require(
+      snapshotKeyspace.length <= 48,
+      s"snapshotKeyspace.length [${snapshotKeyspace.length}] should be less than or equal to 48. See https://docs.datastax.com/en/cql-oss/3.3/cql/cql_reference/refLimits.html.",
+    )
     ConfigFactory.parseString(s"""
       |akka.persistence.journal.plugin = akka.persistence.cassandra.journal
       |akka.persistence.snapshot-store.plugin = akka.persistence.cassandra.snapshot

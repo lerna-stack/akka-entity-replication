@@ -42,12 +42,20 @@ final class CassandraRaftShardRollback private (
         new RaftShardPersistenceQueries(rollback.persistenceQueries)
       val sequenceNrSearchStrategy =
         new LinearSequenceNrSearchStrategy(systemProvider, rollback.persistenceQueries)
-      new RaftPersistence(rollback, queries, sequenceNrSearchStrategy)
+      val verifier = {
+        val timestampHintFinder = new LinearRollbackTimestampHintFinder(systemProvider, rollback.persistenceQueries)
+        new DefaultRollbackRequirementsVerifier(systemProvider, rollback, timestampHintFinder)
+      }
+      new RaftPersistence(rollback, queries, sequenceNrSearchStrategy, verifier)
     }
     val raftEventSourcedPersistence = {
       val rollback =
         new CassandraPersistentActorRollback(systemProvider, settings.raftEventSourcedPersistenceRollbackSettings)
-      new RaftEventSourcedPersistence(rollback)
+      val verifier = {
+        val timestampHintFinder = new LinearRollbackTimestampHintFinder(systemProvider, rollback.persistenceQueries)
+        new DefaultRollbackRequirementsVerifier(systemProvider, rollback, timestampHintFinder)
+      }
+      new RaftEventSourcedPersistence(rollback, verifier)
     }
     new RaftShardRollback(
       systemProvider,
@@ -61,6 +69,9 @@ final class CassandraRaftShardRollback private (
     *
     * Note that this method doesn't execute actual rollback. [[rollback]] takes the rollback setup returned by this
     * method and then executes the actual rollback. The setup can be used to review how rollback is executed.
+    *
+    * If the rollback is impossible (for example, required data have already been deleted), this method returns a failed
+    * `Future` containing a [[RollbackException]].
     *
     * @see [[rollback]]
     */

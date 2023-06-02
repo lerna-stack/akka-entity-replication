@@ -1,9 +1,7 @@
 package lerna.akka.entityreplication.rollback
 
 import akka.actor.{ ActorSystem, ClassicActorSystemProvider }
-import akka.persistence.query.TimeBasedUUID
 import akka.stream.scaladsl.{ Sink, Source }
-import com.datastax.oss.driver.api.core.uuid.Uuids
 import lerna.akka.entityreplication.rollback.PersistenceQueries.TaggedEventEnvelope
 
 import java.time.Instant
@@ -34,15 +32,7 @@ private final class LinearSequenceNrSearchStrategy(
       highestSequenceNr.fold(Source.empty[TaggedEventEnvelope])(queries.currentEventsBefore(persistenceId, _))
     })
     currentEventsBefore
-      .dropWhile { envelope =>
-        envelope.offset match {
-          case TimeBasedUUID(uuid) =>
-            val eventTimestampInMillis = Uuids.unixTimestamp(uuid)
-            eventTimestampInMillis > targetTimestampMillis
-          case _ =>
-            throw new IllegalStateException("event offset should always be TimeBasedUUID")
-        }
-      }
+      .dropWhile(_.timestamp > targetTimestampMillis)
       .map(_.sequenceNr)
       .runWith(Sink.headOption)
   }
