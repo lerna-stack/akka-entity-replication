@@ -20,7 +20,7 @@ import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager._
 import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, SnapshotStore }
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
 import org.scalactic.TypeCheckedTripleEquals
-import org.scalatest.Inside
+import org.scalatest.{ BeforeAndAfterAll, Inside }
 
 import java.util.UUID
 
@@ -53,6 +53,7 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       ),
     )
     with ActorSpec
+    with BeforeAndAfterAll
     with Inside
     with TypeCheckedTripleEquals {
 
@@ -66,6 +67,11 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
     persistenceTestKit.resetPolicy()
     snapshotTestKit.clearAll()
     snapshotTestKit.resetPolicy()
+  }
+
+  override def afterAll(): Unit = {
+    try shutdown(system)
+    finally super.afterAll()
   }
 
   private def configFor(
@@ -239,6 +245,42 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       )
     }
 
+    "not delete events if it fails a snapshot save" in new Fixture {
+      val config = configFor(
+        deleteBeforeRelativeSequenceNumber = 1,
+        deleteOldEvents = true,
+      )
+
+      // Arrange: save events and snapshots of SnapshotSyncManager.
+      val initialEvents = Seq(
+        SyncCompleted(Offset.noOffset),
+        SyncCompleted(Offset.noOffset),
+      )
+      persistenceTestKit.persistForRecovery(persistenceId, initialEvents)
+      snapshotTestKit.persistForRecovery(
+        persistenceId,
+        SnapshotMeta(sequenceNr = 2) -> SyncProgress(Offset.noOffset),
+      )
+      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
+
+      LoggingTestKit.warn("Failed to saveSnapshot").expect {
+        // Arrange: the next snapshot save will fail.
+        snapshotTestKit.failNextPersisted(persistenceId)
+        // Act: run entity snapshot synchronization, which will trigger a snapshot save.
+        val snapshotSyncManager = spawnSnapshotSyncManager(config)
+        runEntitySnapshotSynchronization(snapshotSyncManager)
+      }
+
+      // Assert:
+      assertForDuration(
+        {
+          val eventsAfterSynchronization = initialEvents ++ NewEventsSynchronizationSaves
+          assert(persistenceTestKit.persistedInStorage(persistenceId) === eventsAfterSynchronization)
+        },
+        max = remainingOrDefault,
+      )
+    }
+
     "delete events matching the criteria if it successfully saves a snapshot" in new Fixture {
       val config = configFor(
         deleteBeforeRelativeSequenceNumber = 1,
@@ -369,6 +411,50 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
             SyncProgress(Offset.noOffset),
             NewSnapshotSynchronizationSaves,
           )
+          assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === snapshotsAfterSynchronization)
+        },
+        max = remainingOrDefault,
+      )
+    }
+
+    "not delete snapshots if it fails a snapshot save" in new Fixture {
+      val config = configFor(
+        deleteBeforeRelativeSequenceNumber = 1,
+        deleteOldSnapshots = true,
+      )
+
+      // Arrange: save events and snapshots of SnapshotSyncManager.
+      persistenceTestKit.persistForRecovery(
+        persistenceId,
+        Seq(
+          SyncCompleted(Offset.noOffset),
+          SyncCompleted(Offset.noOffset),
+          SyncCompleted(Offset.noOffset),
+          SyncCompleted(Offset.noOffset),
+        ),
+      )
+      snapshotTestKit.persistForRecovery(
+        persistenceId,
+        Seq(
+          SnapshotMeta(sequenceNr = 2) -> SyncProgress(Offset.noOffset),
+          SnapshotMeta(sequenceNr = 4) -> SyncProgress(Offset.noOffset),
+        ),
+      )
+      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
+      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
+
+      LoggingTestKit.warn("Failed to saveSnapshot").expect {
+        // Arrange: the next snapshot will fail.
+        snapshotTestKit.failNextPersisted(persistenceId)
+        // Act: run entity snapshot synchronization, which will trigger a snapshot save.
+        val snapshotSyncManager = spawnSnapshotSyncManager(config)
+        runEntitySnapshotSynchronization(snapshotSyncManager)
+      }
+
+      // Assert:
+      assertForDuration(
+        {
+          val snapshotsAfterSynchronization = Seq(SyncProgress(Offset.noOffset), SyncProgress(Offset.noOffset))
           assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === snapshotsAfterSynchronization)
         },
         max = remainingOrDefault,
