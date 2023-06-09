@@ -590,6 +590,24 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       probe.expectTerminated(snapshotSyncManager)
     }
 
+    "stop after the event deletion skips if only event deletion is enabled." in new Fixture {
+      val config = configFor(
+        // should be much larger than the sequence number increased by following entity snapshot synchronization.
+        deleteBeforeRelativeSequenceNumber = 1000,
+        deleteOldEvents = true,
+        deleteOldSnapshots = false,
+      )
+
+      // Act: run entity snapshot synchronization, which will skip an event deletion.
+      val snapshotSyncManager = spawnSnapshotSyncManager(config)
+      persistenceTestKit.failNextDelete(persistenceId)
+      runEntitySnapshotSynchronization(snapshotSyncManager)
+
+      // Assert:
+      probe.watch(snapshotSyncManager)
+      probe.expectTerminated(snapshotSyncManager)
+    }
+
     "stop after the snapshot deletion succeeds if only snapshot deletion is enabled." in new Fixture {
       val config = configFor(
         deleteBeforeRelativeSequenceNumber = 0,
@@ -611,6 +629,24 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       //   `SnapshotTestKit.failNextDelete` doesn't trigger a snapshot deletion failure at the time of writing.
       //   While underlying implementation `PersistenceTestKitSnapshotPlugin.deleteAsync` is supposed to return a failed
       //   Future, it always returns a successful Future.
+    }
+
+    "stop after the snapshot deletion skips if only snapshot deletion is enabled." in new Fixture {
+      val config = configFor(
+        // should be much larger than the sequence number increased by following entity snapshot synchronization.
+        deleteBeforeRelativeSequenceNumber = 1000,
+        deleteOldEvents = false,
+        deleteOldSnapshots = true,
+      )
+
+      // Act: run entity snapshot synchronization, which will skip an snapshot deletion.
+      val snapshotSyncManager = spawnSnapshotSyncManager(config)
+      persistenceTestKit.failNextDelete(persistenceId)
+      runEntitySnapshotSynchronization(snapshotSyncManager)
+
+      // Assert:
+      probe.watch(snapshotSyncManager)
+      probe.expectTerminated(snapshotSyncManager)
     }
 
     "stop after both deletions succeed if both deletions are enabled." in new Fixture {
