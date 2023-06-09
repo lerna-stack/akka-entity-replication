@@ -16,12 +16,14 @@ import lerna.akka.entityreplication.raft.protocol.RaftCommands._
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
 import org.scalactic.TypeCheckedTripleEquals
+import org.scalatest.BeforeAndAfterAll
 
 final class RaftActorPersistenceDeletionSpec
     extends TestKit(
       ActorSystem("RaftActorPersistenceDeletionSpec", RaftActorSpecBase.configWithPersistenceTestKits),
     )
     with RaftActorSpecBase
+    with BeforeAndAfterAll
     with TypeCheckedTripleEquals {
 
   private implicit val typedSystem: typed.ActorSystem[Nothing] = system.toTyped
@@ -34,6 +36,11 @@ final class RaftActorPersistenceDeletionSpec
     persistenceTestKit.resetPolicy()
     snapshotTestKit.clearAll()
     snapshotTestKit.resetPolicy()
+  }
+
+  override def afterAll(): Unit = {
+    try shutdown(system)
+    finally super.afterAll()
   }
 
   private def configFor(
@@ -265,6 +272,47 @@ final class RaftActorPersistenceDeletionSpec
       )
     }
 
+    "not delete events if it fails a snapshot save" in new Fixture {
+      val raftActor = createFollower(
+        configFor(
+          deleteBeforeRelativeSequenceNr = 0,
+          deleteOldEvents = true,
+        ),
+      )
+
+      // Arrange: append new entries, which will trigger compaction.
+      appendNewEntriesTo(
+        raftActor,
+        currentTerm = Term(1),
+        prevLogTerm = Term(1),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-1"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event-3"), Term(1)),
+      )
+
+      promoteBeforeDelete(this, raftActor)
+
+      // Arrange: store events to verify no event deletion.
+      val eventsBeforeCompaction = persistenceTestKit.persistedInStorage(persistenceId)
+      assert(eventsBeforeCompaction.nonEmpty)
+
+      LoggingTestKit.warn("Failed to saveSnapshot").expect {
+        // Arrange: the next snapshot save will fail.
+        snapshotTestKit.failNextPersisted(persistenceId)
+        // Act: complete compaction, which will trigger a snapshot save.
+        advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(4))
+      }
+
+      // Assert:
+      assertForDuration(
+        {
+          val eventsAfterCompaction = persistenceTestKit.persistedInStorage(persistenceId)
+          assert(eventsAfterCompaction.take(eventsBeforeCompaction.size) === eventsBeforeCompaction)
+        },
+        max = remainingOrDefault,
+      )
+    }
+
     "delete events matching the criteria if it successfully saves a snapshot" in new Fixture {
       val raftActor = createFollower(
         configFor(
@@ -411,6 +459,54 @@ final class RaftActorPersistenceDeletionSpec
         {
           val snapshotsAfterCompaction = snapshotTestKit.persistedInStorage(persistenceId)
           assert(snapshotsAfterCompaction.map(_._2) === Seq(snapshot1, snapshot2))
+        },
+        max = remainingOrDefault,
+      )
+    }
+
+    "not delete snapshots if it fails a snapshot save" in new Fixture {
+      val raftActor = createFollower(
+        configFor(
+          deleteBeforeRelativeSequenceNr = 0,
+          deleteOldSnapshots = true,
+        ),
+      )
+
+      // Arrange: complete the first compaction, which will trigger a snapshot save.
+      appendNewEntriesTo(
+        raftActor,
+        currentTerm = Term(1),
+        prevLogTerm = Term(1),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-1"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-2"), Term(1)),
+      )
+      advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(3))
+      val snapshot1 = snapshotTestKit.expectNextPersistedType[PersistentStateData.PersistentState](persistenceId)
+
+      // Arrange: append new entries, which will trigger the second compaction.
+      appendNewEntriesTo(
+        raftActor,
+        currentTerm = Term(1),
+        prevLogTerm = Term(1),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event-3"), Term(1)),
+        LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event-4"), Term(1)),
+        LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "event-5"), Term(1)),
+      )
+
+      promoteBeforeDelete(this, raftActor)
+
+      LoggingTestKit.warn("Failed to saveSnapshot").expect {
+        // Arrange: the next snapshot save will fail.
+        snapshotTestKit.failNextPersisted(persistenceId)
+        // Act: complete the second compaction, which will trigger a snapshot save and deletion.
+        advanceCompaction(raftActor, newEventSourcingIndex = LogEntryIndex(6))
+      }
+
+      // Assert:
+      assertForDuration(
+        {
+          val snapshotsAfterCompaction = snapshotTestKit.persistedInStorage(persistenceId)
+          assert(snapshotsAfterCompaction.map(_._2) === Seq(snapshot1))
         },
         max = remainingOrDefault,
       )
