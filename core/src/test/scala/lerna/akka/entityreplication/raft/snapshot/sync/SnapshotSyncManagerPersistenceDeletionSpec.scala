@@ -20,7 +20,7 @@ import lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager._
 import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, SnapshotStore }
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
 import org.scalactic.TypeCheckedTripleEquals
-import org.scalatest.Inside
+import org.scalatest.{ BeforeAndAfterAll, Inside }
 
 import java.util.UUID
 
@@ -53,6 +53,7 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       ),
     )
     with ActorSpec
+    with BeforeAndAfterAll
     with Inside
     with TypeCheckedTripleEquals {
 
@@ -66,6 +67,11 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
     persistenceTestKit.resetPolicy()
     snapshotTestKit.clearAll()
     snapshotTestKit.resetPolicy()
+  }
+
+  override def afterAll(): Unit = {
+    try shutdown(system)
+    finally super.afterAll()
   }
 
   private def configFor(
@@ -239,6 +245,42 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       )
     }
 
+    "not delete events if it fails a snapshot save" in new Fixture {
+      val config = configFor(
+        deleteBeforeRelativeSequenceNumber = 1,
+        deleteOldEvents = true,
+      )
+
+      // Arrange: save events and snapshots of SnapshotSyncManager.
+      val initialEvents = Seq(
+        SyncCompleted(Offset.noOffset),
+        SyncCompleted(Offset.noOffset),
+      )
+      persistenceTestKit.persistForRecovery(persistenceId, initialEvents)
+      snapshotTestKit.persistForRecovery(
+        persistenceId,
+        SnapshotMeta(sequenceNr = 2) -> SyncProgress(Offset.noOffset),
+      )
+      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
+
+      LoggingTestKit.warn("Failed to saveSnapshot").expect {
+        // Arrange: the next snapshot save will fail.
+        snapshotTestKit.failNextPersisted(persistenceId)
+        // Act: run entity snapshot synchronization, which will trigger a snapshot save.
+        val snapshotSyncManager = spawnSnapshotSyncManager(config)
+        runEntitySnapshotSynchronization(snapshotSyncManager)
+      }
+
+      // Assert:
+      assertForDuration(
+        {
+          val eventsAfterSynchronization = initialEvents ++ NewEventsSynchronizationSaves
+          assert(persistenceTestKit.persistedInStorage(persistenceId) === eventsAfterSynchronization)
+        },
+        max = remainingOrDefault,
+      )
+    }
+
     "delete events matching the criteria if it successfully saves a snapshot" in new Fixture {
       val config = configFor(
         deleteBeforeRelativeSequenceNumber = 1,
@@ -375,6 +417,50 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       )
     }
 
+    "not delete snapshots if it fails a snapshot save" in new Fixture {
+      val config = configFor(
+        deleteBeforeRelativeSequenceNumber = 1,
+        deleteOldSnapshots = true,
+      )
+
+      // Arrange: save events and snapshots of SnapshotSyncManager.
+      persistenceTestKit.persistForRecovery(
+        persistenceId,
+        Seq(
+          SyncCompleted(Offset.noOffset),
+          SyncCompleted(Offset.noOffset),
+          SyncCompleted(Offset.noOffset),
+          SyncCompleted(Offset.noOffset),
+        ),
+      )
+      snapshotTestKit.persistForRecovery(
+        persistenceId,
+        Seq(
+          SnapshotMeta(sequenceNr = 2) -> SyncProgress(Offset.noOffset),
+          SnapshotMeta(sequenceNr = 4) -> SyncProgress(Offset.noOffset),
+        ),
+      )
+      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
+      snapshotTestKit.expectNextPersisted(persistenceId, SyncProgress(Offset.noOffset))
+
+      LoggingTestKit.warn("Failed to saveSnapshot").expect {
+        // Arrange: the next snapshot will fail.
+        snapshotTestKit.failNextPersisted(persistenceId)
+        // Act: run entity snapshot synchronization, which will trigger a snapshot save.
+        val snapshotSyncManager = spawnSnapshotSyncManager(config)
+        runEntitySnapshotSynchronization(snapshotSyncManager)
+      }
+
+      // Assert:
+      assertForDuration(
+        {
+          val snapshotsAfterSynchronization = Seq(SyncProgress(Offset.noOffset), SyncProgress(Offset.noOffset))
+          assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === snapshotsAfterSynchronization)
+        },
+        max = remainingOrDefault,
+      )
+    }
+
     "delete snapshots matching the criteria if it successfully saves a snapshot" in new Fixture {
       val settings = RaftSettings(
         configFor(
@@ -504,6 +590,24 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       probe.expectTerminated(snapshotSyncManager)
     }
 
+    "stop after the event deletion skips if only event deletion is enabled." in new Fixture {
+      val config = configFor(
+        // should be much larger than the sequence number increased by following entity snapshot synchronization.
+        deleteBeforeRelativeSequenceNumber = 1000,
+        deleteOldEvents = true,
+        deleteOldSnapshots = false,
+      )
+
+      // Act: run entity snapshot synchronization, which will skip an event deletion.
+      val snapshotSyncManager = spawnSnapshotSyncManager(config)
+      persistenceTestKit.failNextDelete(persistenceId)
+      runEntitySnapshotSynchronization(snapshotSyncManager)
+
+      // Assert:
+      probe.watch(snapshotSyncManager)
+      probe.expectTerminated(snapshotSyncManager)
+    }
+
     "stop after the snapshot deletion succeeds if only snapshot deletion is enabled." in new Fixture {
       val config = configFor(
         deleteBeforeRelativeSequenceNumber = 0,
@@ -525,6 +629,24 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       //   `SnapshotTestKit.failNextDelete` doesn't trigger a snapshot deletion failure at the time of writing.
       //   While underlying implementation `PersistenceTestKitSnapshotPlugin.deleteAsync` is supposed to return a failed
       //   Future, it always returns a successful Future.
+    }
+
+    "stop after the snapshot deletion skips if only snapshot deletion is enabled." in new Fixture {
+      val config = configFor(
+        // should be much larger than the sequence number increased by following entity snapshot synchronization.
+        deleteBeforeRelativeSequenceNumber = 1000,
+        deleteOldEvents = false,
+        deleteOldSnapshots = true,
+      )
+
+      // Act: run entity snapshot synchronization, which will skip an snapshot deletion.
+      val snapshotSyncManager = spawnSnapshotSyncManager(config)
+      persistenceTestKit.failNextDelete(persistenceId)
+      runEntitySnapshotSynchronization(snapshotSyncManager)
+
+      // Assert:
+      probe.watch(snapshotSyncManager)
+      probe.expectTerminated(snapshotSyncManager)
     }
 
     "stop after both deletions succeed if both deletions are enabled." in new Fixture {
