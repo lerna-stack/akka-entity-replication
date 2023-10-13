@@ -222,7 +222,7 @@ private[entityreplication] class SnapshotSyncManager(
       shardId,
     )
 
-  private val log: LoggingAdapter =
+  private implicit val log: LoggingAdapter =
     Logging(this.context.system, this)
 
   private val shouldDeleteOldEvents: Boolean =
@@ -499,6 +499,7 @@ private[entityreplication] class SnapshotSyncManager(
             offset,
           )
       }
+      .log("entity-snapshots-updated-events")
       .filter { event =>
         dstLatestSnapshotLastLogTerm <= event.snapshotLastLogTerm &&
         dstLatestSnapshotLastLogIndex < event.snapshotLastLogIndex
