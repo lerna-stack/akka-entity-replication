@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.raft.snapshot.sync
 
-import akka.actor.{ ActorLogging, ActorRef, Props, Status }
+import akka.actor.{ ActorRef, Props, Status }
+import akka.event.{ Logging, LoggingAdapter }
 import akka.pattern.extended.ask
 import akka.pattern.pipe
 import akka.persistence.{
@@ -196,7 +197,6 @@ private[entityreplication] class SnapshotSyncManager(
     shardId: NormalizedShardId,
     settings: RaftSettings,
 ) extends PersistentActor
-    with ActorLogging
     with RuntimePluginConfig {
   import SnapshotSyncManager._
 
@@ -221,6 +221,9 @@ private[entityreplication] class SnapshotSyncManager(
       dstMemberIndex = dstMemberIndex,
       shardId,
     )
+
+  private val log: LoggingAdapter =
+    Logging(this.context.system, this)
 
   private val shouldDeleteOldEvents: Boolean =
     settings.snapshotSyncDeleteOldEvents
