@@ -28,7 +28,7 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapsho
 import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, SnapshotProtocol }
 import lerna.akka.entityreplication.util.ActorIds
 
-import scala.concurrent.Future
+import scala.concurrent.{ ExecutionContext, Future }
 
 private[entityreplication] object SnapshotSyncManager {
 
@@ -472,7 +472,6 @@ private[entityreplication] class SnapshotSyncManager(
   ): (UniqueKillSwitch, Future[SyncStatus]) = {
 
     import context.system
-    import context.dispatcher
     implicit val timeout: Timeout = Timeout(settings.snapshotSyncPersistenceOperationTimeout)
 
     readJournal
@@ -558,40 +557,7 @@ private[entityreplication] class SnapshotSyncManager(
       .flatMapConcat { event =>
         Source(event.entityIds)
           .mapAsync(settings.snapshotSyncCopyingParallelism) { entityId =>
-            for {
-              fetchSnapshotResult <- {
-                ask(sourceShardSnapshotStore, replyTo => SnapshotProtocol.FetchSnapshot(entityId, replyTo))
-                  .mapTo[SnapshotProtocol.FetchSnapshotResponse]
-                  .flatMap {
-                    case response: SnapshotProtocol.SnapshotFound
-                        if srcLatestSnapshotLastLogIndex < response.snapshot.metadata.logEntryIndex =>
-                      Future.failed(
-                        SnapshotUpdateConflictException(
-                          typeName,
-                          srcMemberIndex,
-                          entityId,
-                          expectLogIndex = srcLatestSnapshotLastLogIndex,
-                          actualLogIndex = response.snapshot.metadata.logEntryIndex,
-                        ),
-                      )
-                    case response: SnapshotProtocol.SnapshotFound =>
-                      Future.successful(response)
-                    case response: SnapshotProtocol.SnapshotNotFound =>
-                      Future.failed(SnapshotNotFoundException(typeName, srcMemberIndex, response.entityId))
-                  }
-              }
-              saveSnapshotResult <- {
-                val snapshot = fetchSnapshotResult.snapshot
-                ask(dstShardSnapshotStore, replyTo => SnapshotProtocol.SaveSnapshot(snapshot, replyTo))
-                  .mapTo[SnapshotProtocol.SaveSnapshotResponse]
-                  .flatMap {
-                    case response: SnapshotProtocol.SaveSnapshotSuccess =>
-                      Future.successful(response)
-                    case response: SnapshotProtocol.SaveSnapshotFailure =>
-                      Future.failed(SaveSnapshotFailureException(typeName, dstMemberIndex, response.metadata))
-                  }
-              }
-            } yield saveSnapshotResult
+            copyEntitySnapshot(entityId, srcLatestSnapshotLastLogIndex)
           }
           .fold(
             SyncCompletePartially(
@@ -600,11 +566,53 @@ private[entityreplication] class SnapshotSyncManager(
               entityIds = Set.empty,
               event.offset,
             ),
-          )((status, e) => status.addEntityId(e.metadata.entityId))
+          ) { (status, destinationEntitySnapshotMetadata) =>
+            status.addEntityId(destinationEntitySnapshotMetadata.entityId)
+          }
       }
       .orElse(Source.single(SyncIncomplete()))
       .toMat(Sink.last)(Keep.both)
       .run()
+  }
+
+  private def copyEntitySnapshot(
+      entityId: NormalizedEntityId,
+      srcLatestSnapshotLastLogIndex: LogEntryIndex,
+  )(implicit entitySnapshotOperationTimeout: Timeout): Future[SnapshotProtocol.EntitySnapshotMetadata] = {
+    implicit val executionContext: ExecutionContext = context.dispatcher
+    for {
+      srcEntitySnapshot <- {
+        ask(sourceShardSnapshotStore, replyTo => SnapshotProtocol.FetchSnapshot(entityId, replyTo))
+          .mapTo[SnapshotProtocol.FetchSnapshotResponse]
+          .flatMap {
+            case response: SnapshotProtocol.SnapshotFound
+                if srcLatestSnapshotLastLogIndex < response.snapshot.metadata.logEntryIndex =>
+              Future.failed(
+                SnapshotUpdateConflictException(
+                  typeName,
+                  srcMemberIndex,
+                  entityId,
+                  expectLogIndex = srcLatestSnapshotLastLogIndex,
+                  actualLogIndex = response.snapshot.metadata.logEntryIndex,
+                ),
+              )
+            case response: SnapshotProtocol.SnapshotFound =>
+              Future.successful(response.snapshot)
+            case response: SnapshotProtocol.SnapshotNotFound =>
+              Future.failed(SnapshotNotFoundException(typeName, srcMemberIndex, response.entityId))
+          }
+      }
+      dstEntitySnapshotMetadata <- {
+        ask(dstShardSnapshotStore, replyTo => SnapshotProtocol.SaveSnapshot(srcEntitySnapshot, replyTo))
+          .mapTo[SnapshotProtocol.SaveSnapshotResponse]
+          .flatMap {
+            case response: SnapshotProtocol.SaveSnapshotSuccess =>
+              Future.successful(response.metadata)
+            case response: SnapshotProtocol.SaveSnapshotFailure =>
+              Future.failed(SaveSnapshotFailureException(typeName, dstMemberIndex, response.metadata))
+          }
+      }
+    } yield dstEntitySnapshotMetadata
   }
 
   /** Handles an Akka Persistence message
