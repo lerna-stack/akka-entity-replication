@@ -580,6 +580,14 @@ private[entityreplication] class SnapshotSyncManager(
       srcLatestSnapshotLastLogIndex: LogEntryIndex,
   )(implicit entitySnapshotOperationTimeout: Timeout): Future[SnapshotProtocol.EntitySnapshotMetadata] = {
     implicit val executionContext: ExecutionContext = context.dispatcher
+    if (log.isDebugEnabled) {
+      log.debug(
+        "Copying EntitySnapshot: entityId=[{}], from=[{}], to=[{}]",
+        entityId.raw,
+        sourceShardSnapshotStore,
+        dstShardSnapshotStore,
+      )
+    }
     for {
       srcEntitySnapshot <- {
         ask(sourceShardSnapshotStore, replyTo => SnapshotProtocol.FetchSnapshot(entityId, replyTo))
@@ -612,7 +620,19 @@ private[entityreplication] class SnapshotSyncManager(
               Future.failed(SaveSnapshotFailureException(typeName, dstMemberIndex, response.metadata))
           }
       }
-    } yield dstEntitySnapshotMetadata
+    } yield {
+      if (log.isDebugEnabled) {
+        log.debug(
+          "Copied EntitySnapshot: entityId=[{}], from=[{}], to=[{}], " +
+          s"sourceEntitySnapshotMetadata=[${srcEntitySnapshot.metadata}], " +
+          s"destinationEntitySnapshotMetadata=[${dstEntitySnapshotMetadata}]",
+          entityId.raw,
+          sourceShardSnapshotStore,
+          dstShardSnapshotStore,
+        )
+      }
+      dstEntitySnapshotMetadata
+    }
   }
 
   /** Handles an Akka Persistence message
