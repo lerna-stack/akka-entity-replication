@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 [Unreleased]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.3.0...master
 
+### Changed
+- Improve snapshot synchronization diagnostic logging
+  [PR#216](https://github.com/lerna-stack/akka-entity-replication/pull/216)
 
 ## [v2.3.0] - 2023-06-19
 [v2.3.0]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.2.0...v2.3.0
