@@ -247,7 +247,14 @@ private[entityreplication] class SnapshotSyncManager(
       }
       this.state = snapshot
 
-    case event: Event => updateState(event)
+    case event: Event =>
+      event match {
+        case _: SnapshotCopied =>
+          updateState(event)
+        case _: SyncCompleted =>
+          updateState(event)
+          context.become(ready)
+      }
 
     case RecoveryCompleted =>
       if (log.isInfoEnabled) {
@@ -366,6 +373,7 @@ private[entityreplication] class SnapshotSyncManager(
               // complete all
               persist(SyncCompleted(event.offset)) { event =>
                 updateState(event)
+                context.become(ready)
                 saveSnapshot(this.state)
                 replyTo ! SyncSnapshotSucceeded(
                   completePartially.snapshotLastLogTerm,
@@ -426,10 +434,8 @@ private[entityreplication] class SnapshotSyncManager(
     event match {
       case event: SnapshotCopied =>
         this.state = SyncProgress(event.offset)
-      // keep current behavior
       case SyncCompleted(offset) =>
         this.state = SyncProgress(offset)
-        context.become(ready)
     }
 
   private def stopSelf(): Unit = {
