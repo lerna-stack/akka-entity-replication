@@ -583,10 +583,11 @@ private[entityreplication] class SnapshotSyncManager(
     implicit val executionContext: ExecutionContext = context.dispatcher
     if (log.isDebugEnabled) {
       log.debug(
-        "Copying EntitySnapshot: entityId=[{}], from=[{}], to=[{}]",
+        "Copying EntitySnapshot: typeName=[{}], shardId=[{}], entityId=[{}], " +
+        s"from=[$sourceShardSnapshotStore], to=[$dstShardSnapshotStore]",
+        typeName,
+        shardId.raw,
         entityId.raw,
-        sourceShardSnapshotStore,
-        dstShardSnapshotStore,
       )
     }
     for {
@@ -624,12 +625,13 @@ private[entityreplication] class SnapshotSyncManager(
     } yield {
       if (log.isDebugEnabled) {
         log.debug(
-          "Copied EntitySnapshot: entityId=[{}], from=[{}], to=[{}], " +
+          "Copied EntitySnapshot: typeName=[{}], shardId=[{}], entityId=[{}], " +
+          s"from=[$sourceShardSnapshotStore], to=[$dstShardSnapshotStore], " +
           s"sourceEntitySnapshotMetadata=[${srcEntitySnapshot.metadata}], " +
           s"destinationEntitySnapshotMetadata=[${dstEntitySnapshotMetadata}]",
+          typeName,
+          shardId.raw,
           entityId.raw,
-          sourceShardSnapshotStore,
-          dstShardSnapshotStore,
         )
       }
       dstEntitySnapshotMetadata
