@@ -77,9 +77,6 @@ private[entityreplication] object SnapshotSyncManager {
 
   final case class SyncSnapshotFailed() extends Response
 
-  /** A `SnapshotSyncManager` will stop if it receives a `Stop` message unless its synchronization is in progress. */
-  private final case object Stop extends Command
-
   sealed trait Event
 
   final case class SnapshotCopied(
@@ -354,11 +351,6 @@ private[entityreplication] class SnapshotSyncManager(
         log.warning("Dropping unexpected Akka Persistence message: [{}]", akkaPersistenceMessage)
       }
 
-    case Stop =>
-      if (log.isWarningEnabled) {
-        log.warning("Dropping unexpected Stop.")
-      }
-
   }
 
   /** Behavior in the synchronizing state
@@ -464,11 +456,6 @@ private[entityreplication] class SnapshotSyncManager(
         log.warning("Dropping unexpected Akka Persistence message: [{}]", akkaPersistenceMessage)
       }
 
-    case Stop =>
-      if (log.isWarningEnabled) {
-        log.warning("Dropping unexpected Stop.")
-      }
-
   }
 
   /** Behavior in the finalizing state
@@ -494,10 +481,8 @@ private[entityreplication] class SnapshotSyncManager(
       }
 
     case akkaPersistenceMessage if handleAkkaPersistenceMessage.isDefinedAt(akkaPersistenceMessage) =>
+      // This actor will stop eventually after all deletions are completed.
       handleAkkaPersistenceMessage(akkaPersistenceMessage)
-
-    case Stop =>
-      stopSelf()
 
   }
 
@@ -717,15 +702,24 @@ private[entityreplication] class SnapshotSyncManager(
 
   /** Handles an Akka Persistence message
     *
-    * This `SnapshotSyncManager` will attempt to stop after it handles a series of snapshot save, (optional) event
-    * deletion, and (optional) snapshot deletion. Attempt to stop is driven by sending and receiving a
-    * [[SnapshotSyncManager.Stop]] message.
+    * `SnapshotSyncManager` will stop after it handles a series of snapshot save, (optional) event deletion, and
+    * (optional) snapshot deletion.
     *
-    * This `SnapshotSyncManager` will delete events first, then snapshot. It's because:
-    * There is a subtle timing at which the snapshot deletion completes before the event deletion completes. In this
-    * case, the manager doesn't log a message about completing the event deletion since it stops before receiving the
-    * completion message of the event deletion. To avoid such a case, the manager waits to complete the event deletion,
-    * then deletes the snapshot.
+    * `SnapshotSyncManager` will delete events first, then snapshot. It's because:
+    *
+    * If `SnapshotSyncManager` deletes events and snapshots in parallel order, there is a subtle timing at which the
+    * snapshot deletion completes before the event deletion completes, and vice-versa. Suppose `SnapshotSyncManager`
+    * stops immediately after the snapshot deletion completes, but the event deletion is not yet completed. In that
+    * case, `SnapshotSyncManager` cannot log a messages of the event deletion completion. For this reason,
+    * `SnapshotSyncManager` should delete messages and snapshots in serial order or stop after waiting for both deletion
+    * completions.
+    *
+    * While `SnapshotSyncManager` can choose the order of such deletions, deleting messages before snapshots enables
+    * `SnapshotSyncManager` to stop as soon as possible. Note that an upper sequence number of event deletion is less
+    * than or equal to one of snapshot deletion. If `SnapshotSyncManager` deletes no events, it also deletes no
+    * snapshots. In that case, `SnapshotSyncManager` can immediately stop after it deletes no events. Conversely, there
+    * is a chance to delete events even if the manager deletes no snapshots. In this case, `SnapshotSyncManager` cannot
+    * immediately stop.
     */
   private def handleAkkaPersistenceMessage: Receive = {
     case success: akka.persistence.SaveSnapshotSuccess =>
@@ -752,9 +746,9 @@ private[entityreplication] class SnapshotSyncManager(
     } else if (shouldDeleteOldSnapshots) {
       deleteOldSnapshots(success.metadata.sequenceNr - deletionRelativeSequenceNr)
     } else {
-      // Attempt to stop itself if no deletions are enabled.
-      // If any deletion is enabled, this actor will attempt to stop after the deletion completes (succeeds or fails).
-      self ! Stop
+      // Stop itself if no deletions are enabled.
+      // If any deletion is enabled, this actor will stop after the deletion completes (succeeds or fails).
+      stopSelf()
     }
   }
 
@@ -767,7 +761,7 @@ private[entityreplication] class SnapshotSyncManager(
         failure.cause.getMessage,
       )
     }
-    self ! Stop
+    stopSelf()
   }
 
   private def handleDeleteMessagesSuccess(success: akka.persistence.DeleteMessagesSuccess): Unit = {
@@ -777,9 +771,9 @@ private[entityreplication] class SnapshotSyncManager(
     if (shouldDeleteOldSnapshots) {
       // Subtraction of `deletionRelativeSequenceNr` is not needed, since it's already subtracted at the event deletion.
       deleteOldSnapshots(success.toSequenceNr)
-      // This actor will attempt to stop after the snapshot deletion completes (succeeds or fails).
+      // This actor will stop after the snapshot deletion completes (succeeds or fails).
     } else {
-      self ! Stop
+      stopSelf()
     }
   }
 
@@ -792,14 +786,14 @@ private[entityreplication] class SnapshotSyncManager(
         failure.cause.getMessage,
       )
     }
-    self ! Stop
+    stopSelf()
   }
 
   private def handleDeleteSnapshotsSuccess(success: akka.persistence.DeleteSnapshotsSuccess): Unit = {
     if (log.isInfoEnabled) {
       log.info("Succeeded to deleteSnapshots given criteria [{}]", success.criteria)
     }
-    self ! Stop
+    stopSelf()
   }
 
   private def handleDeleteSnapshotsFailure(failure: akka.persistence.DeleteSnapshotsFailure): Unit = {
@@ -811,7 +805,7 @@ private[entityreplication] class SnapshotSyncManager(
         failure.cause.getMessage,
       )
     }
-    self ! Stop
+    stopSelf()
   }
 
   private def deleteOldEvents(upperSequenceNr: Long): Unit = {
@@ -823,9 +817,9 @@ private[entityreplication] class SnapshotSyncManager(
       }
       deleteMessages(deleteEventsToSequenceNr)
     } else {
-      // Attempt to stop itself if it deletes no events.
+      // Stop itself if it deletes no events.
       // No event deletion means that it will also delete no snapshots.
-      self ! Stop
+      stopSelf()
     }
   }
 
@@ -842,8 +836,8 @@ private[entityreplication] class SnapshotSyncManager(
       }
       deleteSnapshots(deletionCriteria)
     } else {
-      // Attempt to stop itself if it deletes no snapshots.
-      self ! Stop
+      // Stop itself if it deletes no snapshots.
+      stopSelf()
     }
   }
 
