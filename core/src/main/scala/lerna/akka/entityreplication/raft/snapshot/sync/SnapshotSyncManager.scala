@@ -189,6 +189,20 @@ private[entityreplication] object SnapshotSyncManager {
     )
 }
 
+/**
+  * Executes snapshot synchronization
+  *
+  * `SnapshotSyncManager` executes only one snapshot synchronization in its lifecycle.
+  * This design is related to the following aspects:
+  *
+  *  - It reads snapshots from a [[lerna.akka.entityreplication.raft.snapshot.SnapshotStore]] that it spawns as its
+  *    descendant. The `SnapshotStore` is a different instance from a `SnapshotStore` running as a descendant of
+  *    [[lerna.akka.entityreplication.raft.RaftActor]] of the source replica group. The `SnapshotStore` cannot read new
+  *    snapshots the other one wrote (by such as compaction) if it has already recovered from persisted data.
+  *  - If it reuses an instance of `SnapshotStore` among multiple snapshot synchronizations, it cannot read a new
+  *    snapshot written by a compaction that happens during the synchronization. It should spawn dedicated instances of
+  *    `SnapshotStore` each synchronization or execute only one snapshot synchronization in its lifecycle.
+  */
 private[entityreplication] class SnapshotSyncManager(
     typeName: TypeName,
     srcMemberIndex: MemberIndex,
@@ -268,6 +282,11 @@ private[entityreplication] class SnapshotSyncManager(
 
   override def receiveCommand: Receive = ready
 
+  /** Behavior in the ready state
+    *
+    * `SnapshotSyncManager` accepts a new snapshot synchronization request. After it accepts the request, it will
+    * transit to the synchronizing state for executing the synchronization.
+    */
   def ready: Receive = {
 
     case SyncSnapshot(
@@ -320,14 +339,34 @@ private[entityreplication] class SnapshotSyncManager(
           s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
         )
 
-    case message if handleAkkaPersistenceMessage.isDefinedAt(message) =>
-      handleAkkaPersistenceMessage(message)
+    case syncStatus: SyncStatus =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected SyncStatus: [{}]", syncStatus)
+      }
+
+    case failureStatus: Status.Failure =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected Status.Failure: [{}]", failureStatus)
+      }
+
+    case akkaPersistenceMessage if handleAkkaPersistenceMessage.isDefinedAt(akkaPersistenceMessage) =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected Akka Persistence message: [{}]", akkaPersistenceMessage)
+      }
 
     case Stop =>
-      stopSelf()
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected Stop.")
+      }
 
   }
 
+  /** Behavior in the synchronizing state
+    *
+    * `SnapshotSyncManager` synchronizes entity snapshots in the background. It will send the synchronization result to
+    * the reply-to actor after it completes the synchronization. It also will transit to the finalizing state if any
+    * finalizing (deleting events or snapshots) is needed.
+    */
   def synchronizing(
       replyTo: ActorRef,
       srcLatestSnapshotLastLogIndex: LogEntryIndex,
@@ -373,7 +412,7 @@ private[entityreplication] class SnapshotSyncManager(
               // complete all
               persist(SyncCompleted(event.offset)) { event =>
                 updateState(event)
-                context.become(ready)
+                context.become(finalizing)
                 saveSnapshot(this.state)
                 replyTo ! SyncSnapshotSucceeded(
                   completePartially.snapshotLastLogTerm,
@@ -420,13 +459,45 @@ private[entityreplication] class SnapshotSyncManager(
         )
       stopSelf()
 
-    case message if handleAkkaPersistenceMessage.isDefinedAt(message) =>
-      handleAkkaPersistenceMessage(message)
+    case akkaPersistenceMessage if handleAkkaPersistenceMessage.isDefinedAt(akkaPersistenceMessage) =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected Akka Persistence message: [{}]", akkaPersistenceMessage)
+      }
 
     case Stop =>
-      if (log.isDebugEnabled) {
-        log.debug("Dropping Stop since the new snapshot synchronization is in progress.")
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected Stop.")
       }
+
+  }
+
+  /** Behavior in the finalizing state
+    *
+    * `SnapshotSyncManager` handles finalizing (saving snapshots, deleting events, and deleting snapshots) and stops
+    * eventually.
+    */
+  private def finalizing: Receive = {
+
+    case syncSnapshot: SyncSnapshot =>
+      if (log.isDebugEnabled) {
+        log.debug("Dropping [{}] since the snapshot synchronization is finalizing.", syncSnapshot)
+      }
+
+    case syncStatus: SyncStatus =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected SyncStatus: [{}]", syncStatus)
+      }
+
+    case failureStatus: Status.Failure =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected Status.Failure: [{}]", failureStatus)
+      }
+
+    case akkaPersistenceMessage if handleAkkaPersistenceMessage.isDefinedAt(akkaPersistenceMessage) =>
+      handleAkkaPersistenceMessage(akkaPersistenceMessage)
+
+    case Stop =>
+      stopSelf()
 
   }
 
