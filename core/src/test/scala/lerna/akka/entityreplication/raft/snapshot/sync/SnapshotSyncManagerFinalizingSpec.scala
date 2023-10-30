@@ -24,7 +24,7 @@ import org.scalatest.{ BeforeAndAfterAll, Inside }
 
 import java.util.UUID
 
-object SnapshotSyncManagerPersistenceDeletionSpec {
+object SnapshotSyncManagerFinalizingSpec {
 
   def config: Config = {
     PersistenceTestKitPlugin.config
@@ -45,11 +45,11 @@ object SnapshotSyncManagerPersistenceDeletionSpec {
 
 }
 
-final class SnapshotSyncManagerPersistenceDeletionSpec
+final class SnapshotSyncManagerFinalizingSpec
     extends TestKit(
       ActorSystem(
-        "SnapshotSyncManagerPersistenceDeletionSpec",
-        SnapshotSyncManagerPersistenceDeletionSpec.config,
+        "SnapshotSyncManagerFinalizingSpec",
+        SnapshotSyncManagerFinalizingSpec.config,
       ),
     )
     with ActorSpec
