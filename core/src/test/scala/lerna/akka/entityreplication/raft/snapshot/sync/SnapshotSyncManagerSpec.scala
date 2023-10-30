@@ -236,6 +236,33 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       }
     }
 
+    "log a warning if it receives an unexpected SyncStatus message in the ready state" in {
+      val snapshotSyncManager = createSnapshotSyncManager()
+      val syncStatus          = SnapshotSyncManager.SyncIncomplete()
+      LoggingTestKit.warn(s"Dropping unexpected SyncStatus: [$syncStatus]").expect {
+        snapshotSyncManager ! syncStatus
+      }
+    }
+
+    "log a warning if it receives an unexpected Status.Failure message in the ready state" in {
+      val snapshotSyncManager = createSnapshotSyncManager()
+      val failureStatus       = Status.Failure(new RuntimeException("An exception for test"))
+      LoggingTestKit.warn(s"Dropping unexpected Status.Failure: [$failureStatus]").expect {
+        snapshotSyncManager ! failureStatus
+      }
+    }
+
+    "log a warning if it receives an unexpected Akka Persistence message in the ready state" in {
+      val snapshotSyncManager = createSnapshotSyncManager()
+      val akkaPersistenceMessage = {
+        val persistenceId = SnapshotSyncManager.persistenceId(typeName, srcMemberIndex, dstMemberIndex, shardId)
+        akka.persistence.SaveSnapshotSuccess(akka.persistence.SnapshotMetadata(persistenceId, 1))
+      }
+      LoggingTestKit.warn(s"Dropping unexpected Akka Persistence message: [$akkaPersistenceMessage]").expect {
+        snapshotSyncManager ! akkaPersistenceMessage
+      }
+    }
+
     "respond SyncSnapshotAlreadySucceeded if the dst snapshot has already synchronized to src snapshot" in {
       /* prepare */
       val entity1 = createUniqueEntityId()
@@ -688,6 +715,43 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       )
       probe.expectMsgType[SnapshotSyncManager.SyncSnapshotFailed]
       probe.expectTerminated(snapshotSyncManager)
+    }
+  }
+
+  "log a warning if it receives an unexpected Akka Persistence message in the synchronizing state" in {
+    val dstSnapshotStore    = TestProbe()
+    val snapshotSyncManager = createSnapshotSyncManager(dstSnapshotStore = dstSnapshotStore.ref)
+
+    // Preparing for snapshot synchronization:
+    locally {
+      val entityIdA = createUniqueEntityId()
+      val srcSnapshots = Set(
+        EntitySnapshot(EntitySnapshotMetadata(entityIdA, LogEntryIndex(3)), EntityState("state-a-3")),
+      )
+      srcRaftSnapshotStoreTestKit.saveSnapshots(srcSnapshots)
+      raftEventJournalTestKit.persistEvents(
+        CompactionCompleted(srcMemberIndex, shardId, Term(1), LogEntryIndex(3), Set(entityIdA)),
+      )
+    }
+
+    // Executing snapshot synchronization:
+    val replyProbe = TestProbe()
+    snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
+      srcLatestSnapshotLastLogTerm = Term(1),
+      srcLatestSnapshotLastLogIndex = LogEntryIndex(3),
+      dstLatestSnapshotLastLogTerm = Term(0),
+      dstLatestSnapshotLastLogIndex = LogEntryIndex(0),
+      replyProbe.ref,
+    )
+    dstSnapshotStore.expectMsgType[SnapshotProtocol.SaveSnapshot]
+
+    // Check:
+    val akkaPersistenceMessage = {
+      val persistenceId = SnapshotSyncManager.persistenceId(typeName, srcMemberIndex, dstMemberIndex, shardId)
+      akka.persistence.SaveSnapshotSuccess(akka.persistence.SnapshotMetadata(persistenceId, 1))
+    }
+    LoggingTestKit.warn(s"Dropping unexpected Akka Persistence message: [$akkaPersistenceMessage]").expect {
+      snapshotSyncManager ! akkaPersistenceMessage
     }
   }
 
