@@ -54,28 +54,32 @@ object SnapshotSyncManagerFinalizingSpec {
        |""".stripMargin,
   )
 
-  /** SnapshotPolicy containing a `ProcessingResult` for `WriteSnapshot` as a `Promise`.
+  /** SnapshotPolicy deferring snapshot writes
     *
-    * This SnapshotPolicy returns a fulfilled value of the promise for `WriteSnapshot`. It returns `ProcessingSuccess`
-    * for other operations except for `WriteSnapshot`. The promise must be fulfilled. The succeeding tests will fail
-    * unless the promise is fulfilled.
+    * This policy defers snapshot writes (`WriteSnapshot` operations) until it determines a processing result for writes.
+    * To determine the result, call `decideWriteSnapshotResult` with the result. Once this policy decides the result, it
+    * returns the result for `WriteSnapshot` operations. It returns `ProcessingSuccess` for other operations except for
+    * `WriteSnapshot`.
+    *
+    * Note that this policy must make a decision finally. If not, the succeeding tests could fail.
     */
-  private final class SnapshotPolicyWithWriteResultPromise(fulfillTimeout: Duration)
+  private final class DeferringWriteSnapshotPolicy(decisionTimeout: Duration)
       extends SnapshotStorage.SnapshotPolicies.PolicyType {
 
-    private val processingResultPromise: Promise[ProcessingResult] = Promise()
+    private val writeSnapshotResultPromise: Promise[ProcessingResult] = Promise()
 
     override def tryProcess(persistenceId: String, processingUnit: SnapshotOperation): ProcessingResult = {
       processingUnit match {
         case _: WriteSnapshot =>
-          Await.result(processingResultPromise.future, fulfillTimeout)
+          Await.result(writeSnapshotResultPromise.future, decisionTimeout)
         case _ =>
           ProcessingSuccess
       }
     }
 
-    def fulfill(processingResult: ProcessingResult): Unit = {
-      processingResultPromise.success(processingResult)
+    /** Decides a `ProcessingResult` for snapshot writes (`WriteSnapshot operations`) */
+    def decideWriteSnapshotResult(writeSnapshotResult: ProcessingResult): Unit = {
+      writeSnapshotResultPromise.success(writeSnapshotResult)
     }
   }
 
@@ -735,11 +739,11 @@ final class SnapshotSyncManagerFinalizingSpec
     }
 
     "log a debug if it receives a SyncSnapshot message in the finalizing state" in new Fixture {
-      val snapshotSyncManager                  = spawnSnapshotSyncManager(system.settings.config)
-      val snapshotPolicyWithWriteResultPromise = new SnapshotPolicyWithWriteResultPromise(timeout.duration)
+      val snapshotSyncManager          = spawnSnapshotSyncManager(system.settings.config)
+      val deferringWriteSnapshotPolicy = new DeferringWriteSnapshotPolicy(timeout.duration)
       try {
         // Arrange: run entity snapshot synchronization.
-        snapshotTestKit.withPolicy(snapshotPolicyWithWriteResultPromise)
+        snapshotTestKit.withPolicy(deferringWriteSnapshotPolicy)
         runEntitySnapshotSynchronization(snapshotSyncManager)
 
         // Act & Assert: send a SyncSnapshot message while the SnapshotSyncManager is finalizing.
@@ -758,17 +762,17 @@ final class SnapshotSyncManagerFinalizingSpec
           }
       } finally {
         // Cleanup:
-        // The succeeding tests will fail unless the promise is fulfilled.
-        snapshotPolicyWithWriteResultPromise.fulfill(ProcessingSuccess)
+        // The succeeding tests could fail unless the policy makes a decision.
+        deferringWriteSnapshotPolicy.decideWriteSnapshotResult(ProcessingSuccess)
       }
     }
 
     "log a warning if it receives an unexpected SyncStatus message in the finalizing state" in new Fixture {
-      val snapshotSyncManager                  = spawnSnapshotSyncManager(system.settings.config)
-      val snapshotPolicyWithWriteResultPromise = new SnapshotPolicyWithWriteResultPromise(timeout.duration)
+      val snapshotSyncManager          = spawnSnapshotSyncManager(system.settings.config)
+      val deferringWriteSnapshotPolicy = new DeferringWriteSnapshotPolicy(timeout.duration)
       try {
         // Arrange: run entity snapshot synchronization.
-        snapshotTestKit.withPolicy(snapshotPolicyWithWriteResultPromise)
+        snapshotTestKit.withPolicy(deferringWriteSnapshotPolicy)
         runEntitySnapshotSynchronization(snapshotSyncManager)
 
         // Act & Assert: send a SyncStatus message while the SnapshotSyncManager is finalizing.
@@ -778,17 +782,17 @@ final class SnapshotSyncManagerFinalizingSpec
         }
       } finally {
         // Cleanup:
-        // The succeeding tests will fail unless the promise is fulfilled.
-        snapshotPolicyWithWriteResultPromise.fulfill(ProcessingSuccess)
+        // The succeeding tests could fail unless the policy makes a decision.
+        deferringWriteSnapshotPolicy.decideWriteSnapshotResult(ProcessingSuccess)
       }
     }
 
     "log a warning if it receives an unexpected Status.Failure message in the finalizing state" in new Fixture {
-      val snapshotSyncManager                  = spawnSnapshotSyncManager(system.settings.config)
-      val snapshotPolicyWithWriteResultPromise = new SnapshotPolicyWithWriteResultPromise(timeout.duration)
+      val snapshotSyncManager          = spawnSnapshotSyncManager(system.settings.config)
+      val deferringWriteSnapshotPolicy = new DeferringWriteSnapshotPolicy(timeout.duration)
       try {
         // Arrange: run entity snapshot synchronization.
-        snapshotTestKit.withPolicy(snapshotPolicyWithWriteResultPromise)
+        snapshotTestKit.withPolicy(deferringWriteSnapshotPolicy)
         runEntitySnapshotSynchronization(snapshotSyncManager)
 
         // Act & Assert: send a Status.Failure message while the SnapshotSyncManager is finalizing.
@@ -798,8 +802,8 @@ final class SnapshotSyncManagerFinalizingSpec
         }
       } finally {
         // Cleanup:
-        // The succeeding tests will fail unless the promise is fulfilled.
-        snapshotPolicyWithWriteResultPromise.fulfill(ProcessingSuccess)
+        // The succeeding tests could fail unless the policy makes a decision.
+        deferringWriteSnapshotPolicy.decideWriteSnapshotResult(ProcessingSuccess)
       }
     }
 
