@@ -767,6 +767,32 @@ final class SnapshotSyncManagerFinalizingSpec
       }
     }
 
+    "not reply if it receives a SyncSnapshot message in the finalizing state" in new Fixture {
+      val snapshotSyncManager          = spawnSnapshotSyncManager(system.settings.config)
+      val deferringWriteSnapshotPolicy = new DeferringWriteSnapshotPolicy(timeout.duration)
+      try {
+        // Arrange: run entity snapshot synchronization.
+        snapshotTestKit.withPolicy(deferringWriteSnapshotPolicy)
+        runEntitySnapshotSynchronization(snapshotSyncManager)
+
+        // Act & Assert: send a SyncSnapshot message while the SnapshotSyncManager is finalizing.
+        val replyProbe = TestProbe()
+        val syncSnapshot = SnapshotSyncManager.SyncSnapshot(
+          srcLatestSnapshotLastLogTerm = Term(1),
+          srcLatestSnapshotLastLogIndex = LogEntryIndex(2),
+          dstLatestSnapshotLastLogTerm = Term(1),
+          dstLatestSnapshotLastLogIndex = LogEntryIndex(1),
+          replyTo = replyProbe.ref,
+        )
+        snapshotSyncManager ! syncSnapshot
+        replyProbe.expectNoMessage()
+      } finally {
+        // Cleanup:
+        // The succeeding tests could fail unless the policy makes a decision.
+        deferringWriteSnapshotPolicy.decideWriteSnapshotResult(ProcessingSuccess)
+      }
+    }
+
     "log a warning if it receives an unexpected SyncStatus message in the finalizing state" in new Fixture {
       val snapshotSyncManager          = spawnSnapshotSyncManager(system.settings.config)
       val deferringWriteSnapshotPolicy = new DeferringWriteSnapshotPolicy(timeout.duration)
