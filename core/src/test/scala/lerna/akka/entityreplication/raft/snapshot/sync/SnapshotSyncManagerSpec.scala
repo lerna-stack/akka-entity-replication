@@ -293,7 +293,9 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
       /* check */
       awaitAssert { // Persistent events may not be retrieved immediately
         val probe = TestProbe()
-        createSnapshotSyncManager() ! SnapshotSyncManager.SyncSnapshot(
+        val snapshotSyncManager = createSnapshotSyncManager()
+        probe.watch(snapshotSyncManager)
+        snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
           srcLatestSnapshotLastLogTerm = srcSnapshotTerm,
           srcLatestSnapshotLastLogIndex = srcSnapshotLogIndex,
           dstLatestSnapshotLastLogTerm = dstSnapshotTerm,
@@ -303,6 +305,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
         probe.expectMsgType[SnapshotSyncManager.Response] should be(
           SnapshotSyncManager.SyncSnapshotSucceeded(srcSnapshotTerm, srcSnapshotLogIndex, srcMemberIndex),
         )
+        probe.expectTerminated(snapshotSyncManager)
       }
       val probe               = TestProbe()
       val snapshotSyncManager = probe.watch(createSnapshotSyncManager())
