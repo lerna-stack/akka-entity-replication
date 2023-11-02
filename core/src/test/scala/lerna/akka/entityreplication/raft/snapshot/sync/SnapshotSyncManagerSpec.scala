@@ -292,7 +292,7 @@ class SnapshotSyncManagerSpec extends TestKit(ActorSystem()) with ActorSpec with
 
       /* check */
       awaitAssert { // Persistent events may not be retrieved immediately
-        val probe = TestProbe()
+        val probe               = TestProbe()
         val snapshotSyncManager = createSnapshotSyncManager()
         probe.watch(snapshotSyncManager)
         snapshotSyncManager ! SnapshotSyncManager.SyncSnapshot(
