@@ -2,12 +2,21 @@ package lerna.akka.entityreplication.raft.snapshot.sync
 
 import akka.actor.testkit.typed.scaladsl.LoggingTestKit
 import akka.actor.typed.scaladsl.adapter.ClassicActorSystemOps
-import akka.actor.{ typed, ActorRef, ActorSystem }
+import akka.actor.{ typed, ActorRef, ActorSystem, Status }
 import akka.persistence.journal.Tagged
 import akka.persistence.query.Offset
 import akka.persistence.testkit.query.scaladsl.PersistenceTestKitReadJournal
 import akka.persistence.testkit.scaladsl.{ PersistenceTestKit, SnapshotTestKit }
-import akka.persistence.testkit.{ PersistenceTestKitPlugin, PersistenceTestKitSnapshotPlugin, SnapshotMeta }
+import akka.persistence.testkit.{
+  PersistenceTestKitPlugin,
+  PersistenceTestKitSnapshotPlugin,
+  ProcessingResult,
+  ProcessingSuccess,
+  SnapshotMeta,
+  SnapshotOperation,
+  SnapshotStorage,
+  WriteSnapshot,
+}
 import akka.testkit.{ TestKit, TestProbe }
 import com.typesafe.config.{ Config, ConfigFactory }
 import lerna.akka.entityreplication.model.{ NormalizedEntityId, NormalizedShardId, TypeName }
@@ -23,8 +32,10 @@ import org.scalactic.TypeCheckedTripleEquals
 import org.scalatest.{ BeforeAndAfterAll, Inside }
 
 import java.util.UUID
+import scala.concurrent.duration.Duration
+import scala.concurrent.{ Await, Promise }
 
-object SnapshotSyncManagerPersistenceDeletionSpec {
+object SnapshotSyncManagerFinalizingSpec {
 
   def config: Config = {
     PersistenceTestKitPlugin.config
@@ -43,19 +54,50 @@ object SnapshotSyncManagerPersistenceDeletionSpec {
        |""".stripMargin,
   )
 
+  /** SnapshotPolicy deferring snapshot writes
+    *
+    * This policy defers snapshot writes (`WriteSnapshot` operations) until it determines a processing result for writes.
+    * To determine the result, call `decideWriteSnapshotResult` with the result. Once this policy decides the result, it
+    * returns the result for `WriteSnapshot` operations. It returns `ProcessingSuccess` for other operations except for
+    * `WriteSnapshot`.
+    *
+    * Note that this policy must make a decision finally. If not, the succeeding tests could fail.
+    */
+  private final class DeferringWriteSnapshotPolicy(decisionTimeout: Duration)
+      extends SnapshotStorage.SnapshotPolicies.PolicyType {
+
+    private val writeSnapshotResultPromise: Promise[ProcessingResult] = Promise()
+
+    override def tryProcess(persistenceId: String, processingUnit: SnapshotOperation): ProcessingResult = {
+      processingUnit match {
+        case _: WriteSnapshot =>
+          Await.result(writeSnapshotResultPromise.future, decisionTimeout)
+        case _ =>
+          ProcessingSuccess
+      }
+    }
+
+    /** Decides a `ProcessingResult` for snapshot writes (`WriteSnapshot operations`) */
+    def decideWriteSnapshotResult(writeSnapshotResult: ProcessingResult): Unit = {
+      writeSnapshotResultPromise.success(writeSnapshotResult)
+    }
+  }
+
 }
 
-final class SnapshotSyncManagerPersistenceDeletionSpec
+final class SnapshotSyncManagerFinalizingSpec
     extends TestKit(
       ActorSystem(
-        "SnapshotSyncManagerPersistenceDeletionSpec",
-        SnapshotSyncManagerPersistenceDeletionSpec.config,
+        "SnapshotSyncManagerFinalizingSpec",
+        SnapshotSyncManagerFinalizingSpec.config,
       ),
     )
     with ActorSpec
     with BeforeAndAfterAll
     with Inside
     with TypeCheckedTripleEquals {
+
+  import SnapshotSyncManagerFinalizingSpec._
 
   private implicit val typedSystem: typed.ActorSystem[Nothing] = system.toTyped
   private val persistenceTestKit                               = PersistenceTestKit(system)
@@ -694,6 +736,101 @@ final class SnapshotSyncManagerPersistenceDeletionSpec
       //   `SnapshotTestKit.failNextDelete` doesn't trigger a snapshot deletion failure at the time of writing.
       //   While underlying implementation `PersistenceTestKitSnapshotPlugin.deleteAsync` is supposed to return a failed
       //   Future, it always returns a successful Future.
+    }
+
+    "log a debug if it receives a SyncSnapshot message in the finalizing state" in new Fixture {
+      val snapshotSyncManager          = spawnSnapshotSyncManager(system.settings.config)
+      val deferringWriteSnapshotPolicy = new DeferringWriteSnapshotPolicy(timeout.duration)
+      try {
+        // Arrange: run entity snapshot synchronization.
+        snapshotTestKit.withPolicy(deferringWriteSnapshotPolicy)
+        runEntitySnapshotSynchronization(snapshotSyncManager)
+
+        // Act & Assert: send a SyncSnapshot message while the SnapshotSyncManager is finalizing.
+        val replyProbe = TestProbe()
+        val syncSnapshot = SnapshotSyncManager.SyncSnapshot(
+          srcLatestSnapshotLastLogTerm = Term(1),
+          srcLatestSnapshotLastLogIndex = LogEntryIndex(2),
+          dstLatestSnapshotLastLogTerm = Term(1),
+          dstLatestSnapshotLastLogIndex = LogEntryIndex(1),
+          replyTo = replyProbe.ref,
+        )
+        LoggingTestKit
+          .debug(s"Dropping [$syncSnapshot] since the snapshot synchronization is finalizing.")
+          .expect {
+            snapshotSyncManager ! syncSnapshot
+          }
+      } finally {
+        // Cleanup:
+        // The succeeding tests could fail unless the policy makes a decision.
+        deferringWriteSnapshotPolicy.decideWriteSnapshotResult(ProcessingSuccess)
+      }
+    }
+
+    "not reply if it receives a SyncSnapshot message in the finalizing state" in new Fixture {
+      val snapshotSyncManager          = spawnSnapshotSyncManager(system.settings.config)
+      val deferringWriteSnapshotPolicy = new DeferringWriteSnapshotPolicy(timeout.duration)
+      try {
+        // Arrange: run entity snapshot synchronization.
+        snapshotTestKit.withPolicy(deferringWriteSnapshotPolicy)
+        runEntitySnapshotSynchronization(snapshotSyncManager)
+
+        // Act & Assert: send a SyncSnapshot message while the SnapshotSyncManager is finalizing.
+        val replyProbe = TestProbe()
+        val syncSnapshot = SnapshotSyncManager.SyncSnapshot(
+          srcLatestSnapshotLastLogTerm = Term(1),
+          srcLatestSnapshotLastLogIndex = LogEntryIndex(2),
+          dstLatestSnapshotLastLogTerm = Term(1),
+          dstLatestSnapshotLastLogIndex = LogEntryIndex(1),
+          replyTo = replyProbe.ref,
+        )
+        snapshotSyncManager ! syncSnapshot
+        replyProbe.expectNoMessage()
+      } finally {
+        // Cleanup:
+        // The succeeding tests could fail unless the policy makes a decision.
+        deferringWriteSnapshotPolicy.decideWriteSnapshotResult(ProcessingSuccess)
+      }
+    }
+
+    "log a warning if it receives an unexpected SyncStatus message in the finalizing state" in new Fixture {
+      val snapshotSyncManager          = spawnSnapshotSyncManager(system.settings.config)
+      val deferringWriteSnapshotPolicy = new DeferringWriteSnapshotPolicy(timeout.duration)
+      try {
+        // Arrange: run entity snapshot synchronization.
+        snapshotTestKit.withPolicy(deferringWriteSnapshotPolicy)
+        runEntitySnapshotSynchronization(snapshotSyncManager)
+
+        // Act & Assert: send a SyncStatus message while the SnapshotSyncManager is finalizing.
+        val syncStatus = SnapshotSyncManager.SyncIncomplete()
+        LoggingTestKit.warn(s"Dropping unexpected SyncStatus: [$syncStatus]").expect {
+          snapshotSyncManager ! syncStatus
+        }
+      } finally {
+        // Cleanup:
+        // The succeeding tests could fail unless the policy makes a decision.
+        deferringWriteSnapshotPolicy.decideWriteSnapshotResult(ProcessingSuccess)
+      }
+    }
+
+    "log a warning if it receives an unexpected Status.Failure message in the finalizing state" in new Fixture {
+      val snapshotSyncManager          = spawnSnapshotSyncManager(system.settings.config)
+      val deferringWriteSnapshotPolicy = new DeferringWriteSnapshotPolicy(timeout.duration)
+      try {
+        // Arrange: run entity snapshot synchronization.
+        snapshotTestKit.withPolicy(deferringWriteSnapshotPolicy)
+        runEntitySnapshotSynchronization(snapshotSyncManager)
+
+        // Act & Assert: send a Status.Failure message while the SnapshotSyncManager is finalizing.
+        val failureStatus = Status.Failure(new RuntimeException("An exception for test"))
+        LoggingTestKit.warn(s"Dropping unexpected Status.Failure: [$failureStatus]").expect {
+          snapshotSyncManager ! failureStatus
+        }
+      } finally {
+        // Cleanup:
+        // The succeeding tests could fail unless the policy makes a decision.
+        deferringWriteSnapshotPolicy.decideWriteSnapshotResult(ProcessingSuccess)
+      }
     }
 
   }

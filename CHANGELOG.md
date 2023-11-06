@@ -11,6 +11,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Improve snapshot synchronization diagnostic logging
   [PR#216](https://github.com/lerna-stack/akka-entity-replication/pull/216)
 
+### Fixed
+- Consecutive snapshot synchronizations could not synchronize new entity snapshots
+  [#215](https://github.com/lerna-stack/akka-entity-replication/issues/215),
+  [PR#217](https://github.com/lerna-stack/akka-entity-replication/pull/217)
+
 ## [v2.3.0] - 2023-06-19
 [v2.3.0]: https://github.com/lerna-stack/akka-entity-replication/compare/v2.2.0...v2.3.0
 
