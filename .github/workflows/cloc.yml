@@ -42,9 +42,7 @@ jobs:
           fi
           new_tree_ish=$(git rev-parse --abbrev-ref HEAD)
           echo "old_tree_ish=${old_tree_ish} new_tree_ish=${new_tree_ish}"
-          git archive --output "${new_tree_ish}.zip" "${new_tree_ish}"
-          git archive --output "${old_tree_ish}.zip" "${old_tree_ish}"
-          cloc --diff "${old_tree_ish}.zip" "${new_tree_ish}.zip" | tee cloc_diff.txt
+          cloc --git --diff "${old_tree_ish}" "${new_tree_ish}" | tee cloc_diff.txt
         env:
           old_tree_ish: ${{ inputs.old_tree_ish }}
       - uses: actions/upload-artifact@v3
