@@ -17,6 +17,7 @@ on:
 jobs:
   cloc:
     runs-on: ubuntu-20.04
+    name: Count Lines of Code
     steps:
       - uses: actions/checkout@v3
         with:
