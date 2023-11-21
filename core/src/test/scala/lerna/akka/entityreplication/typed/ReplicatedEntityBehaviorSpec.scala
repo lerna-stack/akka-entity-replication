@@ -249,14 +249,7 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       import SnapshotProtocol._
       val metadata = EntitySnapshotMetadata(normalizedEntityId, nextLogEntryIndex())
       val state    = EntityState(BankAccountBehavior.Account(100))
-      inside(snapshotStoreProbe.receiveMessage()) {
-        case SnapshotProtocol.FetchSnapshot(_, replyTo) =>
-          replyTo ! SnapshotProtocol.SnapshotFound(EntitySnapshot(metadata, state))
-      }
-      inside(shardProbe.receiveMessage()) {
-        case FetchEntityEvents(_, _, _, replyTo) =>
-          replyTo ! FetchEntityEventsResponse(Seq())
-      }
+      recoverWithState(bankAccount.asEntity, EntitySnapshot(metadata, state))
 
       // process a command with ensuring consistency
       val replyProbe = bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
@@ -364,14 +357,7 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       import SnapshotProtocol._
       val metadata = EntitySnapshotMetadata(normalizedEntityId, nextLogEntryIndex())
       val state    = EntityState(BankAccountBehavior.Account(100))
-      inside(snapshotStoreProbe.receiveMessage()) {
-        case SnapshotProtocol.FetchSnapshot(_, replyTo) =>
-          replyTo ! SnapshotProtocol.SnapshotFound(EntitySnapshot(metadata, state))
-      }
-      inside(shardProbe.receiveMessage()) {
-        case FetchEntityEvents(_, _, _, replyTo) =>
-          replyTo ! FetchEntityEventsResponse(Seq())
-      }
+      recoverWithState(bankAccount.asEntity, EntitySnapshot(metadata, state))
 
       // unstash the command when recovery completed
       val replicate = shardProbe.expectMessageType[RaftProtocol.Replicate]
@@ -390,14 +376,7 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       import SnapshotProtocol._
       val metadata = EntitySnapshotMetadata(normalizedEntityId, nextLogEntryIndex())
       val state    = EntityState(BankAccountBehavior.Account(100))
-      inside(snapshotStoreProbe.receiveMessage()) {
-        case SnapshotProtocol.FetchSnapshot(_, replyTo) =>
-          replyTo ! SnapshotProtocol.SnapshotFound(EntitySnapshot(metadata, state))
-      }
-      inside(shardProbe.receiveMessage()) {
-        case FetchEntityEvents(_, _, _, replyTo) =>
-          replyTo ! FetchEntityEventsResponse(Seq())
-      }
+      recoverWithState(bankAccount.asEntity, EntitySnapshot(metadata, state))
 
       val getBalanceProbe = bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
 
@@ -428,14 +407,7 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
         import SnapshotProtocol._
         val metadata = EntitySnapshotMetadata(normalizedEntityId, nextLogEntryIndex())
         val state    = EntityState(BankAccountBehavior.Account(100))
-        inside(snapshotStoreProbe.receiveMessage()) {
-          case SnapshotProtocol.FetchSnapshot(_, replyTo) =>
-            replyTo ! SnapshotProtocol.SnapshotFound(EntitySnapshot(metadata, state))
-        }
-        inside(shardProbe.receiveMessage()) {
-          case FetchEntityEvents(_, _, _, replyTo) =>
-            replyTo ! FetchEntityEventsResponse(Seq())
-        }
+        recoverWithState(bankAccount.asEntity, EntitySnapshot(metadata, state))
       }
 
       val clientProbe = bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
@@ -691,4 +663,20 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
         replyTo ! FetchEntityEventsResponse(Seq())
     }
   }
+
+  private def recoverWithState(
+      entity: ActorRef[RaftProtocol.EntityCommand],
+      entitySnapshot: SnapshotProtocol.EntitySnapshot,
+  ): Unit = {
+    val entityId = entitySnapshot.metadata.entityId
+    inside(snapshotStoreProbe.receiveMessage()) {
+      case SnapshotProtocol.FetchSnapshot(`entityId`, replyTo) =>
+        replyTo ! SnapshotProtocol.SnapshotFound(entitySnapshot)
+    }
+    inside(shardProbe.receiveMessage()) {
+      case FetchEntityEvents(_, _, _, replyTo) =>
+        replyTo ! FetchEntityEventsResponse(Seq())
+    }
+  }
+
 }
