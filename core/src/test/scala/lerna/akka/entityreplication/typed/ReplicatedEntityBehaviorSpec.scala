@@ -192,6 +192,111 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
   private[this] val logEntryIndexGenerator = new AtomicInteger(1)
   private[this] def nextLogEntryIndex()    = LogEntryIndex(logEntryIndexGenerator.getAndIncrement())
 
+  "ReplicatedEntityBehavior" when {
+
+    "Inactive" should {
+
+      "stash ProcessCommand until recovery completed" in {
+        val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+
+        // The entity will stash a command.
+        val depositReplyProbe = bankAccount.askWithTestProbe(BankAccountBehavior.Deposit(10, _))
+        // Assert: The entity doesn't reply to the command before it completes a recovery.
+        depositReplyProbe.expectNoMessage()
+
+        // Activate the entity.
+        val lastApplied = LogEntryIndex(6)
+        bankAccount.asEntity ! RaftProtocol.Activate(snapshotStoreProbe.ref.toClassic, recoveryIndex = lastApplied)
+
+        // Assert: The entity doesn't reply to the command before it completes the recovery.
+        depositReplyProbe.expectNoMessage()
+
+        // Recover the entity.
+        locally {
+          val metadata = SnapshotProtocol.EntitySnapshotMetadata(normalizedEntityId, lastApplied)
+          val state    = SnapshotProtocol.EntityState(BankAccountBehavior.Account(100))
+          recoverWithState(bankAccount.asEntity, SnapshotProtocol.EntitySnapshot(metadata, state))
+        }
+
+        // The entity will unstash and handle the command after it completes the recovery.
+        locally {
+          val replicate = shardProbe.expectMessageType[RaftProtocol.Replicate]
+          replicate.replyTo ! RaftProtocol.ReplicationSucceeded(replicate.event, LogEntryIndex(7), replicate.instanceId)
+          depositReplyProbe.expectMessageType[BankAccountBehavior.DepositSuccess].balance should be(110)
+        }
+
+        testkit.stop(bankAccount)
+      }
+
+      "stash TakeSnapshot until recovery completed" in {
+        val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+
+        val snapshotMetadata    = SnapshotProtocol.EntitySnapshotMetadata(normalizedEntityId, LogEntryIndex(5))
+        val lastApplied         = LogEntryIndex(6)
+        val newSnapshotMetadata = SnapshotProtocol.EntitySnapshotMetadata(normalizedEntityId, lastApplied)
+
+        // The entity will stash a TakeSnapshot.
+        val takeSnapshotReplyProbe = testkit.createTestProbe[RaftProtocol.Snapshot]()
+        bankAccount.asEntity ! RaftProtocol.TakeSnapshot(newSnapshotMetadata, takeSnapshotReplyProbe.ref.toClassic)
+        // Assert: The entity doesn't reply to the TakeSnapshot before it completes a recovery.
+        takeSnapshotReplyProbe.expectNoMessage()
+
+        // Activate the entity.
+        bankAccount.asEntity ! RaftProtocol.Activate(snapshotStoreProbe.ref.toClassic, recoveryIndex = lastApplied)
+
+        // Assert: The entity doesn't reply to the TakeSnapshot before it completes the recovery.
+        takeSnapshotReplyProbe.expectNoMessage()
+
+        // Recover the entity.
+        val state = SnapshotProtocol.EntityState(BankAccountBehavior.Account(100))
+        recoverWithState(bankAccount.asEntity, SnapshotProtocol.EntitySnapshot(snapshotMetadata, state))
+
+        // The entity will unstash and handle the TakeSnapshot after it completes the recovery.
+        takeSnapshotReplyProbe.expectMessage(RaftProtocol.Snapshot(newSnapshotMetadata, state))
+
+        testkit.stop(bankAccount)
+      }
+
+      "stash Replica until recovery completed" in {
+        val bankAccount = testkit.spawn(BankAccountBehavior(entityContext))
+
+        // The entity has a balance of 100. It will deposit 10 to the balance.
+        val bankAccountState    = BankAccountBehavior.Account(100)
+        val bankAccountNewEvent = BankAccountBehavior.Deposited(10)
+
+        val lastApplied = LogEntryIndex(5)
+
+        // The entity will stash a Replica.
+        bankAccount.asEntity ! RaftProtocol.Replica(
+          LogEntry(LogEntryIndex(6), EntityEvent(Option(normalizedEntityId), bankAccountNewEvent), Term(2)),
+        )
+
+        // Activate the entity.
+        bankAccount.asEntity ! RaftProtocol.Activate(snapshotStoreProbe.ref.toClassic, recoveryIndex = lastApplied)
+
+        // Recover the entity.
+        locally {
+          val metadata = SnapshotProtocol.EntitySnapshotMetadata(normalizedEntityId, lastApplied)
+          val state    = SnapshotProtocol.EntityState(bankAccountState)
+          recoverWithState(bankAccount.asEntity, SnapshotProtocol.EntitySnapshot(metadata, state))
+        }
+
+        // The entity will unstash and handle the Replica after it completes the recovery.
+        // The entity should have a new balance of 110 (= 100 + 10).
+        locally {
+          val getBalanceReplyProbe = bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
+          val replicate            = shardProbe.expectMessageType[RaftProtocol.Replicate]
+          replicate.replyTo ! RaftProtocol.ReplicationSucceeded(replicate.event, LogEntryIndex(7), replicate.instanceId)
+          getBalanceReplyProbe.expectMessage(BankAccountBehavior.AccountBalance(110))
+        }
+
+        testkit.stop(bankAccount)
+      }
+
+    }
+
+  }
+
   "ReplicatedEntityBehavior" should {
 
     "process command that updates the entity state" in {
@@ -365,6 +470,28 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
 
       // get reply
       replyToProbe.expectMessageType[BankAccountBehavior.DepositSuccess].balance should be(110)
+
+      testkit.stop(bankAccount)
+    }
+
+    "stash TakeSnapshot until recovery completed" in {
+      val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
+
+      val snapshotMetadata    = SnapshotProtocol.EntitySnapshotMetadata(normalizedEntityId, LogEntryIndex(5))
+      val newSnapshotMetadata = SnapshotProtocol.EntitySnapshotMetadata(normalizedEntityId, LogEntryIndex(6))
+
+      // The entity will stash a TakeSnapshot.
+      val takeSnapshotReplyProbe = testkit.createTestProbe[RaftProtocol.Snapshot]()
+      bankAccount.asEntity ! RaftProtocol.TakeSnapshot(newSnapshotMetadata, takeSnapshotReplyProbe.ref.toClassic)
+      // Assert: The entity doesn't reply to the TakeSnapshot before it completes a recovery.
+      takeSnapshotReplyProbe.expectNoMessage()
+
+      // Recover the entity.
+      val state = SnapshotProtocol.EntityState(BankAccountBehavior.Account(100))
+      recoverWithState(bankAccount.asEntity, SnapshotProtocol.EntitySnapshot(snapshotMetadata, state))
+
+      // The entity will unstash and handle the TakeSnapshot after it completes the recovery.
+      takeSnapshotReplyProbe.expectMessage(RaftProtocol.Snapshot(newSnapshotMetadata, state))
 
       testkit.stop(bankAccount)
     }
