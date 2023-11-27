@@ -4,6 +4,7 @@ resolvers += "dnvriend" at "https://dl.bintray.com/dnvriend/maven"
 
 lazy val akkaVersion                     = "2.6.17"
 lazy val akkaPersistenceCassandraVersion = "1.0.5"
+lazy val scalaMockVersion                = "5.2.0"
 
 // Restrict the number of concurrently executing MultiJVM/test tasks in all project:
 Global / concurrentRestrictions += Tags.limit(Tags.Untagged, 1)
@@ -74,9 +75,10 @@ lazy val core = (project in file("core"))
         "com.typesafe.akka" %% "akka-multi-node-testkit"  % akkaVersion % Test,
         // akka-persistence-inmemory が 2.6.x 系に対応していない。
         // TODO 2.6.x 系に対応できる方法に変更する。
-        "com.github.dnvriend" %% "akka-persistence-inmemory" % "2.5.15.2"  % Test,
-        "com.typesafe.akka"   %% "akka-persistence-testkit"  % akkaVersion % Test,
-        "com.typesafe.akka"   %% "akka-stream-testkit"       % akkaVersion % Test,
+        "com.github.dnvriend" %% "akka-persistence-inmemory" % "2.5.15.2"       % Test,
+        "com.typesafe.akka"   %% "akka-persistence-testkit"  % akkaVersion      % Test,
+        "com.typesafe.akka"   %% "akka-stream-testkit"       % akkaVersion      % Test,
+        "org.scalamock"       %% "scalamock"                 % scalaMockVersion % Test,
       ),
     inConfig(MultiJvm)(
       // multi-jvm ディレクトリをフォーマットするために必要
@@ -123,7 +125,7 @@ lazy val rollbackToolCassandra = (project in file("rollback-tool-cassandra"))
         "com.typesafe.akka" %% "akka-actor-testkit-typed"            % akkaVersion                     % Test,
         "com.typesafe.akka" %% "akka-serialization-jackson"          % akkaVersion                     % Test,
         "com.typesafe.akka" %% "akka-multi-node-testkit"             % akkaVersion                     % Test,
-        "org.scalamock"     %% "scalamock"                           % "5.2.0"                         % Test,
+        "org.scalamock"     %% "scalamock"                           % scalaMockVersion                % Test,
       ),
     inConfig(MultiJvm)(
       scalafmtConfigSettings
