@@ -496,6 +496,38 @@ class ReplicatedEntityBehaviorSpec extends WordSpec with BeforeAndAfterAll with 
       testkit.stop(bankAccount)
     }
 
+    "stash Replica until recovery completed" in {
+      val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
+
+      val snapshotMetadata = SnapshotProtocol.EntitySnapshotMetadata(normalizedEntityId, LogEntryIndex(5))
+
+      // The entity has a balance of 100. It will deposit 10 to the balance.
+      val bankAccountState    = BankAccountBehavior.Account(100)
+      val bankAccountNewEvent = BankAccountBehavior.Deposited(10)
+
+      // The entity will stash a Replica.
+      bankAccount.asEntity ! RaftProtocol.Replica(
+        LogEntry(LogEntryIndex(6), EntityEvent(Option(normalizedEntityId), bankAccountNewEvent), Term(2)),
+      )
+
+      // Recover the entity.
+      locally {
+        val state = SnapshotProtocol.EntityState(bankAccountState)
+        recoverWithState(bankAccount.asEntity, SnapshotProtocol.EntitySnapshot(snapshotMetadata, state))
+      }
+
+      // The entity will unstash and handle the Replica after it completes the recovery.
+      // The entity should have a new balance of 110 (= 100 + 10).
+      locally {
+        val getBalanceReplyProbe = bankAccount.askWithTestProbe(BankAccountBehavior.GetBalance)
+        val replicate            = shardProbe.expectMessageType[RaftProtocol.Replicate]
+        replicate.replyTo ! RaftProtocol.ReplicationSucceeded(replicate.event, LogEntryIndex(7), replicate.instanceId)
+        getBalanceReplyProbe.expectMessage(BankAccountBehavior.AccountBalance(110))
+      }
+
+      testkit.stop(bankAccount)
+    }
+
     "stash command until replication completed" in {
       val bankAccount = spawnEntity(BankAccountBehavior(entityContext))
 
