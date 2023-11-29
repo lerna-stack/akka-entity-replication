@@ -6,11 +6,12 @@ import lerna.akka.entityreplication.raft.RaftMemberData.SnapshotSynchronizationD
 import lerna.akka.entityreplication.raft.model._
 import lerna.akka.entityreplication.raft.protocol.RaftCommands.InstallSnapshot
 import lerna.akka.entityreplication.raft.routing.MemberIndex
+import org.scalamock.scalatest.MockFactory
 import org.scalatest.{ FlatSpec, Inside, Matchers }
 
 import java.util.UUID
 
-final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
+final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside with MockFactory {
 
   behavior of "RaftMemberData"
 
@@ -1144,6 +1145,155 @@ final class RaftMemberDataSpec extends FlatSpec with Matchers with Inside {
     exception.getMessage should be(
       "requirement failed: The entry with index [6] should not conflict with the committed entry (commitIndex [6])",
     )
+  }
+
+  behavior of "RaftMemberData.handleCommittedLogEntriesAndClients"
+
+  it should "call the given handler with applicable log entries" in {
+    // Arrange:
+    val logEntryWithIndex2 =
+      LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(1))
+    val logEntryWithIndex3 =
+      LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(1))
+    val clientContextForIndex3 =
+      ClientContext(ActorRef.noSender, Some(EntityInstanceId(1)), None)
+    val data = RaftMemberData()
+      .truncateAndAppendEntries(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          logEntryWithIndex2,
+          logEntryWithIndex3,
+          LogEntry(LogEntryIndex(4), EntityEvent(Some(NormalizedEntityId("entity-3")), "event-c"), Term(1)),
+        ),
+      )
+      .commit(LogEntryIndex(1))
+      .applyCommittedLogEntries { entries =>
+        // do nothing
+      }
+      .registerClient(clientContextForIndex3, LogEntryIndex(3))
+      .commit(LogEntryIndex(3))
+    data.commitIndex should be(LogEntryIndex(3))
+    data.lastApplied should be(LogEntryIndex(1))
+
+    // Act & Assert:
+    val handlerMock = mockFunction[Seq[(LogEntry, Option[ClientContext])], Unit]
+    val expectedApplicableLogEntries = Seq(
+      (logEntryWithIndex2, None),
+      (logEntryWithIndex3, Some(clientContextForIndex3)),
+    )
+    handlerMock.expects(expectedApplicableLogEntries).once()
+    data.handleCommittedLogEntriesAndClients(handlerMock)
+  }
+
+  it should "call the given handler with empty applicable log entries" in {
+    // Arrange:
+    val data = RaftMemberData()
+      .truncateAndAppendEntries(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(1)),
+        ),
+      )
+      .commit(LogEntryIndex(2))
+      .applyCommittedLogEntries { entries =>
+        // do nothing
+      }
+    data.commitIndex should be(LogEntryIndex(2))
+    data.lastApplied should be(LogEntryIndex(2))
+
+    // Act & Assert:
+    val handlerMock = mockFunction[Seq[(LogEntry, Option[ClientContext])], Unit]
+    handlerMock.expects(Seq.empty).once()
+    data.handleCommittedLogEntriesAndClients(handlerMock)
+  }
+
+  it should "update lastApplied to the last index of applicable log entries" in {
+    // Arrange:
+    val data = RaftMemberData()
+      .truncateAndAppendEntries(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(1)),
+          LogEntry(LogEntryIndex(4), EntityEvent(Some(NormalizedEntityId("entity-3")), "event-c"), Term(1)),
+        ),
+      )
+      .commit(LogEntryIndex(1))
+      .applyCommittedLogEntries { entries =>
+        // do nothing
+      }
+      .commit(LogEntryIndex(3))
+    data.commitIndex should be(LogEntryIndex(3))
+    data.lastApplied should be(LogEntryIndex(1))
+
+    // Act & Assert:
+    val handlerMock = mockFunction[Seq[(LogEntry, Option[ClientContext])], Unit]
+    handlerMock
+      .expects(where { (entries: Seq[(LogEntry, Option[ClientContext])]) =>
+        entries.last._1.index === LogEntryIndex(3)
+      }).once()
+    val newData = data.handleCommittedLogEntriesAndClients(handlerMock)
+    newData.lastApplied should be(LogEntryIndex(3))
+  }
+
+  it should "not update lastApplied if applicable log entries are empty" in {
+    // Arrange:
+    val data = RaftMemberData()
+      .truncateAndAppendEntries(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(1)),
+        ),
+      )
+      .commit(LogEntryIndex(2))
+      .applyCommittedLogEntries { entries =>
+        // do nothing
+      }
+    data.commitIndex should be(LogEntryIndex(2))
+    data.lastApplied should be(LogEntryIndex(2))
+
+    // Act & Assert:
+    val handlerMock = mockFunction[Seq[(LogEntry, Option[ClientContext])], Unit]
+    handlerMock.expects(Seq.empty).once()
+    val newData = data.handleCommittedLogEntriesAndClients(handlerMock)
+    newData.lastApplied should be(LogEntryIndex(2))
+  }
+
+  it should "remove clients only for applicable log entries" in {
+    // Arrange:
+    val data = RaftMemberData()
+      .truncateAndAppendEntries(
+        Seq(
+          LogEntry(LogEntryIndex(1), EntityEvent(None, NoOp), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Some(NormalizedEntityId("entity-1")), "event-a"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Some(NormalizedEntityId("entity-2")), "event-b"), Term(1)),
+        ),
+      )
+      .commit(LogEntryIndex(1))
+      .applyCommittedLogEntries { entries =>
+        // do nothing
+      }
+      .registerClient(ClientContext(ActorRef.noSender, Some(EntityInstanceId(1)), None), LogEntryIndex(2))
+      .registerClient(ClientContext(ActorRef.noSender, Some(EntityInstanceId(2)), None), LogEntryIndex(3))
+      .commit(LogEntryIndex(2))
+    data.commitIndex should be(LogEntryIndex(2))
+    data.lastApplied should be(LogEntryIndex(1))
+    data.clients.keySet should contain(LogEntryIndex(2))
+    data.clients.keySet should contain(LogEntryIndex(3))
+
+    // Act & Assert:
+    val handlerMock = mockFunction[Seq[(LogEntry, Option[ClientContext])], Unit]
+    handlerMock
+      .expects(where { (entries: Seq[(LogEntry, Option[ClientContext])]) =>
+        val indicesOfApplicableLogEntries = entries.map(_._1.index)
+        indicesOfApplicableLogEntries.contains(LogEntryIndex(2)) &&
+        !indicesOfApplicableLogEntries.contains(LogEntryIndex(3))
+      }).once()
+    val newData = data.handleCommittedLogEntriesAndClients(handlerMock)
+    newData.clients.keySet shouldNot contain(LogEntryIndex(2))
+    newData.clients.keySet should contain(LogEntryIndex(3))
   }
 
   behavior of "RaftMemberData.discardConflictClients"
