@@ -1,0 +1,53 @@
+# Count Lines of Code
+# https://github.com/AlDanial/cloc
+name: cloc
+
+on:
+  workflow_dispatch:
+    inputs:
+      old_tree_ish:
+        description: "commit-ish git object name"
+        type: string
+        required: false
+  push:
+    branches: [ master, feature/** ]
+
+jobs:
+  cloc:
+    runs-on: ubuntu-20.04
+    name: Count Lines of Code
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+      - name: Install cloc
+        run: sudo apt-get install cloc jq
+      - name: Count lines of code
+        run: |
+          set -eu
+          cloc --vcs=git --exclude-dir=test . | tee cloc.txt
+      - name: Count diff lines of code
+        run: |
+          set -eu
+          if [ -z "${old_tree_ish}" ]; then
+            old_tree_ish=$(
+              curl -L \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+                -H "X-GitHub-Api-Version: 2022-11-28" \
+                https://api.github.com/repos/${{ github.repository }}/releases/latest \
+              | jq -r .tag_name
+            )
+          fi
+          new_tree_ish=$(git rev-parse --abbrev-ref HEAD)
+          echo "old_tree_ish=${old_tree_ish} new_tree_ish=${new_tree_ish}"
+          cloc --git --diff "${old_tree_ish}" "${new_tree_ish}" | tee cloc_diff.txt
+        env:
+          old_tree_ish: ${{ inputs.old_tree_ish }}
+      - uses: actions/upload-artifact@v3
+        with:
+          name: cloc
+          path: |
+            cloc.txt
+            cloc_diff.txt
+          retention-days: 3
