@@ -169,6 +169,7 @@ class ReplicationRegionInitializingSpec
               TestReplicationActor.Message(myself, "initializing-1"),
             ),
           )
+          raftActorProbe.expectNoMessage()
         }
       }
 
@@ -195,6 +196,7 @@ class ReplicationRegionInitializingSpec
               TestReplicationActor.Message(myself, "initializing-2"),
             ),
           )
+          raftActorProbe.expectNoMessage()
         }
       }
 
@@ -217,6 +219,7 @@ class ReplicationRegionInitializingSpec
               TestReplicationActor.Message(myself, "initializing-3"),
             ),
           )
+          raftActorProbe.expectNoMessage()
         }
       }
 
@@ -239,6 +242,7 @@ class ReplicationRegionInitializingSpec
               TestReplicationActor.Message(myself, "initializing-4"),
             ),
           )
+          raftActorProbe.expectNoMessage()
         }
       }
 
@@ -265,6 +269,7 @@ class ReplicationRegionInitializingSpec
               TestReplicationActor.Message(myself, "initializing-5"),
             ),
           )
+          raftActorProbe.expectNoMessage()
         }
       }
 
