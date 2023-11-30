@@ -663,6 +663,36 @@ final class CommitLogStoreActorSpec
       )
     }
 
+    "not delete events if it fails a snapshot save" in new Fixture {
+      val commitLogStoreActor = spawnCommitLogStoreActor(
+        configFor(
+          snapshotEvery = 3,
+          deleteOldEvents = true,
+          deleteBeforeRelativeSequenceNr = 1,
+        ),
+      )
+
+      LoggingTestKit.warn("Failed to saveSnapshot").expect {
+        // Arrange: the next snapshot save will fail.
+        snapshotTestKit.failNextPersisted(persistenceId)
+        // Act: save events, which will trigger a snapshot save.
+        appendCommittedEntriesTo(
+          commitLogStoreActor,
+          LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "event-1"), Term(1)),
+          LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-2"), Term(1)),
+          LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-3"), Term(1)),
+        )
+      }
+
+      // Assert:
+      assertForDuration(
+        {
+          assert(persistenceTestKit.persistedInStorage(persistenceId) === Seq("event-1", "event-2", "event-3"))
+        },
+        max = remainingOrDefault,
+      )
+    }
+
     "delete events matching the criteria if it successfully saves a snapshot" in new Fixture {
       val commitLogStoreActor = spawnCommitLogStoreActor(
         configFor(
@@ -772,6 +802,50 @@ final class CommitLogStoreActorSpec
             CommitLogStoreActor.State(LogEntryIndex(2)),
             CommitLogStoreActor.State(LogEntryIndex(4)),
             CommitLogStoreActor.State(LogEntryIndex(6)),
+          )
+          assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === allSnapshots)
+        },
+        max = remainingOrDefault,
+      )
+    }
+
+    "not delete snapshots if it fails a snapshot save" in new Fixture {
+      val commitLogStoreActor = spawnCommitLogStoreActor(
+        configFor(
+          snapshotEvery = 2,
+          deleteOldSnapshots = true,
+          deleteBeforeRelativeSequenceNr = 2,
+        ),
+      )
+
+      // Prepare: save snapshots.
+      appendCommittedEntriesTo(
+        commitLogStoreActor,
+        LogEntry(LogEntryIndex(1), EntityEvent(Option(entityId), "event-1"), Term(1)),
+        LogEntry(LogEntryIndex(2), EntityEvent(Option(entityId), "event-2"), Term(1)),
+        LogEntry(LogEntryIndex(3), EntityEvent(Option(entityId), "event-3"), Term(1)),
+        LogEntry(LogEntryIndex(4), EntityEvent(Option(entityId), "event-4"), Term(1)),
+      )
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(2)))
+      snapshotTestKit.expectNextPersisted(persistenceId, CommitLogStoreActor.State(LogEntryIndex(4)))
+
+      LoggingTestKit.warn("Failed to saveSnapshot").expect {
+        // Arrange: the next snapshot save will fail.
+        snapshotTestKit.failNextPersisted(persistenceId)
+        // Act: save events, which will trigger a snapshot save.
+        appendCommittedEntriesTo(
+          commitLogStoreActor,
+          LogEntry(LogEntryIndex(5), EntityEvent(Option(entityId), "event-5"), Term(1)),
+          LogEntry(LogEntryIndex(6), EntityEvent(Option(entityId), "event-6"), Term(1)),
+        )
+      }
+
+      // Assert:
+      assertForDuration(
+        {
+          val allSnapshots = Seq(
+            CommitLogStoreActor.State(LogEntryIndex(2)),
+            CommitLogStoreActor.State(LogEntryIndex(4)),
           )
           assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === allSnapshots)
         },

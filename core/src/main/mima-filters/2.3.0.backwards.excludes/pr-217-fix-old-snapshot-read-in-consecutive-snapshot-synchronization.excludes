@@ -1,0 +1,2 @@
+# It's safe to exclude the following since Stop is a private class.
+ProblemFilters.exclude[MissingClassProblem]("lerna.akka.entityreplication.raft.snapshot.sync.SnapshotSyncManager$Stop$")

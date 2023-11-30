@@ -1,6 +1,7 @@
 package lerna.akka.entityreplication.raft.snapshot.sync
 
-import akka.actor.{ ActorLogging, ActorRef, Props, Status }
+import akka.actor.{ ActorRef, Props, Status }
+import akka.event.{ Logging, LoggingAdapter }
 import akka.pattern.extended.ask
 import akka.pattern.pipe
 import akka.persistence.{
@@ -27,7 +28,7 @@ import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol.EntitySnapsho
 import lerna.akka.entityreplication.raft.snapshot.{ ShardSnapshotStore, SnapshotProtocol }
 import lerna.akka.entityreplication.util.ActorIds
 
-import scala.concurrent.Future
+import scala.concurrent.{ ExecutionContext, Future }
 
 private[entityreplication] object SnapshotSyncManager {
 
@@ -75,9 +76,6 @@ private[entityreplication] object SnapshotSyncManager {
   ) extends Response
 
   final case class SyncSnapshotFailed() extends Response
-
-  /** A `SnapshotSyncManager` will stop if it receives a `Stop` message unless its synchronization is in progress. */
-  private final case object Stop extends Command
 
   sealed trait Event
 
@@ -188,6 +186,20 @@ private[entityreplication] object SnapshotSyncManager {
     )
 }
 
+/**
+  * Executes snapshot synchronization
+  *
+  * `SnapshotSyncManager` executes only one snapshot synchronization in its lifecycle.
+  * This design is related to the following aspects:
+  *
+  *  - It reads snapshots from a [[lerna.akka.entityreplication.raft.snapshot.SnapshotStore]] that it spawns as its
+  *    descendant. The `SnapshotStore` is a different instance from a `SnapshotStore` running as a descendant of
+  *    [[lerna.akka.entityreplication.raft.RaftActor]] of the source replica group. The `SnapshotStore` cannot read new
+  *    snapshots the other one wrote (by such as compaction) if it has already recovered from persisted data.
+  *  - If it reuses an instance of `SnapshotStore` among multiple snapshot synchronizations, it cannot read a new
+  *    snapshot written by a compaction that happens during the synchronization. It should spawn dedicated instances of
+  *    `SnapshotStore` each synchronization or execute only one snapshot synchronization in its lifecycle.
+  */
 private[entityreplication] class SnapshotSyncManager(
     typeName: TypeName,
     srcMemberIndex: MemberIndex,
@@ -196,7 +208,6 @@ private[entityreplication] class SnapshotSyncManager(
     shardId: NormalizedShardId,
     settings: RaftSettings,
 ) extends PersistentActor
-    with ActorLogging
     with RuntimePluginConfig {
   import SnapshotSyncManager._
 
@@ -222,6 +233,9 @@ private[entityreplication] class SnapshotSyncManager(
       shardId,
     )
 
+  private implicit val log: LoggingAdapter =
+    Logging(this.context.system, this)
+
   private val shouldDeleteOldEvents: Boolean =
     settings.snapshotSyncDeleteOldEvents
   private val shouldDeleteOldSnapshots: Boolean =
@@ -244,7 +258,14 @@ private[entityreplication] class SnapshotSyncManager(
       }
       this.state = snapshot
 
-    case event: Event => updateState(event)
+    case event: Event =>
+      event match {
+        case _: SnapshotCopied =>
+          updateState(event)
+        case _: SyncCompleted =>
+          updateState(event)
+          context.become(ready)
+      }
 
     case RecoveryCompleted =>
       if (log.isInfoEnabled) {
@@ -258,6 +279,11 @@ private[entityreplication] class SnapshotSyncManager(
 
   override def receiveCommand: Receive = ready
 
+  /** Behavior in the ready state
+    *
+    * `SnapshotSyncManager` accepts a new snapshot synchronization request. After it accepts the request, it will
+    * transit to the synchronizing state for executing the synchronization.
+    */
   def ready: Receive = {
 
     case SyncSnapshot(
@@ -310,14 +336,29 @@ private[entityreplication] class SnapshotSyncManager(
           s"(typeName: $typeName, memberIndex: $dstMemberIndex, snapshotLastLogTerm: ${dstLatestSnapshotLastLogTerm.term}, snapshotLastLogIndex: $dstLatestSnapshotLastLogIndex)",
         )
 
-    case message if handleAkkaPersistenceMessage.isDefinedAt(message) =>
-      handleAkkaPersistenceMessage(message)
+    case syncStatus: SyncStatus =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected SyncStatus: [{}]", syncStatus)
+      }
 
-    case Stop =>
-      stopSelf()
+    case failureStatus: Status.Failure =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected Status.Failure: [{}]", failureStatus)
+      }
+
+    case akkaPersistenceMessage if handleAkkaPersistenceMessage.isDefinedAt(akkaPersistenceMessage) =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected Akka Persistence message: [{}]", akkaPersistenceMessage)
+      }
 
   }
 
+  /** Behavior in the synchronizing state
+    *
+    * `SnapshotSyncManager` synchronizes entity snapshots in the background. It will send the synchronization result to
+    * the reply-to actor after it completes the synchronization. It also will transit to the finalizing state if any
+    * finalizing (deleting events or snapshots) is needed.
+    */
   def synchronizing(
       replyTo: ActorRef,
       srcLatestSnapshotLastLogIndex: LogEntryIndex,
@@ -363,6 +404,7 @@ private[entityreplication] class SnapshotSyncManager(
               // complete all
               persist(SyncCompleted(event.offset)) { event =>
                 updateState(event)
+                context.become(finalizing)
                 saveSnapshot(this.state)
                 replyTo ! SyncSnapshotSucceeded(
                   completePartially.snapshotLastLogTerm,
@@ -409,13 +451,38 @@ private[entityreplication] class SnapshotSyncManager(
         )
       stopSelf()
 
-    case message if handleAkkaPersistenceMessage.isDefinedAt(message) =>
-      handleAkkaPersistenceMessage(message)
-
-    case Stop =>
-      if (log.isDebugEnabled) {
-        log.debug("Dropping Stop since the new snapshot synchronization is in progress.")
+    case akkaPersistenceMessage if handleAkkaPersistenceMessage.isDefinedAt(akkaPersistenceMessage) =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected Akka Persistence message: [{}]", akkaPersistenceMessage)
       }
+
+  }
+
+  /** Behavior in the finalizing state
+    *
+    * `SnapshotSyncManager` handles finalizing (saving snapshots, deleting events, and deleting snapshots) and stops
+    * eventually.
+    */
+  private def finalizing: Receive = {
+
+    case syncSnapshot: SyncSnapshot =>
+      if (log.isDebugEnabled) {
+        log.debug("Dropping [{}] since the snapshot synchronization is finalizing.", syncSnapshot)
+      }
+
+    case syncStatus: SyncStatus =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected SyncStatus: [{}]", syncStatus)
+      }
+
+    case failureStatus: Status.Failure =>
+      if (log.isWarningEnabled) {
+        log.warning("Dropping unexpected Status.Failure: [{}]", failureStatus)
+      }
+
+    case akkaPersistenceMessage if handleAkkaPersistenceMessage.isDefinedAt(akkaPersistenceMessage) =>
+      // This actor will stop eventually after all deletions are completed.
+      handleAkkaPersistenceMessage(akkaPersistenceMessage)
 
   }
 
@@ -423,10 +490,8 @@ private[entityreplication] class SnapshotSyncManager(
     event match {
       case event: SnapshotCopied =>
         this.state = SyncProgress(event.offset)
-      // keep current behavior
       case SyncCompleted(offset) =>
         this.state = SyncProgress(offset)
-        context.become(ready)
     }
 
   private def stopSelf(): Unit = {
@@ -469,7 +534,6 @@ private[entityreplication] class SnapshotSyncManager(
   ): (UniqueKillSwitch, Future[SyncStatus]) = {
 
     import context.system
-    import context.dispatcher
     implicit val timeout: Timeout = Timeout(settings.snapshotSyncPersistenceOperationTimeout)
 
     readJournal
@@ -497,6 +561,7 @@ private[entityreplication] class SnapshotSyncManager(
             offset,
           )
       }
+      .log("entity-snapshots-updated-events")
       .filter { event =>
         dstLatestSnapshotLastLogTerm <= event.snapshotLastLogTerm &&
         dstLatestSnapshotLastLogIndex < event.snapshotLastLogIndex
@@ -555,40 +620,7 @@ private[entityreplication] class SnapshotSyncManager(
       .flatMapConcat { event =>
         Source(event.entityIds)
           .mapAsync(settings.snapshotSyncCopyingParallelism) { entityId =>
-            for {
-              fetchSnapshotResult <- {
-                ask(sourceShardSnapshotStore, replyTo => SnapshotProtocol.FetchSnapshot(entityId, replyTo))
-                  .mapTo[SnapshotProtocol.FetchSnapshotResponse]
-                  .flatMap {
-                    case response: SnapshotProtocol.SnapshotFound
-                        if srcLatestSnapshotLastLogIndex < response.snapshot.metadata.logEntryIndex =>
-                      Future.failed(
-                        SnapshotUpdateConflictException(
-                          typeName,
-                          srcMemberIndex,
-                          entityId,
-                          expectLogIndex = srcLatestSnapshotLastLogIndex,
-                          actualLogIndex = response.snapshot.metadata.logEntryIndex,
-                        ),
-                      )
-                    case response: SnapshotProtocol.SnapshotFound =>
-                      Future.successful(response)
-                    case response: SnapshotProtocol.SnapshotNotFound =>
-                      Future.failed(SnapshotNotFoundException(typeName, srcMemberIndex, response.entityId))
-                  }
-              }
-              saveSnapshotResult <- {
-                val snapshot = fetchSnapshotResult.snapshot
-                ask(dstShardSnapshotStore, replyTo => SnapshotProtocol.SaveSnapshot(snapshot, replyTo))
-                  .mapTo[SnapshotProtocol.SaveSnapshotResponse]
-                  .flatMap {
-                    case response: SnapshotProtocol.SaveSnapshotSuccess =>
-                      Future.successful(response)
-                    case response: SnapshotProtocol.SaveSnapshotFailure =>
-                      Future.failed(SaveSnapshotFailureException(typeName, dstMemberIndex, response.metadata))
-                  }
-              }
-            } yield saveSnapshotResult
+            copyEntitySnapshot(entityId, srcLatestSnapshotLastLogIndex)
           }
           .fold(
             SyncCompletePartially(
@@ -597,24 +629,97 @@ private[entityreplication] class SnapshotSyncManager(
               entityIds = Set.empty,
               event.offset,
             ),
-          )((status, e) => status.addEntityId(e.metadata.entityId))
+          ) { (status, destinationEntitySnapshotMetadata) =>
+            status.addEntityId(destinationEntitySnapshotMetadata.entityId)
+          }
       }
       .orElse(Source.single(SyncIncomplete()))
       .toMat(Sink.last)(Keep.both)
       .run()
   }
 
+  private def copyEntitySnapshot(
+      entityId: NormalizedEntityId,
+      srcLatestSnapshotLastLogIndex: LogEntryIndex,
+  )(implicit entitySnapshotOperationTimeout: Timeout): Future[SnapshotProtocol.EntitySnapshotMetadata] = {
+    implicit val executionContext: ExecutionContext = context.dispatcher
+    if (log.isDebugEnabled) {
+      log.debug(
+        "Copying EntitySnapshot: typeName=[{}], shardId=[{}], entityId=[{}], " +
+        s"from=[$sourceShardSnapshotStore], to=[$dstShardSnapshotStore]",
+        typeName,
+        shardId.raw,
+        entityId.raw,
+      )
+    }
+    for {
+      srcEntitySnapshot <- {
+        ask(sourceShardSnapshotStore, replyTo => SnapshotProtocol.FetchSnapshot(entityId, replyTo))
+          .mapTo[SnapshotProtocol.FetchSnapshotResponse]
+          .flatMap {
+            case response: SnapshotProtocol.SnapshotFound
+                if srcLatestSnapshotLastLogIndex < response.snapshot.metadata.logEntryIndex =>
+              Future.failed(
+                SnapshotUpdateConflictException(
+                  typeName,
+                  srcMemberIndex,
+                  entityId,
+                  expectLogIndex = srcLatestSnapshotLastLogIndex,
+                  actualLogIndex = response.snapshot.metadata.logEntryIndex,
+                ),
+              )
+            case response: SnapshotProtocol.SnapshotFound =>
+              Future.successful(response.snapshot)
+            case response: SnapshotProtocol.SnapshotNotFound =>
+              Future.failed(SnapshotNotFoundException(typeName, srcMemberIndex, response.entityId))
+          }
+      }
+      dstEntitySnapshotMetadata <- {
+        ask(dstShardSnapshotStore, replyTo => SnapshotProtocol.SaveSnapshot(srcEntitySnapshot, replyTo))
+          .mapTo[SnapshotProtocol.SaveSnapshotResponse]
+          .flatMap {
+            case response: SnapshotProtocol.SaveSnapshotSuccess =>
+              Future.successful(response.metadata)
+            case response: SnapshotProtocol.SaveSnapshotFailure =>
+              Future.failed(SaveSnapshotFailureException(typeName, dstMemberIndex, response.metadata))
+          }
+      }
+    } yield {
+      if (log.isDebugEnabled) {
+        log.debug(
+          "Copied EntitySnapshot: typeName=[{}], shardId=[{}], entityId=[{}], " +
+          s"from=[$sourceShardSnapshotStore], to=[$dstShardSnapshotStore], " +
+          s"sourceEntitySnapshotMetadata=[${srcEntitySnapshot.metadata}], " +
+          s"destinationEntitySnapshotMetadata=[${dstEntitySnapshotMetadata}]",
+          typeName,
+          shardId.raw,
+          entityId.raw,
+        )
+      }
+      dstEntitySnapshotMetadata
+    }
+  }
+
   /** Handles an Akka Persistence message
     *
-    * This `SnapshotSyncManager` will attempt to stop after it handles a series of snapshot save, (optional) event
-    * deletion, and (optional) snapshot deletion. Attempt to stop is driven by sending and receiving a
-    * [[SnapshotSyncManager.Stop]] message.
+    * `SnapshotSyncManager` will stop after it handles a series of snapshot save, (optional) event deletion, and
+    * (optional) snapshot deletion.
     *
-    * This `SnapshotSyncManager` will delete events first, then snapshot. It's because:
-    * There is a subtle timing at which the snapshot deletion completes before the event deletion completes. In this
-    * case, the manager doesn't log a message about completing the event deletion since it stops before receiving the
-    * completion message of the event deletion. To avoid such a case, the manager waits to complete the event deletion,
-    * then deletes the snapshot.
+    * `SnapshotSyncManager` will delete events first, then snapshot. It's because:
+    *
+    * If `SnapshotSyncManager` deletes events and snapshots in parallel order, there is a subtle timing at which the
+    * snapshot deletion completes before the event deletion completes, and vice-versa. Suppose `SnapshotSyncManager`
+    * stops immediately after the snapshot deletion completes, but the event deletion is not yet completed. In that
+    * case, `SnapshotSyncManager` cannot log a messages of the event deletion completion. For this reason,
+    * `SnapshotSyncManager` should delete messages and snapshots in serial order or stop after waiting for both deletion
+    * completions.
+    *
+    * While `SnapshotSyncManager` can choose the order of such deletions, deleting messages before snapshots enables
+    * `SnapshotSyncManager` to stop as soon as possible. Note that an upper sequence number of event deletion is less
+    * than or equal to one of snapshot deletion. If `SnapshotSyncManager` deletes no events, it also deletes no
+    * snapshots. In that case, `SnapshotSyncManager` can immediately stop after it deletes no events. Conversely, there
+    * is a chance to delete events even if the manager deletes no snapshots. In this case, `SnapshotSyncManager` cannot
+    * immediately stop.
     */
   private def handleAkkaPersistenceMessage: Receive = {
     case success: akka.persistence.SaveSnapshotSuccess =>
@@ -641,9 +746,9 @@ private[entityreplication] class SnapshotSyncManager(
     } else if (shouldDeleteOldSnapshots) {
       deleteOldSnapshots(success.metadata.sequenceNr - deletionRelativeSequenceNr)
     } else {
-      // Attempt to stop itself if no deletions are enabled.
-      // If any deletion is enabled, this actor will attempt to stop after the deletion completes (succeeds or fails).
-      self ! Stop
+      // Stop itself if no deletions are enabled.
+      // If any deletion is enabled, this actor will stop after the deletion completes (succeeds or fails).
+      stopSelf()
     }
   }
 
@@ -656,7 +761,7 @@ private[entityreplication] class SnapshotSyncManager(
         failure.cause.getMessage,
       )
     }
-    self ! Stop
+    stopSelf()
   }
 
   private def handleDeleteMessagesSuccess(success: akka.persistence.DeleteMessagesSuccess): Unit = {
@@ -666,9 +771,9 @@ private[entityreplication] class SnapshotSyncManager(
     if (shouldDeleteOldSnapshots) {
       // Subtraction of `deletionRelativeSequenceNr` is not needed, since it's already subtracted at the event deletion.
       deleteOldSnapshots(success.toSequenceNr)
-      // This actor will attempt to stop after the snapshot deletion completes (succeeds or fails).
+      // This actor will stop after the snapshot deletion completes (succeeds or fails).
     } else {
-      self ! Stop
+      stopSelf()
     }
   }
 
@@ -681,14 +786,14 @@ private[entityreplication] class SnapshotSyncManager(
         failure.cause.getMessage,
       )
     }
-    self ! Stop
+    stopSelf()
   }
 
   private def handleDeleteSnapshotsSuccess(success: akka.persistence.DeleteSnapshotsSuccess): Unit = {
     if (log.isInfoEnabled) {
       log.info("Succeeded to deleteSnapshots given criteria [{}]", success.criteria)
     }
-    self ! Stop
+    stopSelf()
   }
 
   private def handleDeleteSnapshotsFailure(failure: akka.persistence.DeleteSnapshotsFailure): Unit = {
@@ -700,7 +805,7 @@ private[entityreplication] class SnapshotSyncManager(
         failure.cause.getMessage,
       )
     }
-    self ! Stop
+    stopSelf()
   }
 
   private def deleteOldEvents(upperSequenceNr: Long): Unit = {
@@ -712,9 +817,9 @@ private[entityreplication] class SnapshotSyncManager(
       }
       deleteMessages(deleteEventsToSequenceNr)
     } else {
-      // Attempt to stop itself if it deletes no events.
+      // Stop itself if it deletes no events.
       // No event deletion means that it will also delete no snapshots.
-      self ! Stop
+      stopSelf()
     }
   }
 
@@ -731,8 +836,8 @@ private[entityreplication] class SnapshotSyncManager(
       }
       deleteSnapshots(deletionCriteria)
     } else {
-      // Attempt to stop itself if it deletes no snapshots.
-      self ! Stop
+      // Stop itself if it deletes no snapshots.
+      stopSelf()
     }
   }
 

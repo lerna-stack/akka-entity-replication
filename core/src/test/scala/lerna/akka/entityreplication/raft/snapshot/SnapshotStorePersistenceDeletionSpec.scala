@@ -11,6 +11,7 @@ import lerna.akka.entityreplication.raft.model.LogEntryIndex
 import lerna.akka.entityreplication.raft.{ ActorSpec, RaftSettings }
 import lerna.akka.entityreplication.raft.routing.MemberIndex
 import org.scalactic.TypeCheckedTripleEquals
+import org.scalatest.BeforeAndAfterAll
 
 import java.util.UUID
 
@@ -19,6 +20,7 @@ final class SnapshotStorePersistenceDeletionSpec
       ActorSystem("SnapshotStorePersistenceDeletionSpec", ShardSnapshotStoreSpecBase.configWithPersistenceTestKits),
     )
     with ActorSpec
+    with BeforeAndAfterAll
     with TypeCheckedTripleEquals {
 
   import lerna.akka.entityreplication.raft.snapshot.SnapshotProtocol._
@@ -33,6 +35,11 @@ final class SnapshotStorePersistenceDeletionSpec
     persistenceTestKit.resetPolicy()
     snapshotTestKit.clearAll()
     snapshotTestKit.resetPolicy()
+  }
+
+  override def afterAll(): Unit = {
+    try shutdown(system)
+    finally super.afterAll()
   }
 
   private def configFor(
@@ -105,6 +112,38 @@ final class SnapshotStorePersistenceDeletionSpec
 
     // Assert:
     snapshotTestKit.expectNextPersisted(persistenceId, entityState2)
+    assertForDuration(
+      {
+        assert(persistenceTestKit.persistedInStorage(persistenceId) === Seq(entityState1, entityState2))
+      },
+      max = remainingOrDefault,
+    )
+  }
+
+  "not delete events if it fails a snapshot save" in new Fixture {
+    val snapshotStore = spawnSnapshotStore(
+      configFor(
+        snapshotEvery = 2,
+        deleteBeforeRelativeSequenceNr = 1,
+        deleteOldEvents = true,
+      ),
+    )
+
+    // Arrange: save the first event.
+    val entityState1 = createEntitySnapshotData(LogEntryIndex(1))
+    saveEntitySnapshot(snapshotStore, entityState1)
+    persistenceTestKit.expectNextPersisted(persistenceId, entityState1)
+
+    val entityState2 = createEntitySnapshotData(LogEntryIndex(2))
+    LoggingTestKit.warn("Failed to saveSnapshot").expect {
+      // Arrange: the next snapshot save will fail.
+      snapshotTestKit.failNextPersisted(persistenceId)
+      // Act: save the second event, which will trigger a snapshot save.
+      saveEntitySnapshot(snapshotStore, entityState2)
+      persistenceTestKit.expectNextPersisted(persistenceId, entityState2)
+    }
+
+    // Assert:
     assertForDuration(
       {
         assert(persistenceTestKit.persistedInStorage(persistenceId) === Seq(entityState1, entityState2))
@@ -221,6 +260,43 @@ final class SnapshotStorePersistenceDeletionSpec
     assertForDuration(
       {
         val allSnapshots = Seq(entityState1, entityState2, entityState3)
+        assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === allSnapshots)
+      },
+      max = remainingOrDefault,
+    )
+  }
+
+  "not delete snapshots if it fails a snapshot save" in new Fixture {
+    val snapshotStore = spawnSnapshotStore(
+      configFor(
+        snapshotEvery = 1,
+        deleteBeforeRelativeSequenceNr = 1,
+        deleteOldSnapshots = true,
+      ),
+    )
+
+    // Arrange: save the first snapshot.
+    val entityState1 = createEntitySnapshotData(LogEntryIndex(1))
+    saveEntitySnapshot(snapshotStore, entityState1)
+    snapshotTestKit.expectNextPersisted(persistenceId, entityState1)
+
+    // Arrange: save the second snapshot.
+    val entityState2 = createEntitySnapshotData(LogEntryIndex(2))
+    saveEntitySnapshot(snapshotStore, entityState2)
+    snapshotTestKit.expectNextPersisted(persistenceId, entityState2)
+
+    LoggingTestKit.warn("Failed to saveSnapshot").expect {
+      // Arrange: the next snapshot save will fail.
+      snapshotTestKit.failNextPersisted(persistenceId)
+      // Act: save the third snapshot, which will trigger a snapshot save.
+      val entityState3 = createEntitySnapshotData(LogEntryIndex(3))
+      saveEntitySnapshot(snapshotStore, entityState3)
+    }
+
+    // Assert:
+    assertForDuration(
+      {
+        val allSnapshots = Seq(entityState1, entityState2)
         assert(snapshotTestKit.persistedInStorage(persistenceId).map(_._2) === allSnapshots)
       },
       max = remainingOrDefault,
